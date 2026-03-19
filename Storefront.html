@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1347ae",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#111621",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>Rental Shoe - Step into Style</title>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Top Navigation Bar -->
+<header class="sticky top-0 z-50 w-full border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-background-dark/80 backdrop-blur-md">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex h-16 items-center justify-between gap-8">
+<!-- Logo -->
+<div class="flex items-center gap-4 shrink-0">
+<div class="flex items-center justify-center size-10 rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined">footprint</span>
+</div>
+<h2 class="text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">Rental Shoe</h2>
+</div>
+<!-- Desktop Nav -->
+<nav class="hidden md:flex items-center gap-8">
+<a class="text-sm font-semibold hover:text-primary transition-colors" href="#">Men</a>
+<a class="text-sm font-semibold hover:text-primary transition-colors" href="#">Women</a>
+<a class="text-sm font-semibold hover:text-primary transition-colors" href="#">Collections</a>
+<a class="text-sm font-semibold hover:text-primary transition-colors" href="#">How it Works</a>
+</nav>
+<!-- Search and Actions -->
+<div class="flex flex-1 items-center justify-end gap-4">
+<div class="hidden lg:block w-full max-w-xs">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-lg">search</span>
+<input class="w-full h-10 pl-10 pr-4 bg-slate-100 dark:bg-slate-800 border-none rounded-lg focus:ring-2 focus:ring-primary text-sm" placeholder="Search premium shoes..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+<span class="material-symbols-outlined text-slate-700 dark:text-slate-300">shopping_bag</span>
+</button>
+<button class="flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+<span class="material-symbols-outlined text-slate-700 dark:text-slate-300">person</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</header>
+<main class="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
+<!-- Hero Section -->
+<section class="relative overflow-hidden rounded-2xl bg-slate-900 mb-12">
+<div class="absolute inset-0 opacity-50 bg-cover bg-center" data-alt="High quality leather shoes displayed on a dark luxury background" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAnnmYqZRGA95ys8iDYZobo6QU2BXetnneWAD2KYKtnjlSv10hOOwm4CFzps1gbQPiY296CUYHN5JL4qasEy8XgzImCFuoeB0lKihHpuZc3y1z85uJIWv3iN69hp1ZAqW8CD8yHldHLPXx2NsiFnzAIRJJdER1_ANPj_6oz0DSabek0YFAa8HNVyLwDRtJrQPTZqbQtY-abQIDQyfAQzo0iCiFH12ApvfkLH7Qsh53EbV4g5WCoSmf-wH3FVxq0GEa-bItruCgHdA')"></div>
+<div class="absolute inset-0 bg-gradient-to-r from-slate-900 via-slate-900/60 to-transparent"></div>
+<div class="relative z-10 flex flex-col items-start justify-center min-h-[400px] px-8 py-12 lg:px-16 lg:w-2/3">
+<span class="inline-block px-3 py-1 mb-4 text-xs font-bold tracking-widest text-white uppercase bg-primary rounded">Premium Selection</span>
+<h1 class="text-4xl lg:text-6xl font-black text-white leading-tight mb-6">
+                        Step into Style, <br/><span class="text-primary-light">Rent Your Confidence.</span>
+</h1>
+<p class="text-slate-300 text-lg mb-8 max-w-lg leading-relaxed">
+                        Access the world's finest footwear for every occasion without the commitment. From bespoke Oxfords to limited-edition sneakers.
+                    </p>
+<div class="flex gap-4">
+<button class="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-lg transition-all shadow-lg shadow-primary/25">
+                            Browse Collection
+                        </button>
+<button class="bg-white/10 hover:bg-white/20 text-white backdrop-blur-md font-bold py-3 px-8 rounded-lg border border-white/20 transition-all">
+                            How it works
+                        </button>
+</div>
+</div>
+</section>
+<div class="flex flex-col lg:flex-row gap-8">
+<!-- Sidebar Filters -->
+<aside class="w-full lg:w-64 shrink-0 space-y-8">
+<div>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-primary">tune</span>
+<h3 class="font-bold text-lg">Filters</h3>
+</div>
+<!-- Category Filter -->
+<div class="space-y-6">
+<div class="border-b border-slate-200 dark:border-slate-800 pb-6">
+<h4 class="font-semibold mb-3 text-sm uppercase tracking-wider text-slate-500">Category</h4>
+<div class="space-y-2">
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+<span class="text-sm group-hover:text-primary transition-colors">Oxford &amp; Derbies</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input checked="" class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+<span class="text-sm group-hover:text-primary transition-colors">Premium Sneakers</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+<span class="text-sm group-hover:text-primary transition-colors">Luxury Loafers</span>
+</label>
+<label class="flex items-center gap-3 cursor-pointer group">
+<input class="rounded border-slate-300 text-primary focus:ring-primary h-4 w-4" type="checkbox"/>
+<span class="text-sm group-hover:text-primary transition-colors">Boots</span>
+</label>
+</div>
+</div>
+<!-- Size Filter -->
+<div class="border-b border-slate-200 dark:border-slate-800 pb-6">
+<h4 class="font-semibold mb-3 text-sm uppercase tracking-wider text-slate-500">Size (EU)</h4>
+<div class="grid grid-cols-4 gap-2">
+<button class="h-10 text-xs font-medium border border-slate-200 dark:border-slate-700 rounded hover:border-primary transition-colors">40</button>
+<button class="h-10 text-xs font-medium border border-slate-200 dark:border-slate-700 rounded hover:border-primary transition-colors">41</button>
+<button class="h-10 text-xs font-medium bg-primary text-white rounded">42</button>
+<button class="h-10 text-xs font-medium border border-slate-200 dark:border-slate-700 rounded hover:border-primary transition-colors">43</button>
+<button class="h-10 text-xs font-medium border border-slate-200 dark:border-slate-700 rounded hover:border-primary transition-colors">44</button>
+<button class="h-10 text-xs font-medium border border-slate-200 dark:border-slate-700 rounded hover:border-primary transition-colors">45</button>
+</div>
+</div>
+<!-- Color Filter -->
+<div class="border-b border-slate-200 dark:border-slate-800 pb-6">
+<h4 class="font-semibold mb-3 text-sm uppercase tracking-wider text-slate-500">Color</h4>
+<div class="flex flex-wrap gap-2">
+<div class="size-6 rounded-full bg-black border border-white/20 cursor-pointer ring-2 ring-offset-2 ring-primary"></div>
+<div class="size-6 rounded-full bg-amber-900 cursor-pointer"></div>
+<div class="size-6 rounded-full bg-slate-300 cursor-pointer"></div>
+<div class="size-6 rounded-full bg-blue-900 cursor-pointer"></div>
+<div class="size-6 rounded-full bg-white border border-slate-200 cursor-pointer"></div>
+</div>
+</div>
+<!-- Price range -->
+<div>
+<h4 class="font-semibold mb-3 text-sm uppercase tracking-wider text-slate-500">Daily Rate</h4>
+<input class="w-full accent-primary" type="range"/>
+<div class="flex justify-between mt-2 text-xs font-medium">
+<span>$10</span>
+<span>$150+</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Product Grid Area -->
+<div class="flex-1">
+<!-- Sorting & View Options -->
+<div class="flex items-center justify-between mb-8 pb-4 border-b border-slate-200 dark:border-slate-800">
+<p class="text-sm font-medium text-slate-500">Showing <span class="text-slate-900 dark:text-white">24</span> results</p>
+<div class="flex items-center gap-4">
+<select class="text-sm bg-transparent border-none focus:ring-0 cursor-pointer font-semibold">
+<option>Most Popular</option>
+<option>Price: Low to High</option>
+<option>Price: High to Low</option>
+<option>Newest</option>
+</select>
+</div>
+</div>
+<!-- Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+<!-- Product Card 1 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="Black classic leather Oxford shoes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCwTkhiW1niPp8lg4Ho8doGAGIwzbJvlBGKh5D2JmB6WDKZ1omBP3iwGYqkBQerC7W5YcwzxmPQDfz7RKk9b0HKt4jcUNJPmEKQTyrlQmaoPjQsctOE5-GjAHqoxnGqZNUWP5ahgW4Gjwz0pIYtwWNHK4JW9R5iRXeks4GeDVNXE_8UfMiLLVQJuYYWJvrfp6NweebotuULNbiWMRsuNBzDavP-UZKqQ9dda8OMNUQVTUrwKhQ5b_810uJpyZMmWFtbhACALSmhMg"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Formal</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Heritage Oxford</h3>
+<span class="text-primary font-black">$25<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">Full-grain Italian calf leather, artisan finish.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+<!-- Product Card 2 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="White and grey high-end designer sneakers" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDjh8z630vBPpnLLX2kJsNPAdEG7PihRwqqm4f0-Vzys2O5e1Wa85AeVL_Pprt7zc2_KiG78wzBznx8egJNZYYzj4lcJCtB-kZh0NtzsbTTw8wGH8MpqG6D5yXzcjE_xCSNlZHvArd7PZryvUgyIIXnr03j2hnQnx6E0jn44D-CXgjAs-BgRaj-uu7bk2_sdRsTKoQbVrzl6O8b3425SZQ51b2A-vwimSlkKhA5VbMaoKS5bv8CR05tIZ7wsa88-ufdi41onjn8Xg"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Limited</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Azure Runner X</h3>
+<span class="text-primary font-black">$45<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">Limited edition performance luxury footwear.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+<!-- Product Card 3 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="Dark brown suede loafers" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAg2XmFPGW1FpsvbfOuXeUqft5fQDJPVhqh0fI7DMxpUV13Ed_OpIokZshVsChKGWzIwUTWsqQzV8SrmzM56lzj0Jt_ES4osfNsM0YdHYztRujiYDPXJ5n_4ISdUqyVt6m2K7ifKRWAnClBEsRBx1F-yt5oltGa71R0O3rMvYOpPlQEjvQ2__KIW6TYS2WF2SQnaN5AxmAb7xdROPjmXUwzzQg9KpR0UONNCyKpZZ8noiIEjRLHG4r9ikQ32vaTOTCaidkmlUdIUw"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Classic</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Suede Belgian Loafer</h3>
+<span class="text-primary font-black">$30<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">Hand-stitched soft suede for effortless elegance.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+<!-- Product Card 4 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="High-top leather boots in tan" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCloV2X1nuaQVPLYQ8YHRijGxk8wT-A0on_NVgatJD8z3AlcMVj4Q6f_sj4-EP9SbBGdTWTw6bfYOMbdT6qEhBTlN_uUZdYmTlL4SxB2LkPpvFbqMDaQfOHIVNzYokQffsDUbu9uGLUU1G5jrLIJem7rWqu52j2BcYU5BLJgKO2AgtGuMLPIPKUI5s0c8v5_aQAujx4RWX_h8Z5qtX9CWgXLmqM3dtIFGhEgx90huYzacUoitgDurgXE3FZpH9xuMmfVcyNsWYE4w"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Rugged</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Ironclad Boot</h3>
+<span class="text-primary font-black">$35<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">Durable full-grain leather with Goodyear welt.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+<!-- Product Card 5 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="Vibrant luxury fashion sneaker" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAaFxEs8AHjQLQ1r2q4QkDY9Eqxxp3Vz18ZyDRu4NSh0ezZtNkyPh5bwadKSIDzZs9XNqTlvpVfLS9KC1HkxM3pFnHpU0zGibfqTqtNJqw6uuCqVwThA3H_OjT6dZBFsBY1Fr1HnDIuIGE7A1qDuq_RUdlqQ7bjRAmArKKQLhDtONbGFPv12D8TztZnVS5oZJAFXKNjO92xtJUHZkmdJCOq_ouJccME7yf5q0COiUAC_l6fnAxqGPwIItQCxM_nNkJsR9SLXeiNlQ"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Streetwear</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Chroma Lux High</h3>
+<span class="text-primary font-black">$55<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">High-fashion silhouette with premium materials.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+<!-- Product Card 6 -->
+<div class="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
+<div class="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
+<img class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110" data-alt="Polished burgundy dress shoes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjpTGiEw9uZrLncfTxwdhGhcScyy46AgT4CrLfdP0ihXkejg9ETtbBVnalNeAI4b6iQzUyFhV6snJqzQdZ93jllb5YNTlPLa1Xz57XJWGrLIYJQrvDZB2ME4cmmg2H0xp9Z06HSgufomHZQV88LTYOfoM-2R80IuG4oVpC198GgC5mMQT3xShoh_P3HCV6vPq56VID0mtvnne6Ju_2n4yGRuIbYvlCkrXv5wzwhffaGp-DsYtgK6_dHcF2zI1HKAH8oi3sdLkKYw"/>
+<div class="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider">Gala</div>
+<button class="absolute top-3 right-3 size-8 flex items-center justify-center bg-white dark:bg-slate-800 rounded-full shadow-md text-slate-400 hover:text-red-500 transition-colors">
+<span class="material-symbols-outlined text-xl">favorite</span>
+</button>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">Royal Monk Strap</h3>
+<span class="text-primary font-black">$40<span class="text-[10px] text-slate-500 font-normal">/day</span></span>
+</div>
+<p class="text-sm text-slate-500 mb-4 line-clamp-1">Double monk strap in hand-dyed deep burgundy.</p>
+<button class="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                                    Rent Now
+                                </button>
+</div>
+</div>
+</div>
+<!-- Pagination -->
+<div class="mt-12 flex items-center justify-center gap-2">
+<button class="size-10 flex items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary transition-colors">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="size-10 flex items-center justify-center rounded-lg bg-primary text-white font-bold">1</button>
+<button class="size-10 flex items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary transition-colors">2</button>
+<button class="size-10 flex items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary transition-colors">3</button>
+<span class="px-2 text-slate-400">...</span>
+<button class="size-10 flex items-center justify-center rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-primary transition-colors">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12">
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+<div class="grid grid-cols-1 md:grid-cols-4 gap-12">
+<div class="col-span-1 md:col-span-1">
+<div class="flex items-center gap-3 mb-6">
+<div class="flex items-center justify-center size-8 rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined text-base">footprint</span>
+</div>
+<h2 class="text-lg font-bold text-slate-900 dark:text-white">Rental Shoe</h2>
+</div>
+<p class="text-sm text-slate-500 leading-relaxed mb-6">
+                            Redefining ownership through sustainable luxury footwear rental. Experience the best, without the commitment.
+                        </p>
+<div class="flex gap-4">
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">language</span></a>
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">mail</span></a>
+<a class="text-slate-400 hover:text-primary transition-colors" href="#"><span class="material-symbols-outlined">call</span></a>
+</div>
+</div>
+<div>
+<h4 class="font-bold text-sm uppercase tracking-widest mb-6">Explore</h4>
+<ul class="space-y-4 text-sm text-slate-500">
+<li><a class="hover:text-primary transition-colors" href="#">Men's Collection</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Women's Collection</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">New Arrivals</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Designer Spotlight</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-bold text-sm uppercase tracking-widest mb-6">Support</h4>
+<ul class="space-y-4 text-sm text-slate-500">
+<li><a class="hover:text-primary transition-colors" href="#">Shipping &amp; Returns</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Rental Terms</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">Size Guide</a></li>
+<li><a class="hover:text-primary transition-colors" href="#">FAQ</a></li>
+</ul>
+</div>
+<div>
+<h4 class="font-bold text-sm uppercase tracking-widest mb-6">Newsletter</h4>
+<p class="text-sm text-slate-500 mb-4">Get early access to exclusive drops.</p>
+<div class="flex gap-2">
+<input class="flex-1 text-sm bg-slate-100 dark:bg-slate-800 border-none rounded-lg focus:ring-primary" placeholder="Email" type="email"/>
+<button class="bg-primary text-white px-4 py-2 rounded-lg font-bold text-sm">Join</button>
+</div>
+</div>
+</div>
+<div class="mt-12 pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
+<p class="text-xs text-slate-500">© 2024 Rental Shoe Marketplace. All rights reserved.</p>
+<div class="flex gap-6 text-xs text-slate-500">
+<a class="hover:text-slate-900 transition-colors" href="#">Privacy Policy</a>
+<a class="hover:text-slate-900 transition-colors" href="#">Terms of Service</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+</body></html>

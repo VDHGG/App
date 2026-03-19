@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Rental Shoe - Heritage Oxford</title>
+<!-- Tailwind CSS v3 CDN with plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Font Setup -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#1347ae',
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          },
+          borderRadius: {
+            'custom': '8px',
+          }
+        }
+      }
+    }
+  </script>
+<style data-purpose="custom-styling">
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f9fafb;
+    }
+    .btn-primary {
+      background-color: #1347ae;
+      border-radius: 8px;
+    }
+    .btn-primary:hover {
+      background-color: #0d3480;
+    }
+    .rounded-eight {
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body class="text-slate-900">
+<!-- BEGIN: MainHeader -->
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+<div class="max-container mx-auto px-4 sm:px-6 lg:px-8">
+<div class="flex justify-between items-center h-16">
+<div class="flex items-center">
+<a class="text-2xl font-bold text-primary" href="#">RentalShoe</a>
+</div>
+<nav class="hidden md:flex space-x-8">
+<a class="text-sm font-medium text-slate-600 hover:text-primary" href="#">Browse</a>
+<a class="text-sm font-medium text-slate-600 hover:text-primary" href="#">How it Works</a>
+<a class="text-sm font-medium text-slate-600 hover:text-primary" href="#">Support</a>
+</nav>
+<div class="flex items-center space-x-4">
+<button class="p-2 text-slate-400 hover:text-primary">
+<svg class="h-6 w-6" fill="none" stroke="currentColor" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"></path>
+</svg>
+</button>
+</div>
+</div>
+</div>
+</header>
+<!-- END: MainHeader -->
+<main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<!-- BEGIN: Breadcrumb -->
+<nav aria-label="Breadcrumb" class="mb-8">
+<ol class="flex items-center space-x-2 text-sm text-slate-500">
+<li><a class="hover:text-primary" href="#">Home</a></li>
+<li>
+<svg class="h-4 w-4" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" fill-rule="evenodd"></path></svg>
+</li>
+<li><a class="hover:text-primary" href="#">Formal</a></li>
+<li>
+<svg class="h-4 w-4" fill="currentColor" viewbox="0 0 20 20"><path clip-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" fill-rule="evenodd"></path></svg>
+</li>
+<li class="font-medium text-slate-900">Heritage Oxford</li>
+</ol>
+</nav>
+<!-- END: Breadcrumb -->
+<!-- BEGIN: CheckoutGrid -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+<!-- BEGIN: ProductMedia -->
+<section data-purpose="product-gallery">
+<div class="aspect-square bg-white rounded-eight border border-slate-200 overflow-hidden">
+<img alt="Heritage Oxford Leather Shoe" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCbQN8CTIE0v32hBoJe8V_jxvN0Uya5qj0BKXbFYy6s9enuIon_GO_200m8tHCKnDHBkApFtiXOqVECaqw-g8abUXFwYoVmewoXZdp9GjqeWSC6AI-QnOHKaqmR3z98mKJeowfbY1ew_t2-7Ez2xs3pdS1io0wW0TjsGwR1e72tSskPVG4cxW5P6K3K7inOJ31SSvwVx_GaMaCVdnVT6Qe2mxEt4_5jYQ9RSG_LxAgxi7kxcIyOy8xF3w5x4tY9yjKs0fPXnUhEJQ"/>
+</div>
+<div class="mt-4 grid grid-cols-4 gap-4">
+<div class="aspect-square border-2 border-primary rounded-eight overflow-hidden bg-white">
+<img alt="Thumbnail" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDiZP73OUlNaEpyNgw-DcIWMinqNtOT1oU9fyCFECQDhS0rkkjzfLjW30fs2tvS3FHwqneA7tYTZtLpI__AZpGlD57s1V2hQV0SK-xbLf3q3G3M4PLgB5FbBih3qbxULIkb6BBk8OD8oz8rZLUcpDOz3u1Xt32hkKULLQWBvbtQq_UZagymkHtjHDG9mEuURxRoW3EEIS3juLxzBckCMAAd0Xh1z6yvcNArnW7v8FRlWVEt644ggYsFjr_3G8YaLWcH3u1vqhIliw"/>
+</div>
+<div class="aspect-square border border-slate-200 rounded-eight overflow-hidden bg-white">
+<img alt="Thumbnail" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCyne8ekQBp_UZBxD9ILZkPgm3oO8gAZU_j6KO4zFQS-2Qz3WSc0Sm4h_akLDHev4dp7hefyU-iYEyhLKgnO_C88grZUopQFoMdqzSTQHQXPhh40jdPszgW2oUn3ifrUUyOF13zSdR1FaCxDcOwxWWrrtPnH3oqpGPEWMLUXZR-6M4ZUnuA8dVmSKPaFffT4QVQRgGYeta0kz7-tRv5hQUIH9nuo3CfEUeKcBQrHhWz1EezThPTpb-w5O_HDtdiPt453lO4Nqy1uA"/>
+</div>
+<div class="aspect-square border border-slate-200 rounded-eight overflow-hidden bg-white">
+<img alt="Thumbnail" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiKfgfrqm4uC9jY49k14N2EeZVYgfl8FKuHs38VDKjRpmFQa6E_sAMhrxHdCca071ZopNA90add_QyA3VEpcq5wABO0Doq_UEIr408QWxsGs7S1chTeY3mY1VX3-cxVZFUAOFn2ZUXb2eLsuGpS71_DdYHGlDUCCeSvOGFTW-fui3XSRa7i-dBs5zjpbxZI78fm7bsu_XYey3OK1LURZz1-vqozsbuPlEAo_R-m6QIDyx9wgO784fzNefF5Cp-UWB7MUsO3OZmDw"/>
+</div>
+<div class="aspect-square border border-slate-200 rounded-eight overflow-hidden bg-white">
+<img alt="Thumbnail" class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD6Gh9z9Nb36GnVac9ZgDdk-86TffLcQh6wGCi3t5_rgYxM_OflpLb3-wH-cC0nru_9XnrhhBj5HdjAnYTwVlJA2_GpMtf3rH4e_ZIcW63zU_y6aYTKSDsUN4gNoUHEkFCnTcNZylZTw1Nz_v0q-etglUFxMPE3xcbVgaCuXNnPKCHmT128SmyLc8lm6rt4IIh0k71vEuAy7mlbJ_aVftTjsoGe8PoqVgyr6SH886Zkd6tr21IQw38agKo77HPQot945notwZhmjA"/>
+</div>
+</div>
+</section>
+<!-- END: ProductMedia -->
+<!-- BEGIN: CheckoutForm -->
+<section data-purpose="rental-configuration">
+<div class="bg-white p-8 rounded-eight shadow-sm border border-slate-200">
+<div class="mb-6">
+<h1 class="text-3xl font-bold text-slate-900">Heritage Oxford</h1>
+<p class="text-lg text-slate-500 mt-2">Premium handcrafted Italian leather dress shoes. Perfect for black-tie events, weddings, and executive meetings.</p>
+</div>
+<div class="mb-8">
+<span class="text-2xl font-bold text-primary">$25</span>
+<span class="text-slate-500 text-sm ml-1">/ day</span>
+</div>
+<!-- BEGIN: SelectionOptions -->
+<div class="space-y-6">
+<!-- Size Selection -->
+<div>
+<label class="block text-sm font-semibold text-slate-700 mb-3">Select Size (EU)</label>
+<div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
+<button class="py-2 border border-slate-200 rounded-eight text-sm font-medium hover:border-primary hover:text-primary transition-colors">40</button>
+<button class="py-2 border border-slate-200 rounded-eight text-sm font-medium hover:border-primary hover:text-primary transition-colors">41</button>
+<button class="py-2 border-2 border-primary rounded-eight text-sm font-bold text-primary">42</button>
+<button class="py-2 border border-slate-200 rounded-eight text-sm font-medium hover:border-primary hover:text-primary transition-colors">43</button>
+<button class="py-2 border border-slate-200 rounded-eight text-sm font-medium hover:border-primary hover:text-primary transition-colors">44</button>
+<button class="py-2 border border-slate-200 rounded-eight text-sm font-medium hover:border-primary hover:text-primary transition-colors">45</button>
+</div>
+</div>
+<!-- Date Selection -->
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<label class="block text-sm font-semibold text-slate-700 mb-1" for="start-date">Start Date</label>
+<input class="w-full border-slate-200 rounded-eight focus:ring-primary focus:border-primary" id="start-date" name="start-date" type="date"/>
+</div>
+<div>
+<label class="block text-sm font-semibold text-slate-700 mb-1" for="end-date">End Date</label>
+<input class="w-full border-slate-200 rounded-eight focus:ring-primary focus:border-primary" id="end-date" name="end-date" type="date"/>
+</div>
+</div>
+<!-- Rental Summary -->
+<div class="bg-slate-50 p-4 rounded-eight space-y-3">
+<h3 class="text-sm font-bold text-slate-900 border-b border-slate-200 pb-2">Rental Summary</h3>
+<div class="flex justify-between text-sm">
+<span class="text-slate-600">Daily Rate</span>
+<span class="font-medium">$25.00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-slate-600">Duration</span>
+<span class="font-medium" id="rental-days-display">3 Days</span>
+</div>
+<div class="flex justify-between text-base font-bold border-t border-slate-200 pt-2">
+<span class="text-slate-900">Total Price</span>
+<span class="text-primary">$75.00</span>
+</div>
+</div>
+<!-- Terms Summary -->
+<div class="flex items-start space-x-3 text-xs text-slate-500">
+<input class="mt-0.5 rounded text-primary focus:ring-primary" id="terms" type="checkbox"/>
+<label for="terms">I agree to the <a class="underline text-primary" href="#">Rental Terms &amp; Conditions</a>, including late return fees and professional cleaning policies.</label>
+</div>
+<!-- CTA Button -->
+<button class="w-full btn-primary text-white font-bold py-4 px-6 transition-all shadow-lg shadow-blue-900/20 active:scale-[0.98]">
+              Confirm Rental
+            </button>
+</div>
+<!-- END: SelectionOptions -->
+<p class="text-center text-xs text-slate-400 mt-6">
+            Fully refundable deposit of $100 will be held on your card.
+          </p>
+</div>
+</section>
+<!-- END: CheckoutForm -->
+</div>
+<!-- END: CheckoutGrid -->
+<!-- BEGIN: ProductDetailsSection -->
+<section class="mt-16 pt-16 border-t border-slate-200">
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div>
+<h2 class="text-lg font-bold mb-4">Quality Material</h2>
+<p class="text-slate-600 text-sm leading-relaxed">Made from full-grain calfskin leather with a natural finish. Features a Goodyear-welted construction for durability and comfort.</p>
+</div>
+<div>
+<h2 class="text-lg font-bold mb-4">Fit &amp; Comfort</h2>
+<p class="text-slate-600 text-sm leading-relaxed">True to size. Padded leather insole and cork filling that molds to your feet over time. Breathable lining for all-day wear.</p>
+</div>
+<div>
+<h2 class="text-lg font-bold mb-4">Rental Perks</h2>
+<p class="text-slate-600 text-sm leading-relaxed">Free professional cleaning included. Return label provided in the box. Eco-friendly reusable packaging.</p>
+</div>
+</div>
+</section>
+<!-- END: ProductDetailsSection -->
+</main>
+<!-- BEGIN: MainFooter -->
+<footer class="bg-white border-t border-slate-200 py-12 mt-20">
+<div class="max-w-7xl mx-auto px-4 text-center">
+<p class="text-sm text-slate-500">© 2023 RentalShoe Co. Professional Shoe Rentals for Every Occasion.</p>
+</div>
+</footer>
+<!-- END: MainFooter -->
+<script data-purpose="rental-logic">
+    // This script handles the basic date calculation visualization
+    const startDateInput = document.getElementById('start-date');
+    const endDateInput = document.getElementById('end-date');
+    const daysDisplay = document.getElementById('rental-days-display');
+
+    // Setting default dates for demo
+    const today = new Date();
+    const future = new Date();
+    future.setDate(today.getDate() + 3);
+    
+    startDateInput.value = today.toISOString().split('T')[0];
+    endDateInput.value = future.toISOString().split('T')[0];
+
+    function calculateDays() {
+      const start = new Date(startDateInput.value);
+      const end = new Date(endDateInput.value);
+      if (start && end && end > start) {
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+        daysDisplay.textContent = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
+      } else {
+        daysDisplay.textContent = '0 Days';
+      }
+    }
+
+    startDateInput.addEventListener('change', calculateDays);
+    endDateInput.addEventListener('change', calculateDays);
+  </script>
+</body></html>
