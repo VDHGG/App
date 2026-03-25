@@ -27,6 +27,7 @@ describe('AddShoeService - happy path', () => {
     expect(result.pricePerDay).toBe(10);
     expect(result.variantCount).toBe(1);
     expect(result.shoeId).toBeTruthy();
+    expect(result.imagePublicId).toBeNull();
   });
 
   it('creates a shoe with multiple variants', async () => {
@@ -54,7 +55,7 @@ describe('AddShoeService - happy path', () => {
       variants: [{ size: 40, color: 'Brown', totalQuantity: 2 }],
     });
 
-    const shoe = await shoeRepo['store']?.get(result.shoeId);
+    const shoe = await shoeRepo.findByVariantId(result.variantIds[0]);
     expect(shoe?.name).toBe('Puma Street Rider');
     expect(shoe?.variants.length).toBe(1);
   });

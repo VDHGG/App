@@ -10,5 +10,6 @@ export type AddShoeRequest = {
   category: string;
   description?: string;
   pricePerDay: number;
+  imagePublicId?: string | null;
   variants: AddShoeVariantRequest[];
 };

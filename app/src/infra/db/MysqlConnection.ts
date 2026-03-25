@@ -1,4 +1,3 @@
-import 'dotenv/config';
 import mysql from 'mysql2/promise';
 
 export type { Pool, PoolConnection } from 'mysql2/promise';

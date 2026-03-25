@@ -1,4 +1,4 @@
-
+import '@infra/loadEnv';
 import { MysqlContainer } from '@infra/MysqlContainer';
 
 const container = new MysqlContainer();

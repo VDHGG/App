@@ -2,6 +2,13 @@ import { ShoeVariant } from './ShoeVariant.entity';
 import { RentalItem } from './RentalItem.vo';
 import { ValidationError } from './errors/ValidationError';
 import { BusinessRuleError } from './errors/BusinessRuleError';
+import {
+  ensureValidBoundedString,
+  ensureValidEntityId,
+  ensureValidPositiveNumber,
+  ensureValidShoeDescription,
+  ensureValidShoeImagePublicId,
+} from './errors/validation';
 
 export type ShoeProps = {
   id: string;
@@ -11,36 +18,13 @@ export type ShoeProps = {
   description?: string | null;
   pricePerDay: number;
   isActive?: boolean;
+  imagePublicId?: string | null;
   variants?: ShoeVariant[];
 };
-
-function ensureValidShoeId(id: string): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
-    throw new ValidationError('Shoe id must be between 1 and 10 characters.');
-  }
-}
-
-function ensureValidShoeName(name: string): void {
-  if (!name || name.trim().length === 0 || name.trim().length > 100) {
-    throw new ValidationError('Shoe name must be between 1 and 100 characters.');
-  }
-}
 
 function ensureValidShoeLabel(value: string, label: string): void {
   if (!value || value.trim().length === 0 || value.trim().length > 100) {
     throw new ValidationError(`${label} must be between 1 and 100 characters.`);
-  }
-}
-
-function ensureValidShoeDescription(description?: string | null): void {
-  if (description && description.trim().length > 500) {
-    throw new ValidationError('Shoe description must be 500 characters or fewer.');
-  }
-}
-
-function ensureValidPricePerDay(pricePerDay: number): void {
-  if (typeof pricePerDay !== 'number' || Number.isNaN(pricePerDay) || pricePerDay <= 0) {
-    throw new ValidationError('Price per day must be greater than 0.');
   }
 }
 
@@ -75,19 +59,34 @@ export class Shoe {
   private descriptionValue: string | null;
   private pricePerDayValue: number;
   private activeValue: boolean;
+  private imagePublicIdValue: string | null;
   private variantsValue: ShoeVariant[];
 
   constructor(props: ShoeProps) {
     const description = props.description ?? null;
     const isActive = props.isActive ?? true;
     const variants = props.variants ? [...props.variants] : [];
+    const rawImage = props.imagePublicId;
+    let imagePublicId: string | null = null;
+    if (rawImage !== undefined && rawImage !== null) {
+      const t = rawImage.trim();
+      if (t.length > 0) {
+        ensureValidShoeImagePublicId(t);
+        imagePublicId = t;
+      }
+    }
 
-    ensureValidShoeId(props.id);
-    ensureValidShoeName(props.name);
+    ensureValidEntityId(props.id, 'Shoe');
+    ensureValidBoundedString(
+      props.name,
+      1,
+      100,
+      'Shoe name must be between 1 and 100 characters.'
+    );
     ensureValidShoeLabel(props.brand, 'Brand');
     ensureValidShoeLabel(props.category, 'Category');
     ensureValidShoeDescription(description);
-    ensureValidPricePerDay(props.pricePerDay);
+    ensureValidPositiveNumber(props.pricePerDay, 'Price per day must be greater than 0.');
     ensureUniqueVariants(variants);
 
     this.idValue = props.id.trim();
@@ -97,6 +96,7 @@ export class Shoe {
     this.descriptionValue = description ? description.trim() : null;
     this.pricePerDayValue = props.pricePerDay;
     this.activeValue = isActive;
+    this.imagePublicIdValue = imagePublicId;
     this.variantsValue = variants;
   }
 
@@ -128,12 +128,21 @@ export class Shoe {
     return this.activeValue;
   }
 
+  get imagePublicId(): string | null {
+    return this.imagePublicIdValue;
+  }
+
   get variants(): ReadonlyArray<ShoeVariant> {
     return Object.freeze([...this.variantsValue]);
   }
 
   rename(name: string): void {
-    ensureValidShoeName(name);
+    ensureValidBoundedString(
+      name,
+      1,
+      100,
+      'Shoe name must be between 1 and 100 characters.'
+    );
     this.nameValue = name.trim();
   }
 
@@ -153,7 +162,7 @@ export class Shoe {
   }
 
   changePricePerDay(pricePerDay: number): void {
-    ensureValidPricePerDay(pricePerDay);
+    ensureValidPositiveNumber(pricePerDay, 'Price per day must be greater than 0.');
     this.pricePerDayValue = pricePerDay;
   }
 
@@ -163,6 +172,19 @@ export class Shoe {
 
   deactivate(): void {
     this.activeValue = false;
+  }
+
+  changeImagePublicId(publicId: string | null): void {
+    if (publicId === null) {
+      this.imagePublicIdValue = null;
+      return;
+    }
+    const t = publicId.trim();
+    if (t.length === 0) {
+      throw new ValidationError('Shoe image public id cannot be empty.');
+    }
+    ensureValidShoeImagePublicId(t);
+    this.imagePublicIdValue = t;
   }
 
   addVariant(variant: ShoeVariant): void {
@@ -188,9 +210,23 @@ export class Shoe {
     return this.variantsValue.find((variant) => variant.id === variantId) ?? null;
   }
 
+  changeVariantOnHandQuantity(variantId: string, newTotal: number): void {
+    const variant = this.findVariantById(variantId);
+    if (!variant) {
+      throw new BusinessRuleError(
+        'VARIANT_NOT_IN_SHOE',
+        `Variant ${variantId} does not exist in shoe ${this.idValue}.`
+      );
+    }
+    variant.changeOnHandQuantity(newTotal);
+  }
+
   createRentalItem(variantId: string, quantity: number): RentalItem {
     if (!this.activeValue) {
-      throw new BusinessRuleError('SHOE_INACTIVE', `Shoe ${this.idValue} is inactive and cannot be rented.`);
+      throw new BusinessRuleError(
+        'SHOE_INACTIVE',
+        `Shoe ${this.idValue} is inactive and cannot be rented.`
+      );
     }
 
     const variant = this.getVariantOrFail(variantId);

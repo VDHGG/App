@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import { AddShoeService } from '@usecase/AddShoe.service';
+import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
 import { GetShoeService } from '@usecase/GetShoe.service';
 
 let shoeRepo: InMemoryShoeRepository;
@@ -9,7 +10,7 @@ let getShoe: GetShoeService;
 
 beforeEach(() => {
   shoeRepo = new InMemoryShoeRepository();
-  getShoe = new GetShoeService(shoeRepo);
+  getShoe = new GetShoeService(shoeRepo, new NoopShoeImageService());
 });
 
 describe('GetShoeService', () => {

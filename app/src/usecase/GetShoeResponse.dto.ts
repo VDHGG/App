@@ -14,5 +14,8 @@ export type GetShoeResponse = {
   description: string | null;
   pricePerDay: number;
   isActive: boolean;
+  imagePublicId: string | null;
+  imageUrlCard: string | null;
+  imageUrlDetail: string | null;
   variants: ShoeVariantDto[];
 };

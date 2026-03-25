@@ -20,6 +20,7 @@ interface ShoeRow extends RowDataPacket {
   description: string | null;
   price_per_day: number;
   is_active: number;
+  image_public_id: string | null;
 }
 
 const VARIANTS_SQL = `
@@ -53,7 +54,7 @@ export class MysqlShoeRepository implements ShoeRepository {
 
     const [shoeRows] = await conn.query<ShoeRow[]>(
       `SELECT s.shoe_id, s.name, b.name AS brand, cat.name AS category,
-              s.description, s.price_per_day, s.is_active
+              s.description, s.price_per_day, s.is_active, s.image_public_id
        FROM shoes s
        JOIN brands b     ON b.id = s.brand_id
        JOIN categories cat ON cat.id = s.category_id
@@ -72,7 +73,8 @@ export class MysqlShoeRepository implements ShoeRepository {
       category: row.category,
       description: row.description ?? null,
       pricePerDay: Number(row.price_per_day),
-      isActive: row.is_active === 1,
+      isActive: Number(row.is_active) === 1,
+      imagePublicId: row.image_public_id ?? null,
     });
 
     for (const v of variantRows) {
@@ -119,8 +121,8 @@ export class MysqlShoeRepository implements ShoeRepository {
     const categoryId = await this.getOrCreateLookup(conn, 'categories', shoe.category);
 
     await conn.query(
-      `INSERT INTO shoes (shoe_id, name, brand_id, category_id, description, price_per_day, is_active, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+      `INSERT INTO shoes (shoe_id, name, brand_id, category_id, description, price_per_day, is_active, image_public_id, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          name         = VALUES(name),
          brand_id     = VALUES(brand_id),
@@ -128,6 +130,7 @@ export class MysqlShoeRepository implements ShoeRepository {
          description  = VALUES(description),
          price_per_day = VALUES(price_per_day),
          is_active    = VALUES(is_active),
+         image_public_id = VALUES(image_public_id),
          updated_at   = NOW()`,
       [
         shoe.id,
@@ -137,6 +140,7 @@ export class MysqlShoeRepository implements ShoeRepository {
         shoe.description ?? null,
         shoe.pricePerDay,
         shoe.isActive ? 1 : 0,
+        shoe.imagePublicId,
       ]
     );
 

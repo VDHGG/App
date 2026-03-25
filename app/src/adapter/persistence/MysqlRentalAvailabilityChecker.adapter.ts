@@ -1,6 +1,6 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { RentalPeriod } from '@domain/RentalPeriod.vo';
-import type { VariantAvailabilityPolicy } from '@domain/ShoeVariant.entity';
+import type { VariantDeactivationPolicy } from '@domain/ShoeVariant.entity';
 import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
 import { transactionContext } from '@infra/db/transactionContext';
 import { NotFoundError } from '@domain/errors/NotFoundError';
@@ -11,11 +11,11 @@ interface CountRow extends RowDataPacket {
 
 export class MysqlRentalAvailabilityChecker implements RentalAvailabilityChecker {
   private readonly pool: Pool;
-  private readonly availabilityPolicy: VariantAvailabilityPolicy;
+  private readonly deactivationPolicy: VariantDeactivationPolicy;
 
-  constructor(pool: Pool, availabilityPolicy: VariantAvailabilityPolicy) {
+  constructor(pool: Pool, deactivationPolicy: VariantDeactivationPolicy) {
     this.pool = pool;
-    this.availabilityPolicy = availabilityPolicy;
+    this.deactivationPolicy = deactivationPolicy;
   }
 
   private conn(): Pool | PoolConnection {
@@ -50,12 +50,12 @@ export class MysqlRentalAvailabilityChecker implements RentalAvailabilityChecker
       [variantId, period.endDate, period.startDate]
     );
 
-    const reservedQuantity = Number(reservedRows[0].reserved_qty);
+    const alreadyDeactivatedQuantity = Number(reservedRows[0].reserved_qty);
 
-    this.availabilityPolicy.ensureAvailableForQuantity(
+    this.deactivationPolicy.ensureDeactivateForRental(
       variantId,
       totalStock,
-      reservedQuantity,
+      alreadyDeactivatedQuantity,
       requestedQuantity
     );
   }

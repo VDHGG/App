@@ -50,7 +50,7 @@ export function ProductDetailPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
         <div className="aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
           <img
-            src={PLACEHOLDER_IMAGE}
+            src={shoe.imageUrlDetail ?? shoe.imageUrlCard ?? PLACEHOLDER_IMAGE}
             alt={shoe.name}
             className="object-cover w-full h-full"
           />
@@ -87,13 +87,13 @@ export function ProductDetailPage() {
               </div>
             </div>
           )}
-          <button
-            type="button"
+          <Link
+            to={`/checkout?shoeId=${shoe.shoeId}`}
             className="mt-8 w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-opacity flex items-center justify-center gap-2"
           >
             <span className="material-symbols-outlined">calendar_today</span>
-            Rent Now (Coming in Phase 3)
-          </button>
+            Rent Now
+          </Link>
         </div>
       </div>
     </div>

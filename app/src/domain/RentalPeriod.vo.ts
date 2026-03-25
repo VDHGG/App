@@ -1,12 +1,7 @@
 import { ValidationError } from './errors/ValidationError';
+import { ensureValidDate } from './errors/validation';
 
-function ensureValidDate(value: Date, fieldName: string): void {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new ValidationError(`${fieldName} is invalid.`);
-  }
-}
-
-function normalizeDate(value: Date): Date {
+function normalizeToCalendarDate(value: Date): Date {
   ensureValidDate(value, 'date');
   return new Date(value.getFullYear(), value.getMonth(), value.getDate());
 }
@@ -16,8 +11,8 @@ export class RentalPeriod {
   private readonly endDateValue: Date;
 
   constructor(startDate: Date, endDate: Date) {
-    const normalizedStartDate = normalizeDate(startDate);
-    const normalizedEndDate = normalizeDate(endDate);
+    const normalizedStartDate = normalizeToCalendarDate(startDate);
+    const normalizedEndDate = normalizeToCalendarDate(endDate);
 
     if (normalizedEndDate < normalizedStartDate) {
       throw new ValidationError('Rental end date cannot be before start date.');
@@ -28,11 +23,11 @@ export class RentalPeriod {
   }
 
   get startDate(): Date {
-    return new Date(this.startDateValue);
+    return new Date(this.startDateValue.getTime());
   }
 
   get endDate(): Date {
-    return new Date(this.endDateValue);
+    return new Date(this.endDateValue.getTime());
   }
 
   get durationInDays(): number {
@@ -50,7 +45,7 @@ export class RentalPeriod {
   }
 
   contains(date: Date): boolean {
-    const normalizedDate = normalizeDate(date);
+    const normalizedDate = normalizeToCalendarDate(date);
 
     return normalizedDate >= this.startDateValue && normalizedDate <= this.endDateValue;
   }

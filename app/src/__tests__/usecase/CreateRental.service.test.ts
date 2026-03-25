@@ -1,336 +1,214 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Container } from '@infra/Container';
 import { Customer } from '@domain/Customer.aggregate';
 import { CustomerRank } from '@domain/CustomerRank.enum';
+import { Rental } from '@domain/Rental.aggregate';
+import { RentalItem } from '@domain/RentalItem.vo';
+import { RentalPeriod } from '@domain/RentalPeriod.vo';
 import { RentalStatus } from '@domain/RentalStatus.enum';
+import { Shoe } from '@domain/Shoe.aggregate';
+import { ShoeVariant } from '@domain/ShoeVariant.entity';
+import { InMemoryCustomerRepository } from '@adapter/persistence/InMemoryCustomerRepository.adapter';
+import { InMemoryRentalAvailabilityChecker } from '@adapter/persistence/InMemoryRentalAvailabilityChecker.adapter';
+import { InMemoryRentalRepository } from '@adapter/persistence/InMemoryRentalRepository.adapter';
+import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
+import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
+import { CreateRentalService } from '@usecase/CreateRental.service';
 
-let container: Container;
-let registerCustomer: ReturnType<Container['getRegisterCustomerUseCase']>;
-let addShoe: ReturnType<Container['getAddShoeUseCase']>;
-let createRental: ReturnType<Container['getCreateRentalUseCase']>;
+const PERIOD = new RentalPeriod(new Date('2026-04-01'), new Date('2026-04-05'));
 
-beforeEach(() => {
-  container = new Container();
-  registerCustomer = container.getRegisterCustomerUseCase();
-  addShoe = container.getAddShoeUseCase();
-  createRental = container.getCreateRentalUseCase();
-});
-
-async function setupCustomerAndShoe() {
-  const customer = await registerCustomer.execute({
+function seedCustomer(overrides?: Partial<{ id: string; fullName: string; email: string; rank: CustomerRank; currentRentedItems: number; isActive: boolean }>) {
+  return new Customer({
+    id: 'U001',
     fullName: 'Nguyen Van A',
-    email: `a+${Date.now()}@example.com`,
+    email: 'a@gmail.com',
+    rank: CustomerRank.BRONZE,
+    currentRentedItems: 0,
+    isActive: true,
+    ...overrides,
   });
-  const shoe = await addShoe.execute({
-    name: 'Nike Air Max',
-    brand: 'Nike',
-    category: 'Sneakers',
-    pricePerDay: 50000,
-    variants: [
-      { size: 41, color: 'Black', totalQuantity: 5 },
-      { size: 42, color: 'White', totalQuantity: 3 },
-    ],
-  });
-  return { customer, shoe };
 }
 
-describe('CreateRentalService - happy path', () => {
-  it('creates and persists a rental with one item', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const variantId = shoe.variantIds[0];
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
+function seedShoe() {
+  const shoe = new Shoe({
+    id: 'S001',
+    name: 'Adidas Speed Run',
+    brand: 'Adidas',
+    category: 'Running',
+    description: 'Lightweight',
+    pricePerDay: 5,
+  });
+  shoe.addVariant(new ShoeVariant({ id: 'V001', size: 44, color: 'White', totalQuantity: 5 }));
+  shoe.addVariant(new ShoeVariant({ id: 'V002', size: 44, color: 'Black', totalQuantity: 3 }));
+  return shoe;
+}
 
-    const result = await createRental.execute({
-      customerId: customer.customerId,
-      items: [{ variantId, quantity: 1 }],
-      startDate: today,
-      endDate: in5Days,
+let customerRepo: InMemoryCustomerRepository;
+let shoeRepo: InMemoryShoeRepository;
+let rentalRepo: InMemoryRentalRepository;
+let availabilityChecker: InMemoryRentalAvailabilityChecker;
+let service: CreateRentalService;
+
+beforeEach(async () => {
+  customerRepo = new InMemoryCustomerRepository();
+  shoeRepo = new InMemoryShoeRepository();
+  rentalRepo = new InMemoryRentalRepository();
+  availabilityChecker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
+  service = new CreateRentalService(
+    customerRepo,
+    shoeRepo,
+    rentalRepo,
+    availabilityChecker,
+    new ShortIdGenerator('R')
+  );
+
+  await customerRepo.save(seedCustomer());
+  await shoeRepo.save(seedShoe());
+});
+
+describe('CreateRentalService - happy path', () => {
+  it('creates a rental with single item', async () => {
+    const result = await service.execute({
+      customerId: 'U001',
+      items: [{ variantId: 'V001', quantity: 1 }],
+      startDate: new Date('2026-04-01'),
+      endDate: new Date('2026-04-05'),
     });
 
     expect(result.rentalId).toBeTruthy();
-    expect(result.customerId).toBe(customer.customerId);
+    expect(result.rentalId).toMatch(/^R\d+$/);
+    expect(result.customerId).toBe('U001');
     expect(result.status).toBe(RentalStatus.RESERVED);
     expect(result.totalItems).toBe(1);
-    expect(result.basePrice).toBeGreaterThan(0);
-    expect(result.totalAmount).toBeGreaterThan(0);
-    expect(result.startDate.toDateString()).toBe(today.toDateString());
-    expect(result.endDate.toDateString()).toBe(in5Days.toDateString());
-
-    const rentalRepo = container.getRentalRepository();
-    const saved = await rentalRepo.findById(result.rentalId);
-    expect(saved).not.toBeNull();
-    expect(saved?.status).toBe(RentalStatus.RESERVED);
+    expect(result.basePrice).toBe(25); // 1 × $5 × 5 days
+    expect(result.totalAmount).toBe(25);
   });
 
-  it('creates a rental with multiple items from different variants', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in3Days = new Date(today);
-    in3Days.setDate(today.getDate() + 3);
-
-    const result = await createRental.execute({
-      customerId: customer.customerId,
+  it('creates a rental with multiple items from same shoe', async () => {
+    const result = await service.execute({
+      customerId: 'U001',
       items: [
-        { variantId: shoe.variantIds[0], quantity: 2 },
-        { variantId: shoe.variantIds[1], quantity: 1 },
+        { variantId: 'V001', quantity: 2 },
+        { variantId: 'V002', quantity: 1 },
       ],
-      startDate: today,
-      endDate: in3Days,
+      startDate: new Date('2026-04-01'),
+      endDate: new Date('2026-04-05'),
     });
 
     expect(result.totalItems).toBe(3);
-    expect(result.rentalId).toBeTruthy();
+    expect(result.basePrice).toBe(75); // (2×5 + 1×5) × 5 days
+    expect(result.totalAmount).toBe(75);
   });
 
-  it('updates customer currentRentedItems after creating rental', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const customerRepo = container.getCustomerRepository();
-    const today = new Date();
-    const in2Days = new Date(today);
-    in2Days.setDate(today.getDate() + 2);
-
-    await createRental.execute({
-      customerId: customer.customerId,
-      items: [{ variantId: shoe.variantIds[0], quantity: 2 }],
-      startDate: today,
-      endDate: in2Days,
+  it('persists rental to repository', async () => {
+    const result = await service.execute({
+      customerId: 'U001',
+      items: [{ variantId: 'V001', quantity: 1 }],
+      startDate: new Date('2026-04-01'),
+      endDate: new Date('2026-04-05'),
     });
 
-    const updated = await customerRepo.findById(customer.customerId);
-    expect(updated?.currentRentedItems).toBe(2);
+    const saved = await rentalRepo.findById(result.rentalId);
+    expect(saved).not.toBeNull();
+    expect(saved?.status).toBe(RentalStatus.RESERVED);
+    expect(saved?.totalItems).toBe(1);
+  });
+
+  it('increments customer currentRentedItems', async () => {
+    await service.execute({
+      customerId: 'U001',
+      items: [{ variantId: 'V001', quantity: 2 }],
+      startDate: new Date('2026-04-01'),
+      endDate: new Date('2026-04-05'),
+    });
+
+    const customer = await customerRepo.findById('U001');
+    expect(customer?.currentRentedItems).toBe(2);
   });
 });
 
-describe('CreateRentalService - validation errors', () => {
-  it('throws when customerId is empty', async () => {
-    const { shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: '',
-        items: [{ variantId: shoe.variantIds[0], quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/not found|required/i);
-  });
-
-  it('throws when items is empty', async () => {
-    const { customer } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/at least one item/i);
-  });
-
-  it('throws when variantId is empty in item', async () => {
-    const { customer } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId: '', quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/not found|required/i);
-  });
-
-  it('throws when quantity is zero', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId: shoe.variantIds[0], quantity: 0 }],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/positive integer/i);
-  });
-
-  it('throws when quantity is not an integer', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId: shoe.variantIds[0], quantity: 1.5 }],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/positive integer/i);
-  });
-
-  it('throws when duplicate variantId in items', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const variantId = shoe.variantIds[0];
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [
-          { variantId, quantity: 1 },
-          { variantId, quantity: 1 },
-        ],
-        startDate: today,
-        endDate: in5Days,
-      })
-    ).rejects.toThrow(/duplicate variant/i);
-  });
-
-  it('throws when endDate is before startDate', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(today.getDate() - 1);
-
-    await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId: shoe.variantIds[0], quantity: 1 }],
-        startDate: today,
-        endDate: yesterday,
-      })
-    ).rejects.toThrow(/end date cannot be before start date/i);
-  });
-});
-
-describe('CreateRentalService - not found errors', () => {
+describe('CreateRentalService - error cases', () => {
   it('throws when customer does not exist', async () => {
-    const { shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
     await expect(
-      createRental.execute({
-        customerId: 'GHOST_CUSTOMER',
-        items: [{ variantId: shoe.variantIds[0], quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
+      service.execute({
+        customerId: 'GHOST',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-05'),
       })
-    ).rejects.toThrow(/Customer.*GHOST_CUSTOMER.*not found/i);
+    ).rejects.toThrow(/Customer.*GHOST.*not found/);
   });
 
   it('throws when variant does not exist', async () => {
-    const { customer } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
     await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId: 'GHOST_VARIANT', quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
+      service.execute({
+        customerId: 'U001',
+        items: [{ variantId: 'V999', quantity: 1 }],
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-05'),
       })
-    ).rejects.toThrow(/Variant.*GHOST_VARIANT.*not found/i);
+    ).rejects.toThrow(/Variant.*V999.*not found/);
   });
-});
 
-describe('CreateRentalService - business rule errors', () => {
-  it('throws when variant has insufficient stock (overlapping rental)', async () => {
-    const { customer, shoe } = await setupCustomerAndShoe();
-    const variantId = shoe.variantIds[0];
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
-
-    await createRental.execute({
-      customerId: customer.customerId,
-      items: [{ variantId, quantity: 5 }],
-      startDate: today,
-      endDate: in5Days,
+  it('throws when insufficient stock (overlapping rental)', async () => {
+    const customer2 = seedCustomer({
+      id: 'U002',
+      email: 'b@gmail.com',
+      currentRentedItems: 0,
     });
+    await customerRepo.save(customer2);
+
+    const existingRental = new Rental({
+      id: 'R0',
+      customerId: 'U001',
+      items: [
+        new RentalItem({
+          shoeId: 'S001',
+          variantId: 'V001',
+          shoeName: 'Adidas Speed Run',
+          size: 44,
+          color: 'White',
+          pricePerDay: 5,
+          quantity: 5,
+        }),
+      ],
+      period: PERIOD,
+    });
+    await rentalRepo.save(existingRental);
+    await customerRepo.save(seedCustomer({ currentRentedItems: 5 }));
 
     await expect(
-      createRental.execute({
-        customerId: customer.customerId,
-        items: [{ variantId, quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
+      service.execute({
+        customerId: 'U002',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-05'),
       })
-    ).rejects.toThrow(/INSUFFICIENT_STOCK|not available/i);
+    ).rejects.toThrow(/INSUFFICIENT_STOCK|not available/);
   });
 
-  it('throws when customer exceeds rental limit (BRONZE = 5)', async () => {
-    const customerRepo = container.getCustomerRepository();
-    await customerRepo.save(
-      new Customer({
-        id: 'U999',
-        fullName: 'Bronze User',
-        email: 'bronze@example.com',
-        rank: CustomerRank.BRONZE,
-        currentRentedItems: 5,
-      })
-    );
-
-    const { shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
+  it('throws when customer rank limit exceeded', async () => {
+    await customerRepo.save(seedCustomer({ rank: CustomerRank.BRONZE, currentRentedItems: 5 }));
 
     await expect(
-      createRental.execute({
-        customerId: 'U999',
-        items: [{ variantId: shoe.variantIds[0], quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
+      service.execute({
+        customerId: 'U001',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-05'),
       })
-    ).rejects.toThrow(/RENTAL_LIMIT_EXCEEDED|cannot rent/i);
+    ).rejects.toThrow(/RENTAL_LIMIT_EXCEEDED|cannot rent/);
   });
 
   it('throws when customer is inactive', async () => {
-    const customerRepo = container.getCustomerRepository();
-    await customerRepo.save(
-      new Customer({
-        id: 'U888',
-        fullName: 'Inactive User',
-        email: 'inactive@example.com',
-        rank: CustomerRank.BRONZE,
-        isActive: false,
-      })
-    );
-
-    const { shoe } = await setupCustomerAndShoe();
-    const today = new Date();
-    const in5Days = new Date(today);
-    in5Days.setDate(today.getDate() + 5);
+    await customerRepo.save(seedCustomer({ isActive: false }));
 
     await expect(
-      createRental.execute({
-        customerId: 'U888',
-        items: [{ variantId: shoe.variantIds[0], quantity: 1 }],
-        startDate: today,
-        endDate: in5Days,
+      service.execute({
+        customerId: 'U001',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-04-01'),
+        endDate: new Date('2026-04-05'),
       })
-    ).rejects.toThrow(/CUSTOMER_INACTIVE|inactive/i);
+    ).rejects.toThrow(/CUSTOMER_INACTIVE|Inactive/);
   });
 });

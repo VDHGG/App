@@ -5,6 +5,10 @@ export type ShoeSummary = {
   category: string;
   pricePerDay: number;
   variantCount: number;
+  isActive: boolean;
+  unitsInStock: number;
+  imagePublicId: string | null;
+  imageUrl: string | null;
 };
 
 export type ListShoesResponse = {

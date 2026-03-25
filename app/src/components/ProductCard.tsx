@@ -14,7 +14,7 @@ export function ProductCard({ shoe }: ProductCardProps) {
       <Link to={`/shoes/${shoe.shoeId}`} className="block">
         <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
           <img
-            src={PLACEHOLDER_IMAGE}
+            src={shoe.imageUrl ?? PLACEHOLDER_IMAGE}
             alt={shoe.name}
             className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-110"
           />

@@ -1,62 +1,59 @@
 import { Router } from 'express';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, RequestHandler } from 'express';
 import type { AddShoeUseCase } from '@usecase/AddShoeUseCase.port';
+import type { DeactivateShoeUseCase } from '@usecase/DeactivateShoeUseCase.port';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
 import type { ListShoesUseCase } from '@usecase/ListShoesUseCase.port';
+import type { UpdateShoeUseCase } from '@usecase/UpdateShoeUseCase.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
-import { AddShoeSchema } from './shoe.schema';
+import { AddShoeSchema, UpdateShoeBodySchema } from './shoe.schema';
+import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
+
+export type RouteGuards = {
+  admin?: RequestHandler[];
+};
 
 export class ShoeController {
   private readonly addShoe: AddShoeUseCase;
+  private readonly updateShoe: UpdateShoeUseCase;
+  private readonly deactivateShoe: DeactivateShoeUseCase;
   private readonly listShoes: ListShoesUseCase;
   private readonly getShoe: GetShoeUseCase;
-  private readonly transactionManager: TransactionManager;
 
   constructor(
     addShoe: AddShoeUseCase,
+    updateShoe: UpdateShoeUseCase,
+    deactivateShoe: DeactivateShoeUseCase,
     listShoes: ListShoesUseCase,
-    getShoe: GetShoeUseCase,
-    transactionManager: TransactionManager
+    getShoe: GetShoeUseCase
   ) {
     this.addShoe = addShoe;
+    this.updateShoe = updateShoe;
+    this.deactivateShoe = deactivateShoe;
     this.listShoes = listShoes;
     this.getShoe = getShoe;
-    this.transactionManager = transactionManager;
   }
 
-  routes(): Router {
+  routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
     const router = Router();
-    router.get('/', this.handle(this.list.bind(this)));
-    router.get('/:id', this.handle(this.getById.bind(this)));
-    router.post('/', this.withTransaction(this.add.bind(this)));
+    const admin = guards?.admin ?? [];
+    router.get('/', asyncRoute(this.list.bind(this)));
+    router.post('/', ...admin, transactionalRoute(transactionManager, this.add.bind(this)));
+    router.patch(
+      '/:id',
+      ...admin,
+      transactionalRoute(transactionManager, this.update.bind(this))
+    );
+    router.delete(
+      '/:id',
+      ...admin,
+      transactionalRoute(transactionManager, this.deactivate.bind(this))
+    );
+    router.get('/:id', asyncRoute(this.getById.bind(this)));
     return router;
   }
 
-  private handle(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await fn(req, res);
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  private withTransaction(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await this.transactionManager.runInTransaction(() => fn(req, res));
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  private async list(req: Request, res: Response): Promise<void> {
+  private async list(_req: Request, res: Response): Promise<void> {
     const result = await this.listShoes.execute();
     res.json(result);
   }
@@ -70,5 +67,29 @@ export class ShoeController {
     const body = AddShoeSchema.parse(req.body);
     const result = await this.addShoe.execute(body);
     res.status(201).json(result);
+  }
+
+  private async update(req: Request, res: Response): Promise<void> {
+    const shoeId = req.params['id'] as string;
+    const body = UpdateShoeBodySchema.parse(req.body);
+    const result = await this.updateShoe.execute({
+      shoeId,
+      name: body.name,
+      brand: body.brand,
+      category: body.category,
+      description: body.description,
+      pricePerDay: body.pricePerDay,
+      isActive: body.isActive,
+      imagePublicId: body.imagePublicId,
+      variantQuantityUpdates: body.variantQuantityUpdates,
+      newVariants: body.newVariants,
+    });
+    res.json(result);
+  }
+
+  private async deactivate(req: Request, res: Response): Promise<void> {
+    const shoeId = req.params['id'] as string;
+    const result = await this.deactivateShoe.execute({ shoeId });
+    res.json(result);
   }
 }

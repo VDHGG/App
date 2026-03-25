@@ -1,3 +1,4 @@
+# Environment
 .env
 .env.*
 !.env.example
@@ -7,22 +8,38 @@ logs
 *.log
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
 *.local
 
-# Editor directories and files
+# Vite
+.vite
+
+# TypeScript
+*.tsbuildinfo
+
+# Test
+coverage
+.nyc_output
+
+# Editor / IDE
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+.DS_Store
+
+# Cursor / project-specific
+cursor 1/

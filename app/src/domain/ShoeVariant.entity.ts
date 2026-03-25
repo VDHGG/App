@@ -1,5 +1,11 @@
 import { ValidationError } from './errors/ValidationError';
 import { BusinessRuleError } from './errors/BusinessRuleError';
+import { ensureVariantDeactivationAllowed } from './errors/variantDeactivation';
+import {
+  ensureValidAvailableQuantityNotAboveTotal,
+  ensureValidIntegerInRange,
+  ensureValidEntityId,
+} from './errors/validation';
 
 export type ShoeVariantProps = {
   id: string;
@@ -8,18 +14,6 @@ export type ShoeVariantProps = {
   totalQuantity: number;
   availableQuantity?: number;
 };
-
-function ensureValidVariantId(id: string): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
-    throw new ValidationError('Variant id must be between 1 and 10 characters.');
-  }
-}
-
-function ensureValidVariantSize(size: number): void {
-  if (!Number.isInteger(size) || size < 1 || size > 60) {
-    throw new ValidationError('Variant size must be an integer between 1 and 60.');
-  }
-}
 
 function ensureValidVariantColor(color: string): void {
   if (!color || color.trim().length === 0 || color.trim().length > 100) {
@@ -33,16 +27,6 @@ function ensureValidTotalQuantity(quantity: number): void {
   }
 }
 
-function ensureValidAvailableQuantity(availableQuantity: number, totalQuantity: number): void {
-  if (
-    !Number.isInteger(availableQuantity) ||
-    availableQuantity < 0 ||
-    availableQuantity > totalQuantity
-  ) {
-    throw new ValidationError('Available quantity must be between 0 and total quantity.');
-  }
-}
-
 export class ShoeVariant {
   private readonly idValue: string;
   private readonly sizeValue: number;
@@ -53,11 +37,16 @@ export class ShoeVariant {
   constructor(props: ShoeVariantProps) {
     const availableQuantity = props.availableQuantity ?? props.totalQuantity;
 
-    ensureValidVariantId(props.id);
-    ensureValidVariantSize(props.size);
+    ensureValidEntityId(props.id, 'Variant');
+    ensureValidIntegerInRange(
+      props.size,
+      1,
+      60,
+      'Variant size must be an integer between 1 and 60.'
+    );
     ensureValidVariantColor(props.color);
     ensureValidTotalQuantity(props.totalQuantity);
-    ensureValidAvailableQuantity(availableQuantity, props.totalQuantity);
+    ensureValidAvailableQuantityNotAboveTotal(availableQuantity, props.totalQuantity);
 
     this.idValue = props.id.trim();
     this.sizeValue = props.size;
@@ -86,35 +75,44 @@ export class ShoeVariant {
     return this.availableQuantityValue;
   }
 
-  ensureAvailableForQuantity(reservedQuantity: number, requestedQuantity: number): void {
-    const available = this.totalQuantityValue - reservedQuantity;
-
-    if (available < requestedQuantity) {
+  changeOnHandQuantity(newTotal: number): void {
+    ensureValidTotalQuantity(newTotal);
+    const reserved = this.totalQuantityValue - this.availableQuantityValue;
+    if (newTotal < reserved) {
       throw new BusinessRuleError(
-        'INSUFFICIENT_STOCK',
-        `Variant ${this.idValue} is not available for the requested period. ` +
-          `Available: ${available}, requested: ${requestedQuantity}.`
+        'STOCK_REDUCTION_BLOCKED',
+        `Cannot set on-hand to ${newTotal}: at least ${reserved} units are tied to active rentals.`
       );
     }
+    this.totalQuantityValue = newTotal;
+    this.availableQuantityValue = newTotal - reserved;
+  }
+
+  ensureDeactivateForRental(
+    alreadyDeactivatedQuantity: number,
+    requestedDeactivationQuantity: number
+  ): void {
+    ensureVariantDeactivationAllowed({
+      variantId: this.idValue,
+      totalStock: this.totalQuantityValue,
+      alreadyDeactivatedQuantity,
+      requestedDeactivationQuantity,
+    });
   }
 }
 
-
-export class VariantAvailabilityPolicy {
-  ensureAvailableForQuantity(
+export class VariantDeactivationPolicy {
+  ensureDeactivateForRental(
     variantId: string,
     totalStock: number,
-    reservedQuantity: number,
-    requestedQuantity: number
+    alreadyDeactivatedQuantity: number,
+    requestedDeactivationQuantity: number
   ): void {
-    const available = totalStock - reservedQuantity;
-
-    if (available < requestedQuantity) {
-      throw new BusinessRuleError(
-        'INSUFFICIENT_STOCK',
-        `Variant ${variantId} is not available for the requested period. ` +
-          `Available: ${available}, requested: ${requestedQuantity}.`
-      );
-    }
+    ensureVariantDeactivationAllowed({
+      variantId,
+      totalStock,
+      alreadyDeactivatedQuantity,
+      requestedDeactivationQuantity,
+    });
   }
 }

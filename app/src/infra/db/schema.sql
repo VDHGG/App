@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS `shoes` (
   `brand_id` int(11) NOT NULL,
   `category_id` int(11) NOT NULL,
   `description` varchar(500) DEFAULT NULL,
+  `image_public_id` varchar(512) DEFAULT NULL,
   `price_per_day` decimal(10,2) NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -6,4 +6,5 @@ export type AddShoeResponse = {
   pricePerDay: number;
   variantCount: number;
   variantIds: string[];
+  imagePublicId: string | null;
 };

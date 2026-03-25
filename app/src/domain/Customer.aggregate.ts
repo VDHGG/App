@@ -1,7 +1,12 @@
 import { CustomerRank, getMaxRentalItemsByRank } from './CustomerRank.enum';
-import { ValidationError } from './errors/ValidationError';
 import { BusinessRuleError } from './errors/BusinessRuleError';
-
+import {
+  ensureValidBoundedString,
+  ensureValidCustomerEmail,
+  ensureValidEntityId,
+  ensureValidNonNegativeInteger,
+  ensureValidPositiveInteger,
+} from './errors/validation';
 
 export type CustomerProps = {
   id: string;
@@ -11,31 +16,6 @@ export type CustomerProps = {
   isActive?: boolean;
   currentRentedItems?: number;
 };
-
-
-function ensureValidCustomerId(id: string): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
-    throw new ValidationError('Customer id must be between 1 and 10 characters.');
-  }
-}
-
-function ensureValidCustomerName(fullName: string): void {
-  if (!fullName || fullName.trim().length === 0 || fullName.trim().length > 100) {
-    throw new ValidationError('Customer full name must be between 1 and 100 characters.');
-  }
-}
-
-function ensureValidCustomerEmail(email: string): void {
-  if (!email || email.trim().length === 0 || email.length > 255 || !email.includes('@')) {
-    throw new ValidationError('Customer email is invalid.');
-  }
-}
-
-function ensureValidCurrentRentedItems(currentRentedItems: number): void {
-  if (!Number.isInteger(currentRentedItems) || currentRentedItems < 0) {
-    throw new ValidationError('Current rented items must be a non-negative integer.');
-  }
-}
 
 function ensureCurrentItemsWithinRankLimit(rank: CustomerRank, currentItems: number): void {
   const maxItems = getMaxRentalItemsByRank(rank);
@@ -61,10 +41,18 @@ export class Customer {
     const isActive = props.isActive ?? true;
     const currentRentedItems = props.currentRentedItems ?? 0;
 
-    ensureValidCustomerId(props.id);
-    ensureValidCustomerName(props.fullName);
+    ensureValidEntityId(props.id, 'Customer');
+    ensureValidBoundedString(
+      props.fullName,
+      1,
+      100,
+      'Customer full name must be between 1 and 100 characters.'
+    );
     ensureValidCustomerEmail(props.email);
-    ensureValidCurrentRentedItems(currentRentedItems);
+    ensureValidNonNegativeInteger(
+      currentRentedItems,
+      'Current rented items must be a non-negative integer.'
+    );
     ensureCurrentItemsWithinRankLimit(rank, currentRentedItems);
 
     this.idValue = props.id.trim();
@@ -117,9 +105,7 @@ export class Customer {
   }
 
   registerRental(quantity: number): void {
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      throw new ValidationError('Rental quantity must be a positive integer.');
-    }
+    ensureValidPositiveInteger(quantity, 'Rental quantity must be a positive integer.');
 
     if (!this.activeValue) {
       throw new BusinessRuleError('CUSTOMER_INACTIVE', 'Inactive customer cannot rent shoes.');
@@ -138,9 +124,7 @@ export class Customer {
   }
 
   completeRental(quantity: number): void {
-    if (!Number.isInteger(quantity) || quantity <= 0) {
-      throw new ValidationError('Returned quantity must be a positive integer.');
-    }
+    ensureValidPositiveInteger(quantity, 'Returned quantity must be a positive integer.');
 
     if (quantity > this.currentRentedItemsValue) {
       throw new BusinessRuleError(
@@ -157,16 +141,21 @@ export class Customer {
     this.rankValue = newRank;
   }
 
-  block(): void {
-    this.activeValue = false;
-  }
-
-  unblock(): void {
+  activate(): void {
     this.activeValue = true;
   }
 
+  deactivate(): void {
+    this.activeValue = false;
+  }
+
   rename(fullName: string): void {
-    ensureValidCustomerName(fullName);
+    ensureValidBoundedString(
+      fullName,
+      1,
+      100,
+      'Customer full name must be between 1 and 100 characters.'
+    );
     this.fullNameValue = fullName.trim();
   }
 

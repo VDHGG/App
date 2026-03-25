@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
-import { Shoe } from '@domain/Shoe.aggregate';
-import { ShoeVariant } from '@domain/ShoeVariant.entity';
 import { AddShoeService } from '@usecase/AddShoe.service';
+import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
 import { ListShoesService } from '@usecase/ListShoes.service';
 
 let shoeRepo: InMemoryShoeRepository;
@@ -11,7 +10,7 @@ let listShoes: ListShoesService;
 
 beforeEach(() => {
   shoeRepo = new InMemoryShoeRepository();
-  listShoes = new ListShoesService(shoeRepo);
+  listShoes = new ListShoesService(shoeRepo, new NoopShoeImageService());
 });
 
 describe('ListShoesService', () => {
@@ -50,11 +49,15 @@ describe('ListShoesService', () => {
       category: 'Running',
       pricePerDay: 10,
       variantCount: 1,
+      isActive: true,
+      unitsInStock: 5,
     });
     expect(result.shoes[1]).toMatchObject({
       name: 'Adidas Speed',
       brand: 'Adidas',
       variantCount: 2,
+      isActive: true,
+      unitsInStock: 5,
     });
   });
 });

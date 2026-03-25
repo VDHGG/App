@@ -29,6 +29,7 @@ export class AddShoeService implements AddShoeUseCase {
       category: request.category,
       description: request.description,
       pricePerDay: request.pricePerDay,
+      imagePublicId: request.imagePublicId ?? null,
     });
 
     for (const variantRequest of request.variants) {
@@ -52,6 +53,7 @@ export class AddShoeService implements AddShoeUseCase {
       pricePerDay: shoe.pricePerDay,
       variantCount: shoe.variants.length,
       variantIds: shoe.variants.map((v) => v.id),
+      imagePublicId: shoe.imagePublicId,
     };
   }
 }

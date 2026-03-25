@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, RequestHandler } from 'express';
 import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
 import type { ActivateRentalUseCase } from '@usecase/ActivateRentalUseCase.port';
 import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
@@ -13,6 +13,11 @@ import {
   CancelRentalSchema,
   ListRentalsQuerySchema,
 } from './rental.schema';
+import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
+
+export type RouteGuards = {
+  admin?: RequestHandler[];
+};
 
 export class RentalController {
   private readonly createRental: CreateRentalUseCase;
@@ -21,7 +26,6 @@ export class RentalController {
   private readonly cancelRental: CancelRentalUseCase;
   private readonly listRentals: ListRentalsUseCase;
   private readonly getRental: GetRentalUseCase;
-  private readonly transactionManager: TransactionManager;
 
   constructor(
     createRental: CreateRentalUseCase,
@@ -29,8 +33,7 @@ export class RentalController {
     returnRental: ReturnRentalUseCase,
     cancelRental: CancelRentalUseCase,
     listRentals: ListRentalsUseCase,
-    getRental: GetRentalUseCase,
-    transactionManager: TransactionManager
+    getRental: GetRentalUseCase
   ) {
     this.createRental = createRental;
     this.activateRental = activateRental;
@@ -38,42 +41,30 @@ export class RentalController {
     this.cancelRental = cancelRental;
     this.listRentals = listRentals;
     this.getRental = getRental;
-    this.transactionManager = transactionManager;
   }
 
-  routes(): Router {
+  routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
     const router = Router();
-    router.get('/', this.handle(this.list.bind(this)));
-    router.get('/:id', this.handle(this.getById.bind(this)));
-    router.post('/', this.withTransaction(this.create.bind(this)));
-    router.patch('/:id/activate', this.withTransaction(this.activate.bind(this)));
-    router.patch('/:id/return', this.withTransaction(this.return.bind(this)));
-    router.patch('/:id/cancel', this.withTransaction(this.cancel.bind(this)));
+    const admin = guards?.admin ?? [];
+    router.get('/', ...admin, asyncRoute(this.list.bind(this)));
+    router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
+    router.post('/', transactionalRoute(transactionManager, this.create.bind(this)));
+    router.patch(
+      '/:id/activate',
+      ...admin,
+      transactionalRoute(transactionManager, this.activate.bind(this))
+    );
+    router.patch(
+      '/:id/return',
+      ...admin,
+      transactionalRoute(transactionManager, this.return.bind(this))
+    );
+    router.patch(
+      '/:id/cancel',
+      ...admin,
+      transactionalRoute(transactionManager, this.cancel.bind(this))
+    );
     return router;
-  }
-
-  private handle(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await fn(req, res);
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  private withTransaction(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await this.transactionManager.runInTransaction(() => fn(req, res));
-      } catch (err) {
-        next(err);
-      }
-    };
   }
 
   private async list(req: Request, res: Response): Promise<void> {

@@ -3,10 +3,13 @@ import { InMemoryRentalAvailabilityChecker } from '@adapter/persistence/InMemory
 import { InMemoryRentalRepository } from '@adapter/persistence/InMemoryRentalRepository.adapter';
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { NoopTransactionManager } from '@adapter/persistence/NoopTransactionManager.adapter';
+import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { ActivateRentalUseCase } from '@usecase/ActivateRentalUseCase.port';
 import type { AddShoeUseCase } from '@usecase/AddShoeUseCase.port';
+import type { DeactivateShoeUseCase } from '@usecase/DeactivateShoeUseCase.port';
+import type { UpdateShoeUseCase } from '@usecase/UpdateShoeUseCase.port';
 import type { GetCustomerUseCase } from '@usecase/GetCustomerUseCase.port';
 import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
@@ -19,6 +22,8 @@ import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.p
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import { ActivateRentalService } from '@usecase/ActivateRental.service';
 import { AddShoeService } from '@usecase/AddShoe.service';
+import { DeactivateShoeService } from '@usecase/DeactivateShoe.service';
+import { UpdateShoeService } from '@usecase/UpdateShoe.service';
 import { GetCustomerService } from '@usecase/GetCustomer.service';
 import { GetRentalService } from '@usecase/GetRental.service';
 import { GetShoeService } from '@usecase/GetShoe.service';
@@ -35,12 +40,14 @@ export class Container {
   private readonly shoeRepository: InMemoryShoeRepository;
   private readonly rentalRepository: InMemoryRentalRepository;
   private readonly transactionManager: NoopTransactionManager;
+  private readonly shoeImageService: NoopShoeImageService;
 
   constructor() {
     this.customerRepository = new InMemoryCustomerRepository();
     this.shoeRepository = new InMemoryShoeRepository();
     this.rentalRepository = new InMemoryRentalRepository();
     this.transactionManager = new NoopTransactionManager();
+    this.shoeImageService = new NoopShoeImageService();
   }
 
   getTransactionManager(): TransactionManager {
@@ -77,12 +84,20 @@ export class Container {
     return new AddShoeService(this.shoeRepository, new ShortIdGenerator('S'));
   }
 
+  getUpdateShoeUseCase(): UpdateShoeUseCase {
+    return new UpdateShoeService(this.shoeRepository, new ShortIdGenerator('S'), this.shoeImageService);
+  }
+
+  getDeactivateShoeUseCase(): DeactivateShoeUseCase {
+    return new DeactivateShoeService(this.shoeRepository);
+  }
+
   getListShoesUseCase(): ListShoesUseCase {
-    return new ListShoesService(this.shoeRepository);
+    return new ListShoesService(this.shoeRepository, this.shoeImageService);
   }
 
   getGetShoeUseCase(): GetShoeUseCase {
-    return new GetShoeService(this.shoeRepository);
+    return new GetShoeService(this.shoeRepository, this.shoeImageService);
   }
 
   getListCustomersUseCase(): ListCustomersUseCase {

@@ -29,8 +29,6 @@ export class InMemoryRentalAvailabilityChecker implements RentalAvailabilityChec
       throw new NotFoundError('Variant', variantId);
     }
 
-    const totalStock = variant.totalQuantity;
-
     const [reservedRentals, activeRentals] = await Promise.all([
       this.rentalRepository.findByStatus(RentalStatus.RESERVED),
       this.rentalRepository.findByStatus(RentalStatus.ACTIVE),
@@ -40,11 +38,11 @@ export class InMemoryRentalAvailabilityChecker implements RentalAvailabilityChec
       rental.period.overlaps(period)
     );
 
-    const reservedQuantity = overlappingRentals.reduce(
+    const alreadyDeactivatedQuantity = overlappingRentals.reduce(
       (sum, rental) => sum + rental.getQuantityForVariant(variantId),
       0
     );
 
-    variant.ensureAvailableForQuantity(reservedQuantity, requestedQuantity);
+    variant.ensureDeactivateForRental(alreadyDeactivatedQuantity, requestedQuantity);
   }
 }

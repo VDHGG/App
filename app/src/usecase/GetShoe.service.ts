@@ -1,4 +1,5 @@
 import type { ShoeRepository } from '@port/ShoeRepository.port';
+import type { ShoeImageServicePort } from '@port/ShoeImageService.port';
 import type { GetShoeRequest } from './GetShoeRequest.dto';
 import type { GetShoeResponse } from './GetShoeResponse.dto';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
@@ -7,9 +8,11 @@ import { ValidationError } from '@domain/errors/ValidationError';
 
 export class GetShoeService implements GetShoeUseCase {
   private readonly shoeRepository: ShoeRepository;
+  private readonly shoeImages: ShoeImageServicePort;
 
-  constructor(shoeRepository: ShoeRepository) {
+  constructor(shoeRepository: ShoeRepository, shoeImages: ShoeImageServicePort) {
     this.shoeRepository = shoeRepository;
+    this.shoeImages = shoeImages;
   }
 
   async execute(request: GetShoeRequest): Promise<GetShoeResponse> {
@@ -31,6 +34,9 @@ export class GetShoeService implements GetShoeUseCase {
       description: shoe.description,
       pricePerDay: shoe.pricePerDay,
       isActive: shoe.isActive,
+      imagePublicId: shoe.imagePublicId,
+      imageUrlCard: this.shoeImages.urlForCard(shoe.imagePublicId),
+      imageUrlDetail: this.shoeImages.urlForDetail(shoe.imagePublicId),
       variants: shoe.variants.map((v) => ({
         variantId: v.id,
         size: v.size,

@@ -10,7 +10,7 @@ export function StorefrontPage() {
 
   useEffect(() => {
     listShoes()
-      .then((res) => setShoes(res.shoes))
+      .then((res) => setShoes(res.shoes.filter((s) => s.isActive)))
       .catch((err) => setError(err.message ?? 'Failed to load shoes'))
       .finally(() => setLoading(false))
   }, [])

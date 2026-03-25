@@ -106,7 +106,7 @@ async function runDemo() {
   try {
     const customerRepo = container.getCustomerRepository();
     const u002 = await customerRepo.findById('U002');
-    u002!.block();
+    u002!.deactivate();
     await customerRepo.save(u002!);
 
     await createRental.execute({

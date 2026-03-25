@@ -20,12 +20,12 @@ export function Header() {
             >
               Browse
             </Link>
-            <a
-              href="#"
+            <Link
+              to="/admin"
               className="text-sm font-semibold hover:text-primary transition-colors"
             >
-              How it Works
-            </a>
+              Admin
+            </Link>
           </nav>
           <div className="flex flex-1 items-center justify-end gap-4">
             <div className="hidden lg:block w-full max-w-xs">

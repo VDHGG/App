@@ -63,7 +63,7 @@ function toCustomer(row: CustomerRow): Customer {
     id: row.customer_id,
     fullName: row.full_name,
     email: row.email,
-    isActive: row.is_active === 1,
+    isActive: Number(row.is_active) === 1,
     rank: row.rank_name as CustomerRank,
     currentRentedItems: Number(row.current_rented_items),
   });

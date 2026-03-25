@@ -1,62 +1,41 @@
 import { Router } from 'express';
-import type { Request, Response, NextFunction } from 'express';
+import type { Request, Response, RequestHandler } from 'express';
 import type { GetCustomerUseCase } from '@usecase/GetCustomerUseCase.port';
 import type { ListCustomersUseCase } from '@usecase/ListCustomersUseCase.port';
 import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import { RegisterCustomerSchema } from './customer.schema';
+import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
+
+export type RouteGuards = {
+  admin?: RequestHandler[];
+};
 
 export class CustomerController {
   private readonly registerCustomer: RegisterCustomerUseCase;
   private readonly listCustomers: ListCustomersUseCase;
   private readonly getCustomer: GetCustomerUseCase;
-  private readonly transactionManager: TransactionManager;
 
   constructor(
     registerCustomer: RegisterCustomerUseCase,
     listCustomers: ListCustomersUseCase,
-    getCustomer: GetCustomerUseCase,
-    transactionManager: TransactionManager
+    getCustomer: GetCustomerUseCase
   ) {
     this.registerCustomer = registerCustomer;
     this.listCustomers = listCustomers;
     this.getCustomer = getCustomer;
-    this.transactionManager = transactionManager;
   }
 
-  routes(): Router {
+  routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
     const router = Router();
-    router.get('/', this.handle(this.list.bind(this)));
-    router.get('/:id', this.handle(this.getById.bind(this)));
-    router.post('/', this.withTransaction(this.register.bind(this)));
+    const admin = guards?.admin ?? [];
+    router.get('/', ...admin, asyncRoute(this.list.bind(this)));
+    router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
+    router.post('/', transactionalRoute(transactionManager, this.register.bind(this)));
     return router;
   }
 
-  private handle(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await fn(req, res);
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  withTransaction(
-    fn: (req: Request, res: Response) => Promise<void>
-  ): (req: Request, res: Response, next: NextFunction) => Promise<void> {
-    return async (req, res, next) => {
-      try {
-        await this.transactionManager.runInTransaction(() => fn(req, res));
-      } catch (err) {
-        next(err);
-      }
-    };
-  }
-
-  private async list(req: Request, res: Response): Promise<void> {
+  private async list(_req: Request, res: Response): Promise<void> {
     const result = await this.listCustomers.execute();
     res.json(result);
   }

@@ -3,12 +3,19 @@ import { RentalPeriod } from './RentalPeriod.vo';
 import { RentalStatus } from './RentalStatus.enum';
 import { ValidationError } from './errors/ValidationError';
 import { BusinessRuleError } from './errors/BusinessRuleError';
+import {
+  ensureValidDate,
+  ensureValidEntityId,
+  ensureValidNonNegativeNumber,
+  ensureValidRentalNote,
+  normalizeDateToCalendarTime,
+} from './errors/validation';
 
 export type RentalProps = {
   id: string;
   customerId: string;
   items: RentalItem[];
-  period: RentalPeriod;   
+  period: RentalPeriod;
   status?: RentalStatus;
   lateFee?: number;
   note?: string | null;
@@ -17,30 +24,6 @@ export type RentalProps = {
   returnedAt?: Date | null;
   cancelledAt?: Date | null;
 };
-
-function ensureValidRentalId(id: string, label: string): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
-    throw new ValidationError(`${label} id must be between 1 and 10 characters.`);
-  }
-}
-
-function ensureValidRentalDate(value: Date, fieldName: string): void {
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
-    throw new ValidationError(`${fieldName} is invalid.`);
-  }
-}
-
-function ensureValidRentalLateFee(lateFee: number): void {
-  if (typeof lateFee !== 'number' || Number.isNaN(lateFee) || lateFee < 0) {
-    throw new ValidationError('Late fee must be a non-negative number.');
-  }
-}
-
-function ensureValidRentalNote(note: string | null): void {
-  if (note !== null && note.trim().length > 255) {
-    throw new ValidationError('Note must be 255 characters or fewer.');
-  }
-}
 
 function ensureValidRentalItems(items: RentalItem[]): void {
   if (!items || items.length === 0) {
@@ -58,30 +41,6 @@ function ensureValidRentalItems(items: RentalItem[]): void {
 
     variantIds.add(item.variantId);
   }
-}
-
-function normalizeDateToTime(value: Date): number {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-}
-
-function calculateLateFee(
-  basePrice: number,
-  durationInDays: number,
-  expectedReturnDate: Date,
-  actualReturnDate: Date
-): number {
-  const expectedTime = normalizeDateToTime(expectedReturnDate);
-  const actualTime = normalizeDateToTime(actualReturnDate);
-
-  if (actualTime <= expectedTime) return 0;
-
-  const overdueDays = Math.floor((actualTime - expectedTime) / (24 * 60 * 60 * 1000));
-  if (overdueDays <= 0) return 0;
-
-  const dailyRate = basePrice / durationInDays;
-  const lateFeePerDay = dailyRate * 0.5;
-
-  return Math.round(overdueDays * lateFeePerDay);
 }
 
 export class Rental {
@@ -106,23 +65,23 @@ export class Rental {
     const returnedAt = props.returnedAt ?? null;
     const cancelledAt = props.cancelledAt ?? null;
 
-    ensureValidRentalId(props.id, 'Rental');
-    ensureValidRentalId(props.customerId, 'Customer');
+    ensureValidEntityId(props.id, 'Rental');
+    ensureValidEntityId(props.customerId, 'Customer');
     ensureValidRentalItems(props.items);
-    ensureValidRentalLateFee(lateFee);
+    ensureValidNonNegativeNumber(lateFee, 'Late fee must be a non-negative number.');
     ensureValidRentalNote(note);
-    ensureValidRentalDate(createdAt, 'createdAt');
+    ensureValidDate(createdAt, 'createdAt');
 
     if (activatedAt) {
-      ensureValidRentalDate(activatedAt, 'activatedAt');
+      ensureValidDate(activatedAt, 'activatedAt');
     }
 
     if (returnedAt) {
-      ensureValidRentalDate(returnedAt, 'returnedAt');
+      ensureValidDate(returnedAt, 'returnedAt');
     }
 
     if (cancelledAt) {
-      ensureValidRentalDate(cancelledAt, 'cancelledAt');
+      ensureValidDate(cancelledAt, 'cancelledAt');
     }
 
     this.idValue = props.id.trim();
@@ -207,9 +166,11 @@ export class Rental {
       return false;
     }
 
-    ensureValidRentalDate(at, 'at');
+    ensureValidDate(at, 'at');
 
-    return normalizeDateToTime(at) > normalizeDateToTime(this.periodValue.endDate);
+    return (
+      normalizeDateToCalendarTime(at) > normalizeDateToCalendarTime(this.periodValue.endDate)
+    );
   }
 
   activate(at: Date = new Date()): void {
@@ -220,7 +181,7 @@ export class Rental {
       );
     }
 
-    ensureValidRentalDate(at, 'activatedAt');
+    ensureValidDate(at, 'activatedAt');
 
     this.statusValue = RentalStatus.ACTIVE;
     this.activatedAtValue = new Date(at.getTime());
@@ -237,10 +198,10 @@ export class Rental {
       );
     }
 
-    ensureValidRentalDate(returnedAt, 'returnedAt');
+    ensureValidDate(returnedAt, 'returnedAt');
     ensureValidRentalNote(note ?? null);
 
-    const lateFee = calculateLateFee(
+    const lateFee = this.calculateLateFeeForReturn(
       this.basePrice,
       this.periodValue.durationInDays,
       this.periodValue.endDate,
@@ -264,7 +225,7 @@ export class Rental {
       );
     }
 
-    ensureValidRentalDate(at, 'cancelledAt');
+    ensureValidDate(at, 'cancelledAt');
     ensureValidRentalNote(note ?? null);
 
     this.statusValue = RentalStatus.CANCELLED;
@@ -283,6 +244,26 @@ export class Rental {
     return this.itemsValue
       .filter((item) => item.variantId === variantId)
       .reduce((sum, item) => sum + item.quantity, 0);
+  }
+
+  private calculateLateFeeForReturn(
+    basePrice: number,
+    durationInDays: number,
+    expectedReturnDate: Date,
+    actualReturnDate: Date
+  ): number {
+    const expectedTime = normalizeDateToCalendarTime(expectedReturnDate);
+    const actualTime = normalizeDateToCalendarTime(actualReturnDate);
+
+    if (actualTime <= expectedTime) return 0;
+
+    const overdueDays = Math.floor((actualTime - expectedTime) / (24 * 60 * 60 * 1000));
+    if (overdueDays <= 0) return 0;
+
+    const dailyRate = basePrice / durationInDays;
+    const lateFeePerDay = dailyRate * 0.5;
+
+    return Math.round(overdueDays * lateFeePerDay);
   }
 
   private ensureStateConsistency(): void {
