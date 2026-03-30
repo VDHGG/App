@@ -1,5 +1,43 @@
 import type { Shoe } from '@domain/Shoe.aggregate';
-import type { ShoeRepository } from '@port/ShoeRepository.port';
+import type { ListShoesFilters, ShoeRepository } from '@port/ShoeRepository.port';
+
+function totalStock(shoe: Shoe): number {
+  return shoe.variants.reduce((sum, v) => sum + v.totalQuantity, 0);
+}
+
+function matchesPriceBucket(shoe: Shoe, bucket: ListShoesFilters['priceBucket']): boolean {
+  const p = shoe.pricePerDay;
+  switch (bucket ?? 'all') {
+    case 'all':
+      return true;
+    case 'lt10':
+      return p < 10;
+    case '10to20':
+      return p >= 10 && p < 20;
+    case '20to50':
+      return p >= 20 && p <= 50;
+    case 'gt50':
+      return p > 50;
+    default:
+      return true;
+  }
+}
+
+function matchesStockBucket(shoe: Shoe, bucket: ListShoesFilters['stockBucket']): boolean {
+  const stock = totalStock(shoe);
+  switch (bucket ?? 'all') {
+    case 'all':
+      return true;
+    case '0':
+      return stock === 0;
+    case '1to5':
+      return stock >= 1 && stock <= 5;
+    case '6plus':
+      return stock >= 6;
+    default:
+      return true;
+  }
+}
 
 export class InMemoryShoeRepository implements ShoeRepository {
   private readonly store = new Map<string, Shoe>();
@@ -8,8 +46,10 @@ export class InMemoryShoeRepository implements ShoeRepository {
     return this.store.get(id) ?? null;
   }
 
-  async findAll(): Promise<Shoe[]> {
-    return Array.from(this.store.values());
+  async findAll(filters?: ListShoesFilters): Promise<Shoe[]> {
+    return Array.from(this.store.values()).filter(
+      (s) => matchesPriceBucket(s, filters?.priceBucket) && matchesStockBucket(s, filters?.stockBucket)
+    );
   }
 
   async findByVariantId(variantId: string): Promise<Shoe | null> {

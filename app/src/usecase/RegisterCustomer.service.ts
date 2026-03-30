@@ -25,11 +25,11 @@ export class RegisterCustomerService implements RegisterCustomerUseCase {
       );
     }
 
-    // Customer constructor validates fullName, email, rank
     const customer = new Customer({
       id: this.idGenerator.next(),
       fullName: request.fullName,
       email: request.email,
+      phone: request.phone,
       rank: request.rank,
     });
 
@@ -39,6 +39,7 @@ export class RegisterCustomerService implements RegisterCustomerUseCase {
       customerId: customer.id,
       fullName: customer.fullName,
       email: customer.email,
+      phone: customer.phone,
       rank: customer.rank,
     };
   }

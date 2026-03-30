@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { clearAdminAccessToken, getAdminAccessToken } from './authStorage'
+import { clearAccessToken, getAccessToken } from './authStorage'
 
 export function resolveApiBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_API_URL
@@ -17,7 +17,7 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = getAdminAccessToken()
+  const token = getAccessToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -41,13 +41,16 @@ api.interceptors.response.use(
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       const path =
         typeof window !== 'undefined' ? window.location.pathname : ''
+      const publicPaths = ['/login', '/signup']
       if (
-        getAdminAccessToken() &&
-        path.startsWith('/admin') &&
-        !path.startsWith('/admin/login')
+        getAccessToken() &&
+        !publicPaths.some((p) => path === p || path.startsWith(`${p}/`))
       ) {
-        clearAdminAccessToken()
-        window.location.assign('/admin/login')
+        clearAccessToken()
+        const search =
+          typeof window !== 'undefined' ? window.location.search ?? '' : ''
+        const from = encodeURIComponent(path + search)
+        window.location.assign(`/login?from=${from}`)
       }
     }
     if (axios.isAxiosError(err) && err.response?.data) {
@@ -55,5 +58,5 @@ api.interceptors.response.use(
       err.message = data.message ?? err.message
     }
     return Promise.reject(err)
-  }
+  },
 )

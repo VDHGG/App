@@ -11,9 +11,7 @@ export class ListRentalsService implements ListRentalsUseCase {
   }
 
   async execute(request?: ListRentalsRequest): Promise<ListRentalsResponse> {
-    const rentals = request?.status
-      ? await this.rentalRepository.findByStatus(request.status)
-      : await this.rentalRepository.findAll();
+    const rentals = await this.rentalRepository.findList(request);
 
     return {
       rentals: rentals.map((r) => ({

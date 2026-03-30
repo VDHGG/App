@@ -1,18 +1,26 @@
 import type { ShoeRepository } from '@port/ShoeRepository.port';
 import type { ShoeImageServicePort } from '@port/ShoeImageService.port';
+import type { CatalogLookupPort } from '@port/CatalogLookup.port';
 import type { GetShoeRequest } from './GetShoeRequest.dto';
 import type { GetShoeResponse } from './GetShoeResponse.dto';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import { ValidationError } from '@domain/errors/ValidationError';
+import { buildShoeDetailResponse } from './buildShoeDetailResponse';
 
 export class GetShoeService implements GetShoeUseCase {
   private readonly shoeRepository: ShoeRepository;
   private readonly shoeImages: ShoeImageServicePort;
+  private readonly catalog: CatalogLookupPort;
 
-  constructor(shoeRepository: ShoeRepository, shoeImages: ShoeImageServicePort) {
+  constructor(
+    shoeRepository: ShoeRepository,
+    shoeImages: ShoeImageServicePort,
+    catalog: CatalogLookupPort
+  ) {
     this.shoeRepository = shoeRepository;
     this.shoeImages = shoeImages;
+    this.catalog = catalog;
   }
 
   async execute(request: GetShoeRequest): Promise<GetShoeResponse> {
@@ -26,24 +34,6 @@ export class GetShoeService implements GetShoeUseCase {
       throw new NotFoundError('Shoe', request.shoeId);
     }
 
-    return {
-      shoeId: shoe.id,
-      name: shoe.name,
-      brand: shoe.brand,
-      category: shoe.category,
-      description: shoe.description,
-      pricePerDay: shoe.pricePerDay,
-      isActive: shoe.isActive,
-      imagePublicId: shoe.imagePublicId,
-      imageUrlCard: this.shoeImages.urlForCard(shoe.imagePublicId),
-      imageUrlDetail: this.shoeImages.urlForDetail(shoe.imagePublicId),
-      variants: shoe.variants.map((v) => ({
-        variantId: v.id,
-        size: v.size,
-        color: v.color,
-        totalQuantity: v.totalQuantity,
-        availableQuantity: v.availableQuantity,
-      })),
-    };
+    return buildShoeDetailResponse(shoe, this.shoeImages, this.catalog);
   }
 }

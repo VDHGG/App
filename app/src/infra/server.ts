@@ -6,14 +6,6 @@ import { errorHandler } from '@adapter/http/middleware/errorHandler';
 
 const PORT = Number(process.env.PORT ?? 3000);
 
-if (process.env.NODE_ENV !== 'production') {
-  const hash = process.env.ADMIN_PASSWORD_HASH?.trim() ?? '';
-  const hasBcryptHash = hash.startsWith('$2');
-  console.log(
-    `[env] Loaded ADMIN_PASSWORD_HASH: ${hasBcryptHash ? 'yes (bcrypt)' : 'MISSING or invalid — admin login will fail'}`
-  );
-}
-
 const container = new MysqlContainer();
 const app = express();
 

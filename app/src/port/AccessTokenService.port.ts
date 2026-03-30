@@ -3,6 +3,7 @@ export type AuthRole = 'admin' | 'customer';
 export type AccessTokenPayload = {
   sub: string;
   role: AuthRole;
+  customerId?: string;
 };
 
 export interface AccessTokenService {

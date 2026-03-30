@@ -1,17 +1,23 @@
 import type { Pool } from 'mysql2/promise';
 import { VariantDeactivationPolicy } from '@domain/ShoeVariant.entity';
 import { MysqlCustomerRepository } from '@adapter/persistence/MysqlCustomerRepository.adapter';
+import { MysqlSystemUserRepository } from '@adapter/persistence/MysqlSystemUserRepository.adapter';
 import { MysqlShoeRepository } from '@adapter/persistence/MysqlShoeRepository.adapter';
+import { MysqlCatalogLookup } from '@adapter/persistence/MysqlCatalogLookup.adapter';
+import { MysqlCatalogAdmin } from '@adapter/persistence/MysqlCatalogAdmin.adapter';
 import { MysqlRentalRepository } from '@adapter/persistence/MysqlRentalRepository.adapter';
 import { MysqlRentalAvailabilityChecker } from '@adapter/persistence/MysqlRentalAvailabilityChecker.adapter';
 import { MysqlTransactionManager } from '@adapter/persistence/MysqlTransactionManager.adapter';
 import { UuidGenerator } from '@adapter/persistence/UuidGenerator.adapter';
 import { CloudinaryShoeImageService } from '@adapter/cloudinary/CloudinaryShoeImageService.adapter';
 import { JoseAccessTokenService } from '@adapter/auth/JoseAccessTokenService.adapter';
-import { EnvAdminAuthenticator } from '@adapter/auth/EnvAdminAuthenticator.adapter';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { AccessTokenService } from '@port/AccessTokenService.port';
-import type { LoginAdminUseCase } from '@usecase/LoginAdminUseCase.port';
+import type { SystemUserRepository } from '@port/SystemUserRepository.port';
+import type { LoginUserUseCase } from '@usecase/LoginUserUseCase.port';
+import type { RegisterUserUseCase } from '@usecase/RegisterUserUseCase.port';
+import type { UpdateProfileUseCase } from '@usecase/UpdateProfileUseCase.port';
+import type { ChangePasswordUseCase } from '@usecase/ChangePasswordUseCase.port';
 import type { ActivateRentalUseCase } from '@usecase/ActivateRentalUseCase.port';
 import type { AddShoeUseCase } from '@usecase/AddShoeUseCase.port';
 import type { DeactivateShoeUseCase } from '@usecase/DeactivateShoeUseCase.port';
@@ -27,6 +33,8 @@ import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
 import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.port';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import type { UploadShoeImageUseCase } from '@usecase/UploadShoeImageUseCase.port';
+import type { CatalogLookupPort } from '@port/CatalogLookup.port';
+import type { CatalogAdminRepository } from '@port/CatalogAdminRepository.port';
 import { ActivateRentalService } from '@usecase/ActivateRental.service';
 import { AddShoeService } from '@usecase/AddShoe.service';
 import { DeactivateShoeService } from '@usecase/DeactivateShoe.service';
@@ -41,23 +49,34 @@ import { CancelRentalService } from '@usecase/CancelRental.service';
 import { CreateRentalService } from '@usecase/CreateRental.service';
 import { RegisterCustomerService } from '@usecase/RegisterCustomer.service';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
-import { LoginAdminService } from '@usecase/LoginAdmin.service';
+import { LoginUserService } from '@usecase/LoginUser.service';
+import { RegisterUserService } from '@usecase/RegisterUser.service';
+import { UpdateProfileService } from '@usecase/UpdateProfile.service';
+import { ChangePasswordService } from '@usecase/ChangePassword.service';
 import { UploadShoeImageService } from '@usecase/UploadShoeImage.service';
 import { createPool } from './db/MysqlConnection';
 
 export class MysqlContainer {
   private readonly pool: Pool;
   private readonly customerRepository: MysqlCustomerRepository;
+  private readonly systemUserRepository: MysqlSystemUserRepository;
   private readonly shoeRepository: MysqlShoeRepository;
   private readonly rentalRepository: MysqlRentalRepository;
   private readonly transactionManager: MysqlTransactionManager;
   private readonly accessTokenService: JoseAccessTokenService;
-  private readonly loginAdmin: LoginAdminService;
+  private readonly registerCustomer: RegisterCustomerService;
+  private readonly loginUser: LoginUserService;
+  private readonly registerUser: RegisterUserService;
+  private readonly updateProfile: UpdateProfileService;
+  private readonly changePassword: ChangePasswordService;
   private readonly shoeImageService: CloudinaryShoeImageService;
+  private readonly catalogLookup: MysqlCatalogLookup;
+  private readonly catalogAdmin: MysqlCatalogAdmin;
 
   constructor() {
     this.pool = createPool();
     this.customerRepository = new MysqlCustomerRepository(this.pool);
+    this.systemUserRepository = new MysqlSystemUserRepository(this.pool);
     this.shoeRepository = new MysqlShoeRepository(this.pool);
     this.rentalRepository = new MysqlRentalRepository(this.pool);
     this.transactionManager = new MysqlTransactionManager(this.pool);
@@ -67,13 +86,40 @@ export class MysqlContainer {
       process.env.JWT_EXPIRES_IN ?? '8h'
     );
 
-    const adminAuthenticator = new EnvAdminAuthenticator({
-      email: process.env.ADMIN_EMAIL ?? '',
-      passwordHash: process.env.ADMIN_PASSWORD_HASH ?? '',
-    });
+    this.registerCustomer = new RegisterCustomerService(
+      this.customerRepository,
+      new UuidGenerator('C')
+    );
 
-    this.loginAdmin = new LoginAdminService(adminAuthenticator, this.accessTokenService);
+    this.loginUser = new LoginUserService(this.systemUserRepository, this.accessTokenService);
+
+    this.registerUser = new RegisterUserService(
+      this.transactionManager,
+      this.registerCustomer,
+      this.systemUserRepository,
+      new UuidGenerator('U'),
+      this.accessTokenService
+    );
+
+    this.updateProfile = new UpdateProfileService(
+      this.transactionManager,
+      this.systemUserRepository,
+      this.customerRepository
+    );
+
+    this.changePassword = new ChangePasswordService(this.systemUserRepository);
+
     this.shoeImageService = new CloudinaryShoeImageService();
+    this.catalogLookup = new MysqlCatalogLookup(this.pool);
+    this.catalogAdmin = new MysqlCatalogAdmin(this.pool);
+  }
+
+  getCatalogLookup(): CatalogLookupPort {
+    return this.catalogLookup;
+  }
+
+  getCatalogAdminRepository(): CatalogAdminRepository {
+    return this.catalogAdmin;
   }
 
   getTransactionManager(): TransactionManager {
@@ -84,8 +130,24 @@ export class MysqlContainer {
     return this.accessTokenService;
   }
 
-  getLoginAdminUseCase(): LoginAdminUseCase {
-    return this.loginAdmin;
+  getSystemUserRepository(): SystemUserRepository {
+    return this.systemUserRepository;
+  }
+
+  getLoginUserUseCase(): LoginUserUseCase {
+    return this.loginUser;
+  }
+
+  getRegisterUserUseCase(): RegisterUserUseCase {
+    return this.registerUser;
+  }
+
+  getUpdateProfileUseCase(): UpdateProfileUseCase {
+    return this.updateProfile;
+  }
+
+  getChangePasswordUseCase(): ChangePasswordUseCase {
+    return this.changePassword;
   }
 
   getCreateRentalUseCase(): CreateRentalUseCase {
@@ -111,7 +173,7 @@ export class MysqlContainer {
   }
 
   getRegisterCustomerUseCase(): RegisterCustomerUseCase {
-    return new RegisterCustomerService(this.customerRepository, new UuidGenerator('C'));
+    return this.registerCustomer;
   }
 
   getAddShoeUseCase(): AddShoeUseCase {
@@ -119,7 +181,12 @@ export class MysqlContainer {
   }
 
   getUpdateShoeUseCase(): UpdateShoeUseCase {
-    return new UpdateShoeService(this.shoeRepository, new UuidGenerator('S'), this.shoeImageService);
+    return new UpdateShoeService(
+      this.shoeRepository,
+      new UuidGenerator('S'),
+      this.shoeImageService,
+      this.catalogLookup
+    );
   }
 
   getDeactivateShoeUseCase(): DeactivateShoeUseCase {
@@ -131,7 +198,7 @@ export class MysqlContainer {
   }
 
   getGetShoeUseCase(): GetShoeUseCase {
-    return new GetShoeService(this.shoeRepository, this.shoeImageService);
+    return new GetShoeService(this.shoeRepository, this.shoeImageService, this.catalogLookup);
   }
 
   getUploadShoeImageUseCase(): UploadShoeImageUseCase {

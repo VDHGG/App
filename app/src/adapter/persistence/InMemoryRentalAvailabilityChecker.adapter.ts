@@ -30,8 +30,8 @@ export class InMemoryRentalAvailabilityChecker implements RentalAvailabilityChec
     }
 
     const [reservedRentals, activeRentals] = await Promise.all([
-      this.rentalRepository.findByStatus(RentalStatus.RESERVED),
-      this.rentalRepository.findByStatus(RentalStatus.ACTIVE),
+      this.rentalRepository.findList({ status: RentalStatus.RESERVED }),
+      this.rentalRepository.findList({ status: RentalStatus.ACTIVE }),
     ]);
 
     const overlappingRentals = [...reservedRentals, ...activeRentals].filter((rental) =>

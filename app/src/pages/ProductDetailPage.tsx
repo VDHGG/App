@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { getShoe, type GetShoeResponse } from '../lib/shoes.api'
-
-const PLACEHOLDER_IMAGE ='https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=600&h=600&fit=crop'
+import { ShoeImage } from '../components/ShoeImage'
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -48,11 +47,11 @@ export function ProductDetailPage() {
         </Link>
       </nav>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-        <div className="aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
-          <img
-            src={shoe.imageUrlDetail ?? shoe.imageUrlCard ?? PLACEHOLDER_IMAGE}
+        <div className="aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 relative">
+          <ShoeImage
+            src={shoe.imageUrlDetail ?? shoe.imageUrlCard}
             alt={shoe.name}
-            className="object-cover w-full h-full"
+            imgClassName="absolute inset-0 object-cover w-full h-full"
           />
         </div>
         <div>
@@ -89,9 +88,8 @@ export function ProductDetailPage() {
           )}
           <Link
             to={`/checkout?shoeId=${shoe.shoeId}`}
-            className="mt-8 w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-opacity flex items-center justify-center gap-2"
+            className="mt-8 w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-opacity flex items-center justify-center"
           >
-            <span className="material-symbols-outlined">calendar_today</span>
             Rent Now
           </Link>
         </div>

@@ -17,6 +17,7 @@ export type ShoeVariantDto = {
   variantId: string
   size: number
   color: string
+  colorId: number | null
   totalQuantity: number
   availableQuantity: number
 }
@@ -26,6 +27,8 @@ export type GetShoeResponse = {
   name: string
   brand: string
   category: string
+  brandId: number | null
+  categoryId: number | null
   description: string | null
   pricePerDay: number
   isActive: boolean
@@ -39,8 +42,13 @@ export type ListShoesResponse = {
   shoes: ShoeSummary[]
 }
 
-export async function listShoes(): Promise<ListShoesResponse> {
-  const { data } = await api.get<ListShoesResponse>('/shoes')
+export type ListShoesQuery = {
+  priceBucket?: 'all' | 'lt10' | '10to20' | '20to50' | 'gt50'
+  stockBucket?: 'all' | '0' | '1to5' | '6plus'
+}
+
+export async function listShoes(params?: ListShoesQuery): Promise<ListShoesResponse> {
+  const { data } = await api.get<ListShoesResponse>('/shoes', { params })
   return data
 }
 
@@ -51,12 +59,12 @@ export async function getShoe(shoeId: string): Promise<GetShoeResponse> {
 
 export type AddShoeRequest = {
   name: string
-  brand: string
-  category: string
+  brandId: number
+  categoryId: number
   description?: string
   pricePerDay: number
   imagePublicId?: string
-  variants: { size: number; color: string; totalQuantity: number }[]
+  variants: { size: number; colorId: number; totalQuantity: number }[]
 }
 
 export type AddShoeResponse = {
@@ -77,14 +85,14 @@ export async function addShoe(body: AddShoeRequest): Promise<AddShoeResponse> {
 
 export type UpdateShoeRequest = {
   name?: string
-  brand?: string
-  category?: string
+  brandId?: number
+  categoryId?: number
   description?: string | null
   pricePerDay?: number
   isActive?: boolean
   imagePublicId?: string | null
   variantQuantityUpdates?: { variantId: string; totalQuantity: number }[]
-  newVariants?: { size: number; color: string; totalQuantity: number }[]
+  newVariants?: { size: number; colorId: number; totalQuantity: number }[]
 }
 
 export type UploadShoeImageResponse = {

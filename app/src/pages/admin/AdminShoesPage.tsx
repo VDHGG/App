@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listShoes, deactivateShoe, type ShoeSummary } from '../../lib/shoes.api'
+import {
+  listShoes,
+  deactivateShoe,
+  type ListShoesQuery,
+  type ShoeSummary,
+} from '../../lib/shoes.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
-
-const SHOE_IMAGE_PLACEHOLDER =
-  'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=120&h=120&fit=crop'
+import { ShoeImage } from '../../components/ShoeImage'
 
 function activeStatus(s: ShoeSummary): {
   label: string
@@ -33,20 +36,26 @@ export function AdminShoesPage() {
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [showInactive, setShowInactive] = useState(true)
+  const [priceBucket, setPriceBucket] = useState<ListShoesQuery['priceBucket']>('all')
+  const [stockBucket, setStockBucket] = useState<ListShoesQuery['stockBucket']>('all')
   const [actionId, setActionId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
 
-  const load = () => {
+  const load = useCallback((): Promise<void> => {
     setError(null)
-    listShoes()
+    return listShoes({
+      ...(priceBucket && priceBucket !== 'all' ? { priceBucket } : {}),
+      ...(stockBucket && stockBucket !== 'all' ? { stockBucket } : {}),
+    })
       .then((res) => setShoes(res.shoes))
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setLoading(false))
-  }
+  }, [priceBucket, stockBucket])
 
   useEffect(() => {
-    load()
-  }, [])
+    setLoading(true)
+    void load()
+  }, [load])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -123,28 +132,67 @@ export function AdminShoesPage() {
           </div>
         )}
 
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">
-              search
-            </span>
-            <input
-              type="search"
-              placeholder="Search name, brand, category, ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-            />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1 max-w-md">
+              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xl">
+                search
+              </span>
+              <input
+                type="search"
+                placeholder="Search name, brand, category, ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              Show inactive
+            </label>
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-              className="rounded border-slate-300"
-            />
-            Show inactive
-          </label>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Price / day (USD)
+              </span>
+              <select
+                value={priceBucket ?? 'all'}
+                onChange={(e) =>
+                  setPriceBucket(e.target.value as NonNullable<ListShoesQuery['priceBucket']>)
+                }
+                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
+              >
+                <option value="all">All prices</option>
+                <option value="lt10">Under $10</option>
+                <option value="10to20">$10 – $20</option>
+                <option value="20to50">$20 – $50</option>
+                <option value="gt50">Over $50</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Total stock
+              </span>
+              <select
+                value={stockBucket ?? 'all'}
+                onChange={(e) =>
+                  setStockBucket(e.target.value as NonNullable<ListShoesQuery['stockBucket']>)
+                }
+                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
+              >
+                <option value="all">All stock levels</option>
+                <option value="0">0 units</option>
+                <option value="1to5">1 – 5 units</option>
+                <option value="6plus">6+ units</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -177,11 +225,12 @@ export function AdminShoesPage() {
                       >
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-4">
-                            <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600">
-                              <img
-                                src={s.imageUrl ?? SHOE_IMAGE_PLACEHOLDER}
+                            <div className="w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-800 flex-shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600 relative">
+                              <ShoeImage
+                                src={s.imageUrl}
                                 alt=""
-                                className="w-full h-full object-cover"
+                                compact
+                                imgClassName="absolute inset-0 w-full h-full object-cover"
                               />
                             </div>
                             <div>

@@ -17,6 +17,7 @@ export class ListCustomersService implements ListCustomersUseCase {
         customerId: c.id,
         fullName: c.fullName,
         email: c.email,
+        phone: c.phone,
         rank: c.rank,
         currentRentedItems: c.currentRentedItems,
       })),

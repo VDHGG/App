@@ -1,14 +1,27 @@
-const ADMIN_TOKEN_KEY = 'shoe_rental_admin_token';
+const ACCESS_TOKEN_KEY = 'shoe_rental_access_token';
+const LEGACY_ADMIN_TOKEN_KEY = 'shoe_rental_admin_token';
 
-export function getAdminAccessToken(): string | null {
+export function getAccessToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return window.localStorage.getItem(ADMIN_TOKEN_KEY);
+  return (
+    window.localStorage.getItem(ACCESS_TOKEN_KEY) ??
+    window.localStorage.getItem(LEGACY_ADMIN_TOKEN_KEY)
+  );
 }
 
-export function setAdminAccessToken(token: string): void {
-  window.localStorage.setItem(ADMIN_TOKEN_KEY, token);
+export function setAccessToken(token: string): void {
+  window.localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
 }
 
-export function clearAdminAccessToken(): void {
-  window.localStorage.removeItem(ADMIN_TOKEN_KEY);
+export function clearAccessToken(): void {
+  window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+  window.localStorage.removeItem(LEGACY_ADMIN_TOKEN_KEY);
 }
+
+/** @deprecated use getAccessToken */
+export const getAdminAccessToken = getAccessToken;
+/** @deprecated use setAccessToken */
+export const setAdminAccessToken = setAccessToken;
+/** @deprecated use clearAccessToken */
+export const clearAdminAccessToken = clearAccessToken;

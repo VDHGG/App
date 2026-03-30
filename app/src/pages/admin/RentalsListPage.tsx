@@ -1,6 +1,12 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import {  listRentals,  activateRental,  returnRental,  cancelRental} from '../../lib/rentals.api'
+import {
+  listRentals,
+  activateRental,
+  returnRental,
+  cancelRental,
+  type ListRentalsQuery,
+} from '../../lib/rentals.api'
 import type { RentalSummary, RentalStatus } from '../../lib/rentals.api'
 import { listCustomers } from '../../lib/customers.api'
 import type { CustomerSummary } from '../../lib/customers.api'
@@ -17,10 +23,23 @@ const STATUS_OPTIONS: { value: '' | RentalStatus; label: string }[] = [
   { value: 'CANCELLED', label: 'Cancelled' },
 ]
 
+const AMOUNT_OPTIONS: { value: ListRentalsQuery['amountBucket']; label: string }[] = [
+  { value: 'all', label: 'All amounts' },
+  { value: 'lt50', label: 'Under $50' },
+  { value: '50to150', label: '$50 – $150' },
+  { value: '150to300', label: '$150 – $300' },
+  { value: 'gt300', label: 'Over $300' },
+]
+
 export function RentalsListPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [statusFilter, setStatusFilter] = useState<'' | RentalStatus>('')
+  const [startDateFrom, setStartDateFrom] = useState('')
+  const [startDateTo, setStartDateTo] = useState('')
+  const [amountBucket, setAmountBucket] = useState<NonNullable<ListRentalsQuery['amountBucket']>>(
+    'all'
+  )
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -28,16 +47,24 @@ export function RentalsListPage() {
 
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
+  const rentalQuery = useMemo((): ListRentalsQuery | undefined => {
+    const q: ListRentalsQuery = {}
+    if (statusFilter) q.status = statusFilter
+    if (startDateFrom) q.startDateFrom = startDateFrom
+    if (startDateTo) q.startDateTo = startDateTo
+    if (amountBucket && amountBucket !== 'all') q.amountBucket = amountBucket
+    return Object.keys(q).length > 0 ? q : undefined
+  }, [statusFilter, startDateFrom, startDateTo, amountBucket])
+
   useEffect(() => {
-    const fetchStatus = statusFilter || undefined
-    Promise.all([listRentals(fetchStatus), listCustomers()])
+    Promise.all([listRentals(rentalQuery), listCustomers()])
       .then(([rentalsRes, customersRes]) => {
         setRentals(rentalsRes.rentals)
         setCustomers(customersRes.customers)
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
-  }, [statusFilter])
+  }, [rentalQuery])
 
   const handleAction = async (
     rentalId: string,
@@ -49,7 +76,7 @@ export function RentalsListPage() {
       if (action === 'activate') await activateRental(rentalId)
       else if (action === 'return') await returnRental(rentalId)
       else await cancelRental(rentalId)
-      const res = await listRentals(statusFilter || undefined)
+      const res = await listRentals(rentalQuery)
       setRentals(res.rentals)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
@@ -84,21 +111,70 @@ export function RentalsListPage() {
     <>
       <AdminHeader title="Rentals" />
       <div className="p-6 lg:p-8">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter((e.target.value || '') as '' | RentalStatus)}
-            className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value || 'all'} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <p className="text-sm text-slate-500">
-            {rentals.length} rental(s)
-          </p>
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col lg:flex-row lg:flex-wrap gap-4 lg:items-end lg:justify-between">
+            <div className="flex flex-col sm:flex-row flex-wrap gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Status
+                </span>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter((e.target.value || '') as '' | RentalStatus)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[160px]"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value || 'all'} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Start date from
+                </span>
+                <input
+                  type="date"
+                  value={startDateFrom}
+                  onChange={(e) => setStartDateFrom(e.target.value)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Start date to
+                </span>
+                <input
+                  type="date"
+                  value={startDateTo}
+                  onChange={(e) => setStartDateTo(e.target.value)}
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Total amount
+                </span>
+                <select
+                  value={amountBucket}
+                  onChange={(e) =>
+                    setAmountBucket(e.target.value as NonNullable<ListRentalsQuery['amountBucket']>)
+                  }
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
+                >
+                  {AMOUNT_OPTIONS.map((opt) => (
+                    <option key={opt.value ?? 'all'} value={opt.value ?? 'all'}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-sm text-slate-500 lg:text-right shrink-0">
+              {rentals.length} rental(s)
+            </p>
+          </div>
         </div>
 
         {actionError && (

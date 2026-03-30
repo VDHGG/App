@@ -6,6 +6,7 @@ export type CustomerSummary = {
   customerId: string
   fullName: string
   email: string
+  phone: string | null
   rank: CustomerRank
   currentRentedItems: number
 }
@@ -14,6 +15,7 @@ export type GetCustomerResponse = {
   customerId: string
   fullName: string
   email: string
+  phone: string | null
   rank: CustomerRank
   isActive: boolean
   currentRentedItems: number
@@ -22,6 +24,7 @@ export type GetCustomerResponse = {
 export type RegisterCustomerRequest = {
   fullName: string
   email: string
+  phone: string
   rank?: CustomerRank
 }
 
@@ -29,6 +32,7 @@ export type RegisterCustomerResponse = {
   customerId: string
   fullName: string
   email: string
+  phone: string | null
   rank: CustomerRank
 }
 

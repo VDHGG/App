@@ -4,6 +4,7 @@ import { InMemoryRentalRepository } from '@adapter/persistence/InMemoryRentalRep
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { NoopTransactionManager } from '@adapter/persistence/NoopTransactionManager.adapter';
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
+import { NoopCatalogLookup } from '@adapter/persistence/NoopCatalogLookup.adapter';
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { ActivateRentalUseCase } from '@usecase/ActivateRentalUseCase.port';
@@ -41,6 +42,7 @@ export class Container {
   private readonly rentalRepository: InMemoryRentalRepository;
   private readonly transactionManager: NoopTransactionManager;
   private readonly shoeImageService: NoopShoeImageService;
+  private readonly catalogLookup: NoopCatalogLookup;
 
   constructor() {
     this.customerRepository = new InMemoryCustomerRepository();
@@ -48,6 +50,7 @@ export class Container {
     this.rentalRepository = new InMemoryRentalRepository();
     this.transactionManager = new NoopTransactionManager();
     this.shoeImageService = new NoopShoeImageService();
+    this.catalogLookup = new NoopCatalogLookup();
   }
 
   getTransactionManager(): TransactionManager {
@@ -85,7 +88,12 @@ export class Container {
   }
 
   getUpdateShoeUseCase(): UpdateShoeUseCase {
-    return new UpdateShoeService(this.shoeRepository, new ShortIdGenerator('S'), this.shoeImageService);
+    return new UpdateShoeService(
+      this.shoeRepository,
+      new ShortIdGenerator('S'),
+      this.shoeImageService,
+      this.catalogLookup
+    );
   }
 
   getDeactivateShoeUseCase(): DeactivateShoeUseCase {
@@ -97,7 +105,7 @@ export class Container {
   }
 
   getGetShoeUseCase(): GetShoeUseCase {
-    return new GetShoeService(this.shoeRepository, this.shoeImageService);
+    return new GetShoeService(this.shoeRepository, this.shoeImageService, this.catalogLookup);
   }
 
   getListCustomersUseCase(): ListCustomersUseCase {

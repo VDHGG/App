@@ -133,14 +133,18 @@ CREATE TABLE IF NOT EXISTS `system_users` (
   `full_name` varchar(100) NOT NULL,
   `email` varchar(255) NOT NULL,
   `phone` varchar(15) DEFAULT NULL,
+  `password_hash` varchar(255) DEFAULT NULL,
+  `customer_id` varchar(10) DEFAULT NULL,
   `role_id` int(11) NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT 1,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `uq_system_users_email` (`email`),
+  UNIQUE KEY `uq_system_users_customer_id` (`customer_id`),
   KEY `idx_system_users_role_id` (`role_id`),
-  CONSTRAINT `fk_system_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)
+  CONSTRAINT `fk_system_users_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`),
+  CONSTRAINT `fk_system_users_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Views

@@ -3,6 +3,7 @@ import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeReposit
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import { AddShoeService } from '@usecase/AddShoe.service';
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
+import { NoopCatalogLookup } from '@adapter/persistence/NoopCatalogLookup.adapter';
 import { GetShoeService } from '@usecase/GetShoe.service';
 
 let shoeRepo: InMemoryShoeRepository;
@@ -10,7 +11,7 @@ let getShoe: GetShoeService;
 
 beforeEach(() => {
   shoeRepo = new InMemoryShoeRepository();
-  getShoe = new GetShoeService(shoeRepo, new NoopShoeImageService());
+  getShoe = new GetShoeService(shoeRepo, new NoopShoeImageService(), new NoopCatalogLookup());
 });
 
 describe('GetShoeService', () => {

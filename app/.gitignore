@@ -3,6 +3,22 @@
 .env.*
 !.env.example
 
+# Local docs — README!.md (một ký tự giữa README và .md; bỏ dòng nếu muốn commit)
+README?.md
+
+# Thư mục cha (repo root): HTML mockup / SQL tạm — không phải source Vite/React
+../AdminCreateRental.html
+../AdminDashboard.html
+../AdminShoeProducts.html
+../Login.html
+../ProductDetailAndCheckOut.html
+../SignUp.html
+../StoreFront.html
+../fix_rentals_timestamps.sql
+../rentals.sql
+# File SQL tạo lại DB tại root (tùy chọn, thường chỉ dùng local)
+../ReCreateDB.sql
+
 # Logs
 logs
 *.log

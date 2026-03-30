@@ -18,6 +18,7 @@ describe('GetCustomerService', () => {
     const created = await register.execute({
       fullName: 'Nguyen Van A',
       email: 'a@test.com',
+      phone: '0912000111',
     });
 
     const result = await getCustomer.execute({ customerId: created.customerId });
@@ -25,6 +26,7 @@ describe('GetCustomerService', () => {
     expect(result.customerId).toBe(created.customerId);
     expect(result.fullName).toBe('Nguyen Van A');
     expect(result.email).toBe('a@test.com');
+    expect(result.phone).toBe('0912000111');
     expect(result.currentRentedItems).toBe(0);
   });
 

@@ -31,7 +31,7 @@ export class CustomerController {
     const admin = guards?.admin ?? [];
     router.get('/', ...admin, asyncRoute(this.list.bind(this)));
     router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
-    router.post('/', transactionalRoute(transactionManager, this.register.bind(this)));
+    router.post('/', ...admin, transactionalRoute(transactionManager, this.register.bind(this)));
     return router;
   }
 

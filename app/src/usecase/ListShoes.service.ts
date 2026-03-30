@@ -1,5 +1,6 @@
 import type { ShoeRepository } from '@port/ShoeRepository.port';
 import type { ShoeImageServicePort } from '@port/ShoeImageService.port';
+import type { ListShoesRequest } from './ListShoesRequest.dto';
 import type { ListShoesResponse } from './ListShoesResponse.dto';
 import type { ListShoesUseCase } from '@usecase/ListShoesUseCase.port';
 
@@ -12,8 +13,8 @@ export class ListShoesService implements ListShoesUseCase {
     this.shoeImages = shoeImages;
   }
 
-  async execute(): Promise<ListShoesResponse> {
-    const shoes = await this.shoeRepository.findAll();
+  async execute(request?: ListShoesRequest): Promise<ListShoesResponse> {
+    const shoes = await this.shoeRepository.findAll(request);
 
     return {
       shoes: shoes.map((shoe) => ({

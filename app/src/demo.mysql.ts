@@ -16,6 +16,7 @@ async function run(): Promise<void> {
   const customer = await register.execute({
     fullName: 'Nguyen Van A',
     email: `vana+${Date.now()}@example.com`,
+    phone: '0912345678',
   });
   console.log(` id: ${customer.customerId} | ${customer.fullName} | rank: ${customer.rank}\n`);
 

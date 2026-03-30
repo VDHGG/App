@@ -55,6 +55,7 @@ export function WalkInRentalPage() {
   const [newCustomer, setNewCustomer] = useState<RegisterCustomerRequest>({
     fullName: '',
     email: '',
+    phone: '',
     rank: 'BRONZE',
   })
 
@@ -164,15 +165,16 @@ export function WalkInRentalPage() {
     try {
       let customerId: string
       if (customerMode === 'new') {
-        const { fullName, email, rank } = newCustomer
-        if (!fullName.trim() || !email.trim()) {
-          setSubmitError('Enter customer full name and email.')
+        const { fullName, email, phone, rank } = newCustomer
+        if (!fullName.trim() || !email.trim() || !phone.trim()) {
+          setSubmitError('Enter customer full name, email, and phone.')
           setSubmitting(false)
           return
         }
         const res = await registerCustomer({
           fullName: fullName.trim(),
           email: email.trim(),
+          phone: phone.trim(),
           rank,
         })
         customerId = res.customerId
@@ -347,6 +349,18 @@ export function WalkInRentalPage() {
                       type="email"
                       value={newCustomer.email}
                       onChange={(e) => setNewCustomer((p) => ({ ...p, email: e.target.value }))}
+                      className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                      Phone
+                    </label>
+                    <input
+                      type="tel"
+                      value={newCustomer.phone}
+                      onChange={(e) => setNewCustomer((p) => ({ ...p, phone: e.target.value }))}
+                      placeholder="8–15 digits"
                       className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 text-sm"
                     />
                   </div>

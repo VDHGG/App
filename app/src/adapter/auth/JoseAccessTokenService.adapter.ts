@@ -22,7 +22,11 @@ export class JoseAccessTokenService implements AccessTokenService {
   }
 
   async createAccessToken(payload: AccessTokenPayload): Promise<string> {
-    return new SignJWT({ role: payload.role })
+    const body: Record<string, unknown> = { role: payload.role };
+    if (payload.customerId) {
+      body.customerId = payload.customerId;
+    }
+    return new SignJWT(body)
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(payload.sub)
       .setIssuedAt()
@@ -34,9 +38,14 @@ export class JoseAccessTokenService implements AccessTokenService {
     const { payload } = await jwtVerify(token, this.encodedKey);
     const sub = payload.sub;
     const role = payload.role;
+    const customerIdRaw = payload.customerId;
     if (typeof sub !== 'string' || !isAuthRole(role)) {
       throw new Error('Invalid access token payload.');
     }
-    return { sub, role };
+    const out: AccessTokenPayload = { sub, role };
+    if (typeof customerIdRaw === 'string' && customerIdRaw.length > 0) {
+      out.customerId = customerIdRaw;
+    }
+    return out;
   }
 }

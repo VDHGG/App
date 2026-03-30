@@ -19,6 +19,7 @@ describe('RegisterCustomerService - happy path', () => {
     const result = await service.execute({
       fullName: 'Nguyen Van A',
       email: 'a@gmail.com',
+      phone: '0912345678',
     });
 
     expect(result.fullName).toBe('Nguyen Van A');
@@ -35,6 +36,7 @@ describe('RegisterCustomerService - happy path', () => {
     const result = await service.execute({
       fullName: 'Tran Thi B',
       email: 'b@gmail.com',
+      phone: '0912345679',
       rank: CustomerRank.GOLD,
     });
 
@@ -45,6 +47,7 @@ describe('RegisterCustomerService - happy path', () => {
     const result = await service.execute({
       fullName: 'Le Van C',
       email: 'C@GMAIL.COM',
+      phone: '0912345680',
     });
 
     expect(result.email).toBe('c@gmail.com');
@@ -55,13 +58,13 @@ describe('RegisterCustomerService - happy path', () => {
 describe('RegisterCustomerService - error cases', () => {
   it('throws when fullName is empty', async () => {
     await expect(
-      service.execute({ fullName: '', email: 'x@gmail.com' })
+      service.execute({ fullName: '', email: 'x@gmail.com', phone: '0123456789' })
     ).rejects.toThrow(/full name/i);
   });
 
   it('throws when email is empty', async () => {
     await expect(
-      service.execute({ fullName: 'Test User', email: '' })
+      service.execute({ fullName: 'Test User', email: '', phone: '0123456789' })
     ).rejects.toThrow(/email/i);
   });
 
@@ -71,7 +74,7 @@ describe('RegisterCustomerService - error cases', () => {
     );
 
     await expect(
-      service.execute({ fullName: 'New User', email: 'dup@gmail.com' })
+      service.execute({ fullName: 'New User', email: 'dup@gmail.com', phone: '0123456788' })
     ).rejects.toThrow('already registered');
   });
 
@@ -81,7 +84,7 @@ describe('RegisterCustomerService - error cases', () => {
     );
 
     await expect(
-      service.execute({ fullName: 'New User', email: 'DUP@GMAIL.COM' })
+      service.execute({ fullName: 'New User', email: 'DUP@GMAIL.COM', phone: '0123456787' })
     ).rejects.toThrow('already registered');
   });
 });

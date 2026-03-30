@@ -1,49 +1,31 @@
-import type { Shoe } from '@domain/Shoe.aggregate';
+import type { UpdateShoeResponse } from './UpdateShoeResponse.dto';
 import { ShoeVariant } from '@domain/ShoeVariant.entity';
 import type { ShoeRepository } from '@port/ShoeRepository.port';
 import type { ShoeImageServicePort } from '@port/ShoeImageService.port';
+import type { CatalogLookupPort } from '@port/CatalogLookup.port';
 import type { IdGenerator } from '@port/IdGenerator.port';
 import type { UpdateShoeRequest } from './UpdateShoeRequest.dto';
-import type { UpdateShoeResponse } from './UpdateShoeResponse.dto';
 import type { UpdateShoeUseCase } from './UpdateShoeUseCase.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import { ValidationError } from '@domain/errors/ValidationError';
-
-function mapToResponse(shoe: Shoe, images: ShoeImageServicePort): UpdateShoeResponse {
-  return {
-    shoeId: shoe.id,
-    name: shoe.name,
-    brand: shoe.brand,
-    category: shoe.category,
-    description: shoe.description,
-    pricePerDay: shoe.pricePerDay,
-    isActive: shoe.isActive,
-    imagePublicId: shoe.imagePublicId,
-    imageUrlCard: images.urlForCard(shoe.imagePublicId),
-    imageUrlDetail: images.urlForDetail(shoe.imagePublicId),
-    variants: shoe.variants.map((v) => ({
-      variantId: v.id,
-      size: v.size,
-      color: v.color,
-      totalQuantity: v.totalQuantity,
-      availableQuantity: v.availableQuantity,
-    })),
-  };
-}
+import { buildShoeDetailResponse } from './buildShoeDetailResponse';
 
 export class UpdateShoeService implements UpdateShoeUseCase {
   private readonly shoeRepository: ShoeRepository;
   private readonly idGenerator: IdGenerator;
   private readonly shoeImages: ShoeImageServicePort;
+  private readonly catalog: CatalogLookupPort;
 
   constructor(
     shoeRepository: ShoeRepository,
     idGenerator: IdGenerator,
-    shoeImages: ShoeImageServicePort
+    shoeImages: ShoeImageServicePort,
+    catalog: CatalogLookupPort
   ) {
     this.shoeRepository = shoeRepository;
     this.idGenerator = idGenerator;
     this.shoeImages = shoeImages;
+    this.catalog = catalog;
   }
 
   async execute(request: UpdateShoeRequest): Promise<UpdateShoeResponse> {
@@ -104,6 +86,6 @@ export class UpdateShoeService implements UpdateShoeUseCase {
       await this.shoeImages.destroyByPublicId(previousImagePublicId);
     }
 
-    return mapToResponse(finalShoe, this.shoeImages);
+    return buildShoeDetailResponse(finalShoe, this.shoeImages, this.catalog);
   }
 }

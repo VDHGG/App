@@ -4,6 +4,7 @@ export type GetCustomerResponse = {
   customerId: string;
   fullName: string;
   email: string;
+  phone: string | null;
   rank: CustomerRank;
   isActive: boolean;
   currentRentedItems: number;

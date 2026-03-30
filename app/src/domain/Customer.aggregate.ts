@@ -3,6 +3,7 @@ import { BusinessRuleError } from './errors/BusinessRuleError';
 import {
   ensureValidBoundedString,
   ensureValidCustomerEmail,
+  ensureValidCustomerPhone,
   ensureValidEntityId,
   ensureValidNonNegativeInteger,
   ensureValidPositiveInteger,
@@ -12,6 +13,7 @@ export type CustomerProps = {
   id: string;
   fullName: string;
   email: string;
+  phone?: string | null;
   rank?: CustomerRank;
   isActive?: boolean;
   currentRentedItems?: number;
@@ -32,6 +34,7 @@ export class Customer {
   private readonly idValue: string;
   private fullNameValue: string;
   private emailValue: string;
+  private phoneValue: string | null;
   private rankValue: CustomerRank;
   private activeValue: boolean;
   private currentRentedItemsValue: number;
@@ -40,6 +43,8 @@ export class Customer {
     const rank = props.rank ?? CustomerRank.BRONZE;
     const isActive = props.isActive ?? true;
     const currentRentedItems = props.currentRentedItems ?? 0;
+    const rawPhone = props.phone?.trim() ?? '';
+    const phoneNorm = rawPhone.length > 0 ? rawPhone.replace(/[\s().-]/g, '') : null;
 
     ensureValidEntityId(props.id, 'Customer');
     ensureValidBoundedString(
@@ -49,6 +54,9 @@ export class Customer {
       'Customer full name must be between 1 and 100 characters.'
     );
     ensureValidCustomerEmail(props.email);
+    if (phoneNorm !== null) {
+      ensureValidCustomerPhone(phoneNorm);
+    }
     ensureValidNonNegativeInteger(
       currentRentedItems,
       'Current rented items must be a non-negative integer.'
@@ -58,6 +66,7 @@ export class Customer {
     this.idValue = props.id.trim();
     this.fullNameValue = props.fullName.trim();
     this.emailValue = props.email.trim().toLowerCase();
+    this.phoneValue = phoneNorm;
     this.rankValue = rank;
     this.activeValue = isActive;
     this.currentRentedItemsValue = currentRentedItems;
@@ -73,6 +82,10 @@ export class Customer {
 
   get email(): string {
     return this.emailValue;
+  }
+
+  get phone(): string | null {
+    return this.phoneValue;
   }
 
   get rank(): CustomerRank {
@@ -162,5 +175,14 @@ export class Customer {
   changeEmail(email: string): void {
     ensureValidCustomerEmail(email);
     this.emailValue = email.trim().toLowerCase();
+  }
+
+  changePhone(phone: string | null): void {
+    const rawPhone = phone?.trim() ?? '';
+    const phoneNorm = rawPhone.length > 0 ? rawPhone.replace(/[\s().-]/g, '') : null;
+    if (phoneNorm !== null) {
+      ensureValidCustomerPhone(phoneNorm);
+    }
+    this.phoneValue = phoneNorm;
   }
 }

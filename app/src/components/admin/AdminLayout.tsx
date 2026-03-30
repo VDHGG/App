@@ -1,13 +1,25 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { getAdminAccessToken } from '../../lib/authStorage'
+import { useAuth } from '../../auth/AuthContext'
 import { AdminSidebar } from './AdminSidebar'
 
 export function AdminLayout() {
   const location = useLocation()
-  const token = getAdminAccessToken()
+  const { user, loading } = useAuth()
 
-  if (!token) {
-    return <Navigate to="/admin/login" state={{ from: location }} replace />
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background-light dark:bg-background-dark text-slate-500">
+        Loading…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Navigate to="/login" state={{ from: location }} replace />
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/" replace />
   }
 
   return (

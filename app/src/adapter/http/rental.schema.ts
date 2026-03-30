@@ -27,9 +27,20 @@ export const CancelRentalSchema = z.object({
   note: z.string().max(255).optional(),
 });
 
-export const ListRentalsQuerySchema = z.object({
-  status: z.enum(['RESERVED', 'ACTIVE', 'RETURNED', 'CANCELLED']).optional(),
-});
+export const ListRentalsQuerySchema = z
+  .object({
+    status: z.enum(['RESERVED', 'ACTIVE', 'RETURNED', 'CANCELLED']).optional(),
+    startDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    startDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    amountBucket: z.enum(['all', 'lt50', '50to150', '150to300', 'gt300']).optional(),
+  })
+  .refine(
+    (q) =>
+      !q.startDateFrom ||
+      !q.startDateTo ||
+      q.startDateFrom <= q.startDateTo,
+    { message: 'startDateFrom must be on or before startDateTo', path: ['startDateTo'] }
+  );
 
 export type CreateRentalInput = z.infer<typeof CreateRentalSchema>;
 export type ReturnRentalInput = z.infer<typeof ReturnRentalSchema>;

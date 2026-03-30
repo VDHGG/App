@@ -4,5 +4,6 @@ export type RegisterCustomerResponse = {
   customerId: string;
   fullName: string;
   email: string;
+  phone: string | null;
   rank: CustomerRank;
 };

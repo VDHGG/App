@@ -14,9 +14,11 @@ import {
   ListRentalsQuerySchema,
 } from './rental.schema';
 import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 export type RouteGuards = {
   admin?: RequestHandler[];
+  createRental?: RequestHandler[];
 };
 
 export class RentalController {
@@ -46,9 +48,14 @@ export class RentalController {
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
     const router = Router();
     const admin = guards?.admin ?? [];
+    const createRental = guards?.createRental ?? [];
     router.get('/', ...admin, asyncRoute(this.list.bind(this)));
     router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
-    router.post('/', transactionalRoute(transactionManager, this.create.bind(this)));
+    router.post(
+      '/',
+      ...createRental,
+      transactionalRoute(transactionManager, this.create.bind(this))
+    );
     router.patch(
       '/:id/activate',
       ...admin,
@@ -69,9 +76,15 @@ export class RentalController {
 
   private async list(req: Request, res: Response): Promise<void> {
     const query = ListRentalsQuerySchema.parse(req.query);
-    const result = await this.listRentals.execute(
-      query.status ? { status: query.status } : undefined
-    );
+    const amountBucket =
+      query.amountBucket === undefined || query.amountBucket === 'all' ? undefined : query.amountBucket;
+
+    const result = await this.listRentals.execute({
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.startDateFrom ? { startDateFrom: query.startDateFrom } : {}),
+      ...(query.startDateTo ? { startDateTo: query.startDateTo } : {}),
+      ...(amountBucket ? { amountBucket } : {}),
+    });
     res.json(result);
   }
 
@@ -82,7 +95,21 @@ export class RentalController {
 
   private async create(req: Request, res: Response): Promise<void> {
     const body = CreateRentalSchema.parse(req.body);
-    const result = await this.createRental.execute(body);
+    const auth = req.auth;
+    if (!auth) {
+      res.status(401).json({ error: 'UNAUTHORIZED', message: 'Authentication required.' });
+      return;
+    }
+
+    let customerId = body.customerId;
+    if (auth.role === 'customer') {
+      if (!auth.customerId) {
+        throw new ValidationError('Account is not linked to a customer profile.');
+      }
+      customerId = auth.customerId;
+    }
+
+    const result = await this.createRental.execute({ ...body, customerId });
     res.status(201).json(result);
   }
 

@@ -1,5 +1,3 @@
-import type { RentalStatus } from '@domain/RentalStatus.enum';
+import type { ListRentalsFilters } from '@port/RentalRepository.port';
 
-export type ListRentalsRequest = {
-  status?: RentalStatus;
-};
+export type ListRentalsRequest = ListRentalsFilters;

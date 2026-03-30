@@ -1,5 +1,6 @@
+import type { ListShoesRequest } from '@usecase/ListShoesRequest.dto';
 import type { ListShoesResponse } from '@usecase/ListShoesResponse.dto';
 
 export interface ListShoesUseCase {
-  execute(): Promise<ListShoesResponse>;
+  execute(request?: ListShoesRequest): Promise<ListShoesResponse>;
 }

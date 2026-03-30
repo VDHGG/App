@@ -27,6 +27,7 @@ export class GetCustomerService implements GetCustomerUseCase {
       customerId: customer.id,
       fullName: customer.fullName,
       email: customer.email,
+      phone: customer.phone,
       rank: customer.rank,
       isActive: customer.isActive,
       currentRentedItems: customer.currentRentedItems,

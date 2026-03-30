@@ -16,6 +16,7 @@ const LOAD_SQL = `
     c.customer_id,
     c.full_name,
     c.email,
+    c.phone,
     c.is_active,
     r.name          AS rank_name,
     COALESCE(SUM(ri.quantity), 0) AS current_rented_items
@@ -26,7 +27,7 @@ const LOAD_SQL = `
     AND ren.status IN ('RESERVED', 'ACTIVE')
   LEFT JOIN rental_items ri ON ri.rental_id = ren.rental_id
   WHERE c.customer_id = ?
-  GROUP BY c.customer_id, c.full_name, c.email, c.is_active, r.name
+  GROUP BY c.customer_id, c.full_name, c.email, c.phone, c.is_active, r.name
 `;
 
 const LOAD_BY_EMAIL_SQL = LOAD_SQL.replace('WHERE c.customer_id = ?', 'WHERE c.email = ?');
@@ -36,6 +37,7 @@ const LOAD_ALL_SQL = `
     c.customer_id,
     c.full_name,
     c.email,
+    c.phone,
     c.is_active,
     r.name          AS rank_name,
     COALESCE(SUM(ri.quantity), 0) AS current_rented_items
@@ -45,7 +47,7 @@ const LOAD_ALL_SQL = `
     ON ren.customer_id = c.customer_id
     AND ren.status IN ('RESERVED', 'ACTIVE')
   LEFT JOIN rental_items ri ON ri.rental_id = ren.rental_id
-  GROUP BY c.customer_id, c.full_name, c.email, c.is_active, r.name
+  GROUP BY c.customer_id, c.full_name, c.email, c.phone, c.is_active, r.name
   ORDER BY c.customer_id
 `;
 
@@ -53,6 +55,7 @@ interface CustomerRow extends RowDataPacket {
   customer_id: string;
   full_name: string;
   email: string;
+  phone: string | null;
   is_active: number;
   rank_name: string;
   current_rented_items: number;
@@ -63,6 +66,7 @@ function toCustomer(row: CustomerRow): Customer {
     id: row.customer_id,
     fullName: row.full_name,
     email: row.email,
+    phone: row.phone,
     isActive: Number(row.is_active) === 1,
     rank: row.rank_name as CustomerRank,
     currentRentedItems: Number(row.current_rented_items),
@@ -101,15 +105,23 @@ export class MysqlCustomerRepository implements CustomerRepository {
     const rankId = RANK_TO_ID[customer.rank];
 
     await this.conn().query(
-      `INSERT INTO customers (customer_id, full_name, email, rank_id, is_active, updated_at)
-       VALUES (?, ?, ?, ?, ?, NOW())
+      `INSERT INTO customers (customer_id, full_name, email, phone, rank_id, is_active, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, NOW())
        ON DUPLICATE KEY UPDATE
          full_name  = VALUES(full_name),
          email      = VALUES(email),
+         phone      = VALUES(phone),
          rank_id    = VALUES(rank_id),
          is_active  = VALUES(is_active),
          updated_at = NOW()`,
-      [customer.id, customer.fullName, customer.email, rankId, customer.isActive ? 1 : 0]
+      [
+        customer.id,
+        customer.fullName,
+        customer.email,
+        customer.phone,
+        rankId,
+        customer.isActive ? 1 : 0,
+      ]
     );
   }
 }

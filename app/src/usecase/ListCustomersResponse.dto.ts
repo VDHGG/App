@@ -4,6 +4,7 @@ export type CustomerSummary = {
   customerId: string;
   fullName: string;
   email: string;
+  phone: string | null;
   rank: CustomerRank;
   currentRentedItems: number;
 };

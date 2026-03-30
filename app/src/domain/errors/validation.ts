@@ -76,6 +76,14 @@ export function ensureValidCustomerEmail(email: string): void {
   }
 }
 
+/** E.164-style local digits; 8–15 characters after stripping spaces and common separators. */
+export function ensureValidCustomerPhone(phone: string): void {
+  const digits = phone.replace(/[\s().-]/g, '');
+  if (digits.length < 8 || digits.length > 15 || !/^\d+$/.test(digits)) {
+    throw new ValidationError('Phone must be 8–15 digits.');
+  }
+}
+
 export function ensureValidShoeDescription(description?: string | null): void {
   if (description && description.trim().length > 500) {
     throw new ValidationError('Shoe description must be 500 characters or fewer.');

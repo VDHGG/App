@@ -8,19 +8,20 @@ import {
   type GetShoeResponse,
   type ShoeVariantDto,
 } from '../../lib/shoes.api'
+import { getShoeLookups, type ShoeLookupsResponse } from '../../lib/catalog.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { getApiErrorMessage } from '../../lib/api'
 
 type VariantFormRow = {
   variantId?: string
   size: string
-  color: string
+  colorId: string
   totalQuantity: string
   availableQuantity?: number
 }
 
 function emptyVariantRow(): VariantFormRow {
-  return { size: '42', color: '', totalQuantity: '1' }
+  return { size: '42', colorId: '', totalQuantity: '1' }
 }
 
 export function ShoeEditorPage() {
@@ -32,8 +33,10 @@ export function ShoeEditorPage() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [name, setName] = useState('')
-  const [brand, setBrand] = useState('')
-  const [category, setCategory] = useState('')
+  const [brandId, setBrandId] = useState('')
+  const [categoryId, setCategoryId] = useState('')
+  const [lookups, setLookups] = useState<ShoeLookupsResponse | null>(null)
+  const [lookupsError, setLookupsError] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [pricePerDay, setPricePerDay] = useState('')
   const [isActive, setIsActive] = useState(true)
@@ -49,6 +52,15 @@ export function ShoeEditorPage() {
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
+    getShoeLookups()
+      .then((data) => {
+        setLookups(data)
+        setLookupsError(null)
+      })
+      .catch((err: unknown) => setLookupsError(getApiErrorMessage(err)))
+  }, [])
+
+  useEffect(() => {
     if (isNew || !shoeId) return
     setLoading(true)
     setLoadError(null)
@@ -56,8 +68,8 @@ export function ShoeEditorPage() {
       .then((s) => {
         setLoaded(s)
         setName(s.name)
-        setBrand(s.brand)
-        setCategory(s.category)
+        setBrandId(s.brandId != null ? String(s.brandId) : '')
+        setCategoryId(s.categoryId != null ? String(s.categoryId) : '')
         setDescription(s.description ?? '')
         setPricePerDay(String(s.pricePerDay))
         setIsActive(s.isActive)
@@ -65,7 +77,7 @@ export function ShoeEditorPage() {
           s.variants.map((v: ShoeVariantDto) => ({
             variantId: v.variantId,
             size: String(v.size),
-            color: v.color,
+            colorId: v.colorId != null ? String(v.colorId) : '',
             totalQuantity: String(v.totalQuantity),
             availableQuantity: v.availableQuantity,
           }))
@@ -116,14 +128,14 @@ export function ShoeEditorPage() {
     e.preventDefault()
     setSaveError(null)
     const price = Number(pricePerDay)
-    if (!name.trim() || !brand.trim() || !category.trim() || !Number.isFinite(price) || price <= 0) {
+    if (!name.trim() || !brandId || !categoryId || !Number.isFinite(price) || price <= 0) {
       setSaveError('Please fill name, brand, category, and a valid price.')
       return
     }
 
     const parsedVariants = variants.map((v) => ({
       size: Number(v.size),
-      color: v.color.trim(),
+      colorId: Number(v.colorId),
       total: Math.max(0, Math.floor(Number(v.totalQuantity))),
     }))
 
@@ -132,8 +144,8 @@ export function ShoeEditorPage() {
         setSaveError('Each variant needs a valid size (1–60).')
         return
       }
-      if (!v.color) {
-        setSaveError('Each variant needs a color.')
+      if (!Number.isFinite(v.colorId) || v.colorId < 1) {
+        setSaveError('Each variant needs a color from the list.')
         return
       }
     }
@@ -148,14 +160,14 @@ export function ShoeEditorPage() {
       if (isNew) {
         const res = await addShoe({
           name: name.trim(),
-          brand: brand.trim(),
-          category: category.trim(),
+          brandId: Number(brandId),
+          categoryId: Number(categoryId),
           description: description.trim() || undefined,
           pricePerDay: price,
           ...(imagePublicId ? { imagePublicId } : {}),
           variants: parsedVariants.map((v) => ({
             size: v.size,
-            color: v.color,
+            colorId: v.colorId,
             totalQuantity: v.total,
           })),
         })
@@ -170,7 +182,7 @@ export function ShoeEditorPage() {
         .filter(({ v }) => !v.variantId)
         .map(({ v }) => ({
           size: Number(v.size),
-          color: v.color.trim(),
+          colorId: Number(v.colorId),
           totalQuantity: Math.max(0, Math.floor(Number(v.totalQuantity))),
         }))
 
@@ -181,10 +193,17 @@ export function ShoeEditorPage() {
           totalQuantity: Math.max(0, Math.floor(Number(v.totalQuantity))),
         }))
 
+      for (const nv of newRows) {
+        if (!Number.isFinite(nv.colorId) || nv.colorId < 1) {
+          setSaveError('Each new variant needs a color from the list.')
+          return
+        }
+      }
+
       await updateShoe(shoeId, {
         name: name.trim(),
-        brand: brand.trim(),
-        category: category.trim(),
+        brandId: Number(brandId),
+        categoryId: Number(categoryId),
         description: description.trim() === '' ? null : description.trim(),
         pricePerDay: price,
         isActive,
@@ -198,11 +217,13 @@ export function ShoeEditorPage() {
       setImagePublicId(refreshed.imagePublicId)
       setImagePreviewUrl(refreshed.imageUrlDetail ?? refreshed.imageUrlCard)
       setImageDirty(false)
+      setBrandId(refreshed.brandId != null ? String(refreshed.brandId) : '')
+      setCategoryId(refreshed.categoryId != null ? String(refreshed.categoryId) : '')
       setVariants(
         refreshed.variants.map((v) => ({
           variantId: v.variantId,
           size: String(v.size),
-          color: v.color,
+          colorId: v.colorId != null ? String(v.colorId) : '',
           totalQuantity: String(v.totalQuantity),
           availableQuantity: v.availableQuantity,
         }))
@@ -255,6 +276,15 @@ export function ShoeEditorPage() {
           </span>
         </nav>
 
+        {lookupsError && (
+          <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm">
+            Catalog could not be loaded: {lookupsError}
+          </div>
+        )}
+        {!lookups && !lookupsError && (
+          <div className="text-sm text-slate-500">Loading brand, category, and color lists…</div>
+        )}
+
         {saveError && (
           <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm">{saveError}</div>
         )}
@@ -272,21 +302,37 @@ export function ShoeEditorPage() {
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Brand</label>
-              <input
+              <select
                 required
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              />
+                value={brandId}
+                onChange={(e) => setBrandId(e.target.value)}
+                disabled={!lookups}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                <option value="">Select brand</option>
+                {lookups?.brands.map((b) => (
+                  <option key={b.id} value={String(b.id)}>
+                    {b.id} - {b.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Category</label>
-              <input
+              <select
                 required
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"
-              />
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+                disabled={!lookups}
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                <option value="">Select category</option>
+                {lookups?.categories.map((c) => (
+                  <option key={c.id} value={String(c.id)}>
+                    {c.id} - {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
@@ -403,17 +449,24 @@ export function ShoeEditorPage() {
                       className="w-full rounded border border-slate-200 dark:border-slate-600 px-2 py-1.5 text-sm disabled:opacity-60"
                     />
                   </div>
-                  <div className="flex-1 min-w-[120px]">
+                  <div className="flex-1 min-w-[160px]">
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                       Color
                     </label>
-                    <input
-                      required
-                      disabled={!!row.variantId}
-                      value={row.color}
-                      onChange={(e) => updateVariant(index, { color: e.target.value })}
+                    <select
+                      required={!row.variantId}
+                      disabled={!!row.variantId || !lookups}
+                      value={row.colorId}
+                      onChange={(e) => updateVariant(index, { colorId: e.target.value })}
                       className="w-full rounded border border-slate-200 dark:border-slate-600 px-2 py-1.5 text-sm disabled:opacity-60"
-                    />
+                    >
+                      <option value="">Select color</option>
+                      {lookups?.colors.map((c) => (
+                        <option key={c.id} value={String(c.id)}>
+                          {c.id} - {c.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="w-24">
                     <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
@@ -451,7 +504,7 @@ export function ShoeEditorPage() {
           <div className="flex flex-wrap gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !lookups}
               className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50"
             >
               {saving ? 'Saving…' : isNew ? 'Create shoe' : 'Save changes'}

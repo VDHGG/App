@@ -21,8 +21,8 @@ describe('ListCustomersService', () => {
 
   it('returns all customers', async () => {
     const register = new RegisterCustomerService(customerRepo, new ShortIdGenerator('U'));
-    await register.execute({ fullName: 'A', email: 'a@x.com' });
-    await register.execute({ fullName: 'B', email: 'b@x.com' });
+    await register.execute({ fullName: 'A', email: 'a@x.com', phone: '0911111111' });
+    await register.execute({ fullName: 'B', email: 'b@x.com', phone: '0922222222' });
 
     const result = await listCustomers.execute();
 

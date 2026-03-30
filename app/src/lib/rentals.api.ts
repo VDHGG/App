@@ -68,9 +68,17 @@ export type ListRentalsResponse = {
   rentals: RentalSummary[]
 }
 
-export async function listRentals(status?: RentalStatus): Promise<ListRentalsResponse> {
-  const params = status ? { status } : undefined
-  const { data } = await api.get<ListRentalsResponse>('/rentals', { params })
+export type ListRentalsQuery = {
+  status?: RentalStatus
+  startDateFrom?: string
+  startDateTo?: string
+  amountBucket?: 'all' | 'lt50' | '50to150' | '150to300' | 'gt300'
+}
+
+export async function listRentals(query?: ListRentalsQuery): Promise<ListRentalsResponse> {
+  const { data } = await api.get<ListRentalsResponse>('/rentals', {
+    ...(query ? { params: query } : {}),
+  })
   return data
 }
 

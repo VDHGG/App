@@ -1,14 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getShoe, type GetShoeResponse, type ShoeVariantDto } from '../lib/shoes.api'
-import {  listCustomers,  registerCustomer,  type CustomerSummary,  type RegisterCustomerRequest} from '../lib/customers.api'
 import { createRental, type CreateRentalResponse } from '../lib/rentals.api'
 import { getApiErrorMessage } from '../lib/api'
-
-const PLACEHOLDER_IMAGE =
-  'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=400&fit=crop'
-
-type CustomerMode = 'new' | 'existing'
+import { ShoeImage } from '../components/ShoeImage'
+import { useAuth } from '../auth/AuthContext'
 
 function toDateString(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -21,21 +17,13 @@ function addDays(d: Date, days: number): Date {
 }
 
 export function CheckoutPage() {
+  const { user } = useAuth()
   const [searchParams] = useSearchParams()
   const shoeId = searchParams.get('shoeId')
 
   const [shoe, setShoe] = useState<GetShoeResponse | null>(null)
-  const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  const [customerMode, setCustomerMode] = useState<CustomerMode>('new')
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('')
-  const [newCustomer, setNewCustomer] = useState<RegisterCustomerRequest>({
-    fullName: '',
-    email: '',
-    rank: 'BRONZE',
-  })
 
   const [variantId, setVariantId] = useState<string>('')
   const [quantity, setQuantity] = useState(1)
@@ -55,12 +43,13 @@ export function CheckoutPage() {
       setLoading(false)
       return
     }
-    Promise.all([getShoe(shoeId), listCustomers()])
-      .then(([shoeRes, customersRes]) => {
+    getShoe(shoeId)
+      .then((shoeRes) => {
         setShoe(shoeRes)
-        setCustomers(customersRes.customers)
-        if (shoeRes.variants.length > 0 && !variantId) {
-          setVariantId(shoeRes.variants[0].variantId)
+        if (shoeRes.variants.length > 0) {
+          const first =
+            shoeRes.variants.find((v) => v.availableQuantity > 0) ?? shoeRes.variants[0]
+          setVariantId(first.variantId)
         }
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
@@ -68,39 +57,19 @@ export function CheckoutPage() {
   }, [shoeId])
 
   const selectedVariant: ShoeVariantDto | undefined = shoe?.variants.find(
-    (v) => v.variantId === variantId
+    (v) => v.variantId === variantId,
   )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!shoe || !variantId) return
+    if (!shoe || !variantId || !user?.customerId) return
 
     setSubmitting(true)
     setSubmitError(null)
 
     try {
-      let customerId: string
-
-      if (customerMode === 'new') {
-        const { fullName, email, rank } = newCustomer
-        if (!fullName.trim() || !email.trim()) {
-          setSubmitError('Please enter full name and email.')
-          setSubmitting(false)
-          return
-        }
-        const res = await registerCustomer({ fullName: fullName.trim(), email: email.trim(), rank })
-        customerId = res.customerId
-      } else {
-        if (!selectedCustomerId) {
-          setSubmitError('Please select a customer.')
-          setSubmitting(false)
-          return
-        }
-        customerId = selectedCustomerId
-      }
-
       const res = await createRental({
-        customerId,
+        customerId: user.customerId,
         items: [{ variantId, quantity }],
         startDate,
         endDate,
@@ -111,6 +80,28 @@ export function CheckoutPage() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (!user?.customerId) {
+    return (
+      <div className="max-w-lg mx-auto py-16 px-4 text-center space-y-4">
+        <h1 className="text-xl font-bold text-slate-900 dark:text-white">Checkout</h1>
+        <p className="text-slate-600 dark:text-slate-400">
+          Online rental checkout is available for customer accounts linked to a rental profile.
+        </p>
+        <p className="text-sm text-slate-500">
+          Create an account with <Link to="/signup" className="text-primary font-semibold">Sign up</Link>
+          , or if you are staff, use{' '}
+          <Link to="/admin/rentals/new" className="text-primary font-semibold">
+            Walk-in rental
+          </Link>{' '}
+          in the admin panel.
+        </p>
+        <Link to="/shoes" className="inline-block text-primary font-semibold hover:underline">
+          ← Back to collection
+        </Link>
+      </div>
+    )
   }
 
   if (loading) {
@@ -176,13 +167,18 @@ export function CheckoutPage() {
         </Link>
       </nav>
 
+      <p className="text-sm text-slate-500 mb-6">
+        Renting as <span className="font-semibold text-slate-700 dark:text-slate-300">{user.fullName}</span>{' '}
+        ({user.email})
+      </p>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
         <div>
-          <div className="aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800">
-            <img
-              src={shoe.imageUrlDetail ?? shoe.imageUrlCard ?? PLACEHOLDER_IMAGE}
+          <div className="aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-800 relative">
+            <ShoeImage
+              src={shoe.imageUrlDetail ?? shoe.imageUrlCard}
               alt={shoe.name}
-              className="object-cover w-full h-full"
+              imgClassName="absolute inset-0 object-cover w-full h-full"
             />
           </div>
           <h2 className="text-xl font-bold text-slate-900 dark:text-white mt-4">{shoe.name}</h2>
@@ -194,78 +190,6 @@ export function CheckoutPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          <div>
-            <h3 className="font-bold text-lg mb-4">Customer</h3>
-            <div className="flex gap-4 mb-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="customerMode"
-                  checked={customerMode === 'new'}
-                  onChange={() => setCustomerMode('new')}
-                  className="text-primary focus:ring-primary"
-                />
-                <span>New customer</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="customerMode"
-                  checked={customerMode === 'existing'}
-                  onChange={() => setCustomerMode('existing')}
-                  className="text-primary focus:ring-primary"
-                />
-                <span>Existing customer</span>
-              </label>
-            </div>
-
-            {customerMode === 'new' ? (
-              <div className="space-y-4">
-                <input
-                  type="text"
-                  placeholder="Full name"
-                  value={newCustomer.fullName}
-                  onChange={(e) => setNewCustomer((c) => ({ ...c, fullName: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
-                  required
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={newCustomer.email}
-                  onChange={(e) => setNewCustomer((c) => ({ ...c, email: e.target.value }))}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
-                  required
-                />
-                <select
-                  value={newCustomer.rank}
-                  onChange={(e) =>
-                    setNewCustomer((c) => ({ ...c, rank: e.target.value as RegisterCustomerRequest['rank'] }))
-                  }
-                  className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
-                >
-                  <option value="BRONZE">Bronze (5 items max)</option>
-                  <option value="SILVER">Silver (10 items max)</option>
-                  <option value="GOLD">Gold (15 items max)</option>
-                  <option value="DIAMOND">Diamond (unlimited)</option>
-                </select>
-              </div>
-            ) : (
-              <select
-                value={selectedCustomerId}
-                onChange={(e) => setSelectedCustomerId(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
-              >
-                <option value="">Select customer</option>
-                {customers.map((c) => (
-                  <option key={c.customerId} value={c.customerId}>
-                    {c.fullName} ({c.email}) · {c.currentRentedItems} rented
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
-
           <div>
             <h3 className="font-bold text-lg mb-4">Rental details</h3>
             <div className="space-y-4">
@@ -339,16 +263,9 @@ export function CheckoutPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold rounded-lg transition-opacity flex items-center justify-center gap-2"
+            className="w-full py-3 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white font-bold rounded-lg transition-opacity flex items-center justify-center"
           >
-            {submitting ? (
-              'Creating...'
-            ) : (
-              <>
-                <span className="material-symbols-outlined">calendar_today</span>
-                Confirm rental
-              </>
-            )}
+            {submitting ? 'Creating...' : 'Confirm rental'}
           </button>
         </form>
       </div>
