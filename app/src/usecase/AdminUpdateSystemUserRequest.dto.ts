@@ -6,6 +6,5 @@ export type AdminUpdateSystemUserRequest = {
   roleId: number;
   isActive: boolean;
   customerId: string | null;
-  /** When set, replaces password (bcrypt hashed server-side). */
   newPassword?: string;
 };

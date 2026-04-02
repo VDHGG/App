@@ -3,7 +3,6 @@ import type { Customer } from '@domain/Customer.aggregate';
 export type ListCustomersOptions = {
   limit?: number;
   offset?: number;
-  /** Case-insensitive substring match on email or full name */
   search?: string;
 };
 

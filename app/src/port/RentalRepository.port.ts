@@ -9,7 +9,6 @@ export type ListRentalsFilters = {
   startDateFrom?: string;
   startDateTo?: string;
   amountBucket?: RentalAmountBucket;
-  /** Substring match on rental_id or linked customer full_name */
   search?: string;
   limit?: number;
   offset?: number;

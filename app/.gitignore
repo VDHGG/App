@@ -18,7 +18,17 @@ README?.md
 ../rentals.sql
 # File SQL tạo lại DB tại root (tùy chọn, thường chỉ dùng local)
 ../ReCreateDB.sql
-
+../Wishlist.html
+../Discorery&Trend.html
+../MomoDemo.js
+../migrate_system_users.sql
+../migrate_system_users_auth.sql
+../migrate_customers.sql
+../migrate_rentals.sql
+../migrate_shoes.sql
+../migrate_shoe_variants.sql
+../migrate_shoe_images.sql
+../migrate_shoe_images.sql
 # Logs
 logs
 *.log
