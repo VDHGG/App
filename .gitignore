@@ -16,6 +16,15 @@ StoreFront.html
 fix_rentals_timestamps.sql
 rentals.sql
 ReCreateDB.sql
+Discorery&Trend.html
+Wishlist.html
+MomoDemo.js
+migrate_system_users.sql
+migrate_system_users_auth.sql
+migrate_customers.sql
+migrate_rentals.sql
+migrate_shoes.sql
+migrate_shoe_variants.sql
 
 # Tài liệu kiến trúc local (README!.md — dùng ? thay một ký tự vì ! gây khó trong gitignore)
 app/READMEE.md
