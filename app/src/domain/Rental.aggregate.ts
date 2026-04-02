@@ -11,6 +11,8 @@ import {
   normalizeDateToCalendarTime,
 } from './errors/validation';
 
+const MS_PER_CALENDAR_DAY = 24 * 60 * 60 * 1000;
+
 export type RentalProps = {
   id: string;
   customerId: string;
@@ -214,6 +216,26 @@ export class Rental {
 
     if (note !== undefined) {
       this.noteValue = note ? note.trim() : null;
+    }
+  }
+  
+  
+  assertCustomerCancellationAllowed(at: Date): void {
+    if (this.statusValue !== RentalStatus.RESERVED) {
+      throw new BusinessRuleError(
+        'INVALID_RENTAL_STATE',
+        `Only RESERVED rental can be cancelled. Current status: ${this.statusValue}.`
+      );
+    }
+
+    ensureValidDate(at, 'at');
+    const startDay = normalizeDateToCalendarTime(this.periodValue.startDate);
+    const atDay = normalizeDateToCalendarTime(at);
+    if (startDay - atDay < MS_PER_CALENDAR_DAY) {
+      throw new BusinessRuleError(
+        'CANCEL_TOO_LATE',
+        'You can only cancel at least one full day before the rental start date.'
+      );
     }
   }
 

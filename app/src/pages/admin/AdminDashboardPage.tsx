@@ -11,6 +11,16 @@ import { getApiErrorMessage } from '../../lib/api'
 
 const RECENT_LIMIT = 10
 
+function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean {
+  const msg =
+    action === 'activate'
+      ? 'Activate this rental? The reservation will become active.'
+      : action === 'return'
+        ? 'Mark this rental as returned?'
+        : 'Cancel this reservation? This cannot be undone.'
+  return window.confirm(msg)
+}
+
 export function AdminDashboardPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
@@ -42,6 +52,7 @@ export function AdminDashboardPage() {
     rentalId: string,
     action: 'activate' | 'return' | 'cancel'
   ) => {
+    if (!confirmRentalAction(action)) return
     setActionLoading(rentalId)
     setActionError(null)
     try {

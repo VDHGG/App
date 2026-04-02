@@ -61,4 +61,18 @@ describe('GetRentalService', () => {
       /Rental.*GHOST.*not found/
     );
   });
+
+  it('throws when requestingCustomerId does not own the rental', async () => {
+    await expect(
+      getRental.execute({ rentalId: 'R001', requestingCustomerId: 'OTHER' })
+    ).rejects.toThrow(/Rental.*R001.*not found/);
+  });
+
+  it('returns rental when requestingCustomerId matches', async () => {
+    const result = await getRental.execute({
+      rentalId: 'R001',
+      requestingCustomerId: 'U001',
+    });
+    expect(result.rentalId).toBe('R001');
+  });
 });

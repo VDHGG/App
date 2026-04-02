@@ -1,5 +1,5 @@
 import type { Shoe } from '@domain/Shoe.aggregate';
-import type { ListShoesFilters, ShoeRepository } from '@port/ShoeRepository.port';
+import type { ListShoesFilters, ListShoesResult, ShoeRepository } from '@port/ShoeRepository.port';
 
 function totalStock(shoe: Shoe): number {
   return shoe.variants.reduce((sum, v) => sum + v.totalQuantity, 0);
@@ -46,10 +46,18 @@ export class InMemoryShoeRepository implements ShoeRepository {
     return this.store.get(id) ?? null;
   }
 
-  async findAll(filters?: ListShoesFilters): Promise<Shoe[]> {
-    return Array.from(this.store.values()).filter(
+  async findAll(filters?: ListShoesFilters): Promise<ListShoesResult> {
+    let list = Array.from(this.store.values()).filter(
       (s) => matchesPriceBucket(s, filters?.priceBucket) && matchesStockBucket(s, filters?.stockBucket)
     );
+    list.sort((a, b) => a.id.localeCompare(b.id));
+    const total = list.length;
+    const limit = filters?.limit;
+    const offset = filters?.offset ?? 0;
+    if (limit !== undefined) {
+      list = list.slice(offset, offset + limit);
+    }
+    return { items: list, total };
   }
 
   async findByVariantId(variantId: string): Promise<Shoe | null> {

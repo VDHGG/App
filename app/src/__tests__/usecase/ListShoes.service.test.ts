@@ -18,6 +18,9 @@ describe('ListShoesService', () => {
     const result = await listShoes.execute();
 
     expect(result.shoes).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
   });
 
   it('returns all shoes with summary', async () => {
@@ -43,8 +46,11 @@ describe('ListShoesService', () => {
     const result = await listShoes.execute();
 
     expect(result.shoes).toHaveLength(2);
-    expect(result.shoes[0]).toMatchObject({
-      name: 'Nike Air',
+    expect(result.total).toBe(2);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
+    const byName = Object.fromEntries(result.shoes.map((s) => [s.name, s]));
+    expect(byName['Nike Air']).toMatchObject({
       brand: 'Nike',
       category: 'Running',
       pricePerDay: 10,
@@ -52,8 +58,7 @@ describe('ListShoesService', () => {
       isActive: true,
       unitsInStock: 5,
     });
-    expect(result.shoes[1]).toMatchObject({
-      name: 'Adidas Speed',
+    expect(byName['Adidas Speed']).toMatchObject({
       brand: 'Adidas',
       variantCount: 2,
       isActive: true,

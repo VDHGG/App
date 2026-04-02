@@ -120,6 +120,16 @@ CREATE TABLE IF NOT EXISTS `rental_items` (
   CONSTRAINT `fk_rental_items_variant` FOREIGN KEY (`variant_id`) REFERENCES `shoe_variants` (`variant_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `customer_wishlist` (
+  `customer_id` varchar(10) NOT NULL,
+  `shoe_id` varchar(10) NOT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`customer_id`, `shoe_id`),
+  KEY `idx_customer_wishlist_shoe_id` (`shoe_id`),
+  CONSTRAINT `fk_wishlist_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_wishlist_shoe` FOREIGN KEY (`shoe_id`) REFERENCES `shoes` (`shoe_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 
 CREATE TABLE IF NOT EXISTS `roles` (
   `id` int(11) NOT NULL AUTO_INCREMENT,

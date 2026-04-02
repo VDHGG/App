@@ -13,4 +13,8 @@ export type RentalSummary = {
 
 export type ListRentalsResponse = {
   rentals: RentalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };

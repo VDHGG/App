@@ -21,6 +21,9 @@ describe('ListRentalsService', () => {
     const result = await listRentals.execute();
 
     expect(result.rentals).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
   });
 
   it('returns all rentals', async () => {
@@ -46,6 +49,9 @@ describe('ListRentalsService', () => {
     const result = await listRentals.execute();
 
     expect(result.rentals).toHaveLength(1);
+    expect(result.total).toBe(1);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
     expect(result.rentals[0]).toMatchObject({
       rentalId: 'R001',
       customerId: 'U001',
@@ -97,6 +103,7 @@ describe('ListRentalsService', () => {
     const result = await listRentals.execute({ status: RentalStatus.ACTIVE });
 
     expect(result.rentals).toHaveLength(1);
+    expect(result.total).toBe(1);
     expect(result.rentals[0].status).toBe(RentalStatus.ACTIVE);
   });
 });

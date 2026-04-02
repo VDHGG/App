@@ -6,9 +6,10 @@ import { Rental } from '@domain/Rental.aggregate';
 import { RentalItem } from '@domain/RentalItem.vo';
 import { RentalPeriod } from '@domain/RentalPeriod.vo';
 import { RentalStatus } from '@domain/RentalStatus.enum';
+import { ForbiddenError } from '@domain/errors/ForbiddenError';
 import { CancelRentalService } from '@usecase/CancelRental.service';
 
-const PERIOD = new RentalPeriod(new Date('2026-04-01'), new Date('2026-04-05'));
+const PERIOD = new RentalPeriod(new Date(2026, 3, 10), new Date(2026, 3, 14));
 
 function seedCustomer() {
   return new Customer({
@@ -113,5 +114,35 @@ describe('CancelRentalService - error cases', () => {
     await rentalRepo.save(rental);
 
     await expect(service.execute({ rentalId: 'R001' })).rejects.toThrow(/RESERVED/);
+  });
+
+  it('rejects customer cancel when customer id does not match (forbidden)', async () => {
+    await expect(
+      service.execute({
+        rentalId: 'R001',
+        requestingCustomerId: 'OTHER',
+      })
+    ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('rejects customer cancel when less than one day before start', async () => {
+    const sameDayAsStart = new Date(2026, 3, 10, 12, 0, 0);
+    await expect(
+      service.execute({
+        rentalId: 'R001',
+        requestingCustomerId: 'U001',
+        cancelledAt: sameDayAsStart,
+      })
+    ).rejects.toThrow(/one full day/);
+  });
+
+  it('allows customer cancel when at least one calendar day before start', async () => {
+    const dayBeforeStart = new Date(2026, 3, 9, 12, 0, 0);
+    const result = await service.execute({
+      rentalId: 'R001',
+      requestingCustomerId: 'U001',
+      cancelledAt: dayBeforeStart,
+    });
+    expect(result.status).toBe(RentalStatus.CANCELLED);
   });
 });

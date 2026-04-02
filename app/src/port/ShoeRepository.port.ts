@@ -7,11 +7,18 @@ export type ShoeStockBucket = 'all' | '0' | '1to5' | '6plus';
 export type ListShoesFilters = {
   priceBucket?: ShoePriceBucket;
   stockBucket?: ShoeStockBucket;
+  limit?: number;
+  offset?: number;
+};
+
+export type ListShoesResult = {
+  items: Shoe[];
+  total: number;
 };
 
 export interface ShoeRepository {
   findById(id: string): Promise<Shoe | null>;
-  findAll(filters?: ListShoesFilters): Promise<Shoe[]>;
+  findAll(filters?: ListShoesFilters): Promise<ListShoesResult>;
   findByVariantId(variantId: string): Promise<Shoe | null>;
   save(shoe: Shoe): Promise<void>;
 }

@@ -8,7 +8,7 @@ import {
 export function HowItWorksPage() {
   return (
     <ContentPageShell
-      title="Cách thuê hoạt động"
+      title="How it works"
       intro="Quy trình trên cửa hàng điện tử này bám theo luồng nghiệp vụ trong hệ thống: chọn sản phẩm → đăng ký / chọn khách → chọn ngày → tạo đơn thuê ở trạng thái Đã giữ chỗ (RESERVED)."
     >
       <section className="space-y-3">

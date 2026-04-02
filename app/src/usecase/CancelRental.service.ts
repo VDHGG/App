@@ -5,6 +5,7 @@ import type { CancelRentalResponse } from './CancelRentalResponse.dto';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import { ValidationError } from '@domain/errors/ValidationError';
 import { NotFoundError } from '@domain/errors/NotFoundError';
+import { ForbiddenError } from '@domain/errors/ForbiddenError';
 
 export class CancelRentalService implements CancelRentalUseCase {
   private readonly rentalRepository: RentalRepository;
@@ -28,6 +29,17 @@ export class CancelRentalService implements CancelRentalUseCase {
 
     const totalItems = rental.totalItems;
     const cancelledAt = request.cancelledAt ?? new Date();
+
+    if (request.requestingCustomerId !== undefined) {
+      const cid = request.requestingCustomerId.trim();
+      if (cid.length === 0) {
+        throw new ValidationError('Customer id is required for this operation.');
+      }
+      if (rental.customerId !== cid) {
+        throw new ForbiddenError('FORBIDDEN', 'You cannot cancel this rental.');
+      }
+      rental.assertCustomerCancellationAllowed(cancelledAt);
+    }
 
     rental.cancel(cancelledAt, request.note);
 

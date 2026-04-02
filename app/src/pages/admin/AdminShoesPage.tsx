@@ -10,6 +10,8 @@ import { AdminHeader } from '../../components/admin/AdminHeader'
 import { formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
 import { ShoeImage } from '../../components/ShoeImage'
+import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
+import { AdminPagination } from '../../components/admin/AdminPagination'
 
 function activeStatus(s: ShoeSummary): {
   label: string
@@ -40,17 +42,32 @@ export function AdminShoesPage() {
   const [stockBucket, setStockBucket] = useState<ListShoesQuery['stockBucket']>('all')
   const [actionId, setActionId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [listMeta, setListMeta] = useState({
+    total: 0,
+    totalPages: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
 
   const load = useCallback((): Promise<void> => {
     setError(null)
     return listShoes({
       ...(priceBucket && priceBucket !== 'all' ? { priceBucket } : {}),
       ...(stockBucket && stockBucket !== 'all' ? { stockBucket } : {}),
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
     })
-      .then((res) => setShoes(res.shoes))
+      .then((res) => {
+        setShoes(res.shoes)
+        setListMeta({
+          total: res.total,
+          totalPages: res.totalPages,
+          pageSize: res.pageSize,
+        })
+      })
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setLoading(false))
-  }, [priceBucket, stockBucket])
+  }, [priceBucket, stockBucket, page])
 
   useEffect(() => {
     setLoading(true)
@@ -163,9 +180,10 @@ export function AdminShoesPage() {
               </span>
               <select
                 value={priceBucket ?? 'all'}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setPage(1)
                   setPriceBucket(e.target.value as NonNullable<ListShoesQuery['priceBucket']>)
-                }
+                }}
                 className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
               >
                 <option value="all">All prices</option>
@@ -181,9 +199,10 @@ export function AdminShoesPage() {
               </span>
               <select
                 value={stockBucket ?? 'all'}
-                onChange={(e) =>
+                onChange={(e) => {
+                  setPage(1)
                   setStockBucket(e.target.value as NonNullable<ListShoesQuery['stockBucket']>)
-                }
+                }}
                 className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
               >
                 <option value="all">All stock levels</option>
@@ -194,6 +213,10 @@ export function AdminShoesPage() {
             </div>
           </div>
         </div>
+
+        <p className="text-xs text-slate-500">
+          Search and “Show inactive” apply to the current page of results only.
+        </p>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -299,11 +322,15 @@ export function AdminShoesPage() {
               </tbody>
             </table>
           </div>
-          {filtered.length > 0 && (
-            <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 text-xs text-slate-500">
-              Showing {filtered.length} of {shoes.length} product{shoes.length === 1 ? '' : 's'}
-            </div>
-          )}
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+            <AdminPagination
+              page={page}
+              totalPages={listMeta.totalPages}
+              total={listMeta.total}
+              pageSize={listMeta.pageSize}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
       </div>
     </>

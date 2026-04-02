@@ -23,6 +23,12 @@ describe('LoginUserService', () => {
       save: vi.fn(),
       updateContactFields: vi.fn(),
       updatePasswordHash: vi.fn(),
+      findByEmailExcluding: vi.fn().mockResolvedValue(null),
+      findByCustomerId: vi.fn().mockResolvedValue(null),
+      listForAdmin: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
+      updateAdminFields: vi.fn(),
+      updateMirrorFromCustomer: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('signed-jwt'),
@@ -59,6 +65,12 @@ describe('LoginUserService', () => {
       save: vi.fn(),
       updateContactFields: vi.fn(),
       updatePasswordHash: vi.fn(),
+      findByEmailExcluding: vi.fn().mockResolvedValue(null),
+      findByCustomerId: vi.fn().mockResolvedValue(null),
+      listForAdmin: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
+      updateAdminFields: vi.fn(),
+      updateMirrorFromCustomer: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('tok'),
@@ -89,6 +101,12 @@ describe('LoginUserService', () => {
       save: vi.fn(),
       updateContactFields: vi.fn(),
       updatePasswordHash: vi.fn(),
+      findByEmailExcluding: vi.fn().mockResolvedValue(null),
+      findByCustomerId: vi.fn().mockResolvedValue(null),
+      listForAdmin: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+      countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
+      updateAdminFields: vi.fn(),
+      updateMirrorFromCustomer: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn(),

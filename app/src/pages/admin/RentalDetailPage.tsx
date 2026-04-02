@@ -7,6 +7,16 @@ import { RentalStatusBadge } from '../../components/admin/RentalStatusBadge'
 import { formatDate, formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
 
+function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean {
+  const msg =
+    action === 'activate'
+      ? 'Activate this rental? The reservation will become active.'
+      : action === 'return'
+        ? 'Mark this rental as returned?'
+        : 'Cancel this reservation? This cannot be undone.'
+  return window.confirm(msg)
+}
+
 export function RentalDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [rental, setRental] = useState<Awaited<ReturnType<typeof getRental>> | null>(null)
@@ -34,6 +44,7 @@ export function RentalDetailPage() {
 
   const handleAction = async (action: 'activate' | 'return' | 'cancel') => {
     if (!id) return
+    if (!confirmRentalAction(action)) return
     setActionLoading(action)
     setActionError(null)
     try {

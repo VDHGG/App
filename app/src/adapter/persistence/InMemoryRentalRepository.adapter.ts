@@ -1,5 +1,9 @@
 import type { Rental } from '@domain/Rental.aggregate';
-import type { ListRentalsFilters, RentalRepository } from '@port/RentalRepository.port';
+import type {
+  ListRentalsFilters,
+  ListRentalsResult,
+  RentalRepository,
+} from '@port/RentalRepository.port';
 
 function toYmd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -30,8 +34,11 @@ export class InMemoryRentalRepository implements RentalRepository {
     return this.store.get(id) ?? null;
   }
 
-  async findList(filters?: ListRentalsFilters): Promise<Rental[]> {
+  async findList(filters?: ListRentalsFilters): Promise<ListRentalsResult> {
     let list = Array.from(this.store.values());
+    if (filters?.customerId) {
+      list = list.filter((r) => r.customerId === filters.customerId);
+    }
     if (filters?.status) {
       list = list.filter((r) => r.status === filters.status);
     }
@@ -47,7 +54,13 @@ export class InMemoryRentalRepository implements RentalRepository {
       list = list.filter((r) => matchesAmount(r, filters.amountBucket));
     }
     list.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    return list;
+    const total = list.length;
+    const limit = filters?.limit;
+    const offset = filters?.offset ?? 0;
+    if (limit !== undefined) {
+      list = list.slice(offset, offset + limit);
+    }
+    return { items: list, total };
   }
 
   async save(rental: Rental): Promise<void> {

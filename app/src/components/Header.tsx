@@ -1,10 +1,12 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useRentalCart } from '../cart/RentalCartContext'
 
 export function Header() {
   const navigate = useNavigate()
   const { user, logout } = useAuth()
+  const { totalQuantity } = useRentalCart()
   const [searchParams] = useSearchParams()
   const q = searchParams.get('q') ?? ''
   const [searchInput, setSearchInput] = useState(q)
@@ -35,7 +37,7 @@ export function Header() {
               <span className="material-symbols-outlined text-[22px] leading-none">footprint</span>
             </div>
             <h2 className="text-xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
-              Rental Shoe
+              Rental Shoes
             </h2>
           </Link>
           <nav className="hidden md:flex items-center gap-5 lg:gap-6 flex-wrap">
@@ -44,6 +46,12 @@ export function Header() {
               className="text-sm font-semibold hover:text-primary transition-colors"
             >
               Browse
+            </Link>
+            <Link
+              to="/discovery"
+              className="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
+            >
+              Discover
             </Link>
             <Link
               to="/how-it-works"
@@ -69,6 +77,14 @@ export function Header() {
             >
               Contact
             </Link>
+            {user?.role === 'customer' && user.customerId && (
+              <Link
+                to="/wishlist"
+                className="text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors"
+              >
+                Wishlist
+              </Link>
+            )}
             {user?.role === 'admin' && (
               <Link to="/admin" className="text-sm font-semibold hover:text-primary transition-colors">
                 Admin
@@ -93,6 +109,33 @@ export function Header() {
               </div>
             </form>
             <div className="flex items-center gap-2 shrink-0">
+              {user?.role === 'customer' && user.customerId && (
+                <>
+                  <Link
+                    to="/wishlist"
+                    className="flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    title="Wishlist"
+                  >
+                    <span className="material-symbols-outlined text-slate-700 dark:text-slate-300 text-[22px] leading-none">
+                      favorite
+                    </span>
+                  </Link>
+                  <Link
+                    to="/checkout"
+                    className="relative flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                    title="Rental cart"
+                  >
+                    <span className="material-symbols-outlined text-slate-700 dark:text-slate-300 text-[22px] leading-none">
+                      shopping_cart
+                    </span>
+                    {totalQuantity > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white">
+                        {totalQuantity > 99 ? '99+' : totalQuantity}
+                      </span>
+                    )}
+                  </Link>
+                </>
+              )}
               <Link
                 to="/shoes#collection"
                 className="flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
@@ -104,7 +147,7 @@ export function Header() {
               </Link>
               <Link
                 to="/account"
-                className="hidden sm:flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                className="flex items-center justify-center size-10 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                 title="Account"
               >
                 <span className="material-symbols-outlined text-slate-700 dark:text-slate-300 text-[22px] leading-none">
@@ -125,6 +168,14 @@ export function Header() {
           <Link to="/shoes" className="text-slate-900 dark:text-white">
             Browse
           </Link>
+          <Link to="/discovery" className="text-slate-600 dark:text-slate-400">
+            Discover
+          </Link>
+          {user?.role === 'customer' && user.customerId && (
+            <Link to="/wishlist" className="text-slate-600 dark:text-slate-400">
+              Wishlist
+            </Link>
+          )}
           <Link to="/how-it-works" className="text-slate-600 dark:text-slate-400">
             How it works
           </Link>

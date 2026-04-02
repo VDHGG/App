@@ -34,7 +34,7 @@ export class InMemoryRentalAvailabilityChecker implements RentalAvailabilityChec
       this.rentalRepository.findList({ status: RentalStatus.ACTIVE }),
     ]);
 
-    const overlappingRentals = [...reservedRentals, ...activeRentals].filter((rental) =>
+    const overlappingRentals = [...reservedRentals.items, ...activeRentals.items].filter((rental) =>
       rental.period.overlaps(period)
     );
 

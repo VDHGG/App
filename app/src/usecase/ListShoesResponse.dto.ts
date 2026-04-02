@@ -13,4 +13,8 @@ export type ShoeSummary = {
 
 export type ListShoesResponse = {
   shoes: ShoeSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };

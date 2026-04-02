@@ -66,6 +66,10 @@ export type CreateRentalResponse = {
 
 export type ListRentalsResponse = {
   rentals: RentalSummary[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 export type ListRentalsQuery = {
@@ -73,6 +77,9 @@ export type ListRentalsQuery = {
   startDateFrom?: string
   startDateTo?: string
   amountBucket?: 'all' | 'lt50' | '50to150' | '150to300' | 'gt300'
+  search?: string
+  page?: number
+  pageSize?: number
 }
 
 export async function listRentals(query?: ListRentalsQuery): Promise<ListRentalsResponse> {
@@ -82,8 +89,42 @@ export async function listRentals(query?: ListRentalsQuery): Promise<ListRentals
   return data
 }
 
+export async function listMyRentals(query?: {
+  page?: number
+  pageSize?: number
+}): Promise<ListRentalsResponse> {
+  const { data } = await api.get<ListRentalsResponse>('/rentals/me', {
+    ...(query ? { params: query } : {}),
+  })
+  return data
+}
+
 export async function getRental(rentalId: string): Promise<GetRentalResponse> {
   const { data } = await api.get<GetRentalResponse>(`/rentals/${rentalId}`)
+  return data
+}
+
+export async function getMyRental(rentalId: string): Promise<GetRentalResponse> {
+  const { data } = await api.get<GetRentalResponse>(`/rentals/me/${encodeURIComponent(rentalId)}`)
+  return data
+}
+
+export type CancelMyRentalResponse = {
+  rentalId: string
+  customerId: string
+  status: RentalStatus
+  totalItems: number
+  cancelledAt: string
+}
+
+export async function cancelMyRental(
+  rentalId: string,
+  body?: { cancelledAt?: string; note?: string }
+): Promise<CancelMyRentalResponse> {
+  const { data } = await api.patch<CancelMyRentalResponse>(
+    `/rentals/me/${encodeURIComponent(rentalId)}/cancel`,
+    body ?? {}
+  )
   return data
 }
 

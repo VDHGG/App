@@ -40,11 +40,17 @@ export type GetShoeResponse = {
 
 export type ListShoesResponse = {
   shoes: ShoeSummary[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
 }
 
 export type ListShoesQuery = {
   priceBucket?: 'all' | 'lt10' | '10to20' | '20to50' | 'gt50'
   stockBucket?: 'all' | '0' | '1to5' | '6plus'
+  page?: number
+  pageSize?: number
 }
 
 export async function listShoes(params?: ListShoesQuery): Promise<ListShoesResponse> {

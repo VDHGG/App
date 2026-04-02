@@ -12,6 +12,7 @@ import {
   ReturnRentalSchema,
   CancelRentalSchema,
   ListRentalsQuerySchema,
+  ListMyRentalsQuerySchema,
 } from './rental.schema';
 import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
 import { ValidationError } from '@domain/errors/ValidationError';
@@ -19,6 +20,7 @@ import { ValidationError } from '@domain/errors/ValidationError';
 export type RouteGuards = {
   admin?: RequestHandler[];
   createRental?: RequestHandler[];
+  customer?: RequestHandler[];
 };
 
 export class RentalController {
@@ -49,6 +51,14 @@ export class RentalController {
     const router = Router();
     const admin = guards?.admin ?? [];
     const createRental = guards?.createRental ?? [];
+    const customer = guards?.customer ?? [];
+    router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
+    router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
+    router.patch(
+      '/me/:id/cancel',
+      ...customer,
+      transactionalRoute(transactionManager, this.cancelMine.bind(this))
+    );
     router.get('/', ...admin, asyncRoute(this.list.bind(this)));
     router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
     router.post(
@@ -74,6 +84,59 @@ export class RentalController {
     return router;
   }
 
+  private async listMine(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.customerId) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Account is not linked to a customer profile.',
+      });
+      return;
+    }
+    const query = ListMyRentalsQuerySchema.parse(req.query);
+    const result = await this.listRentals.execute({
+      customerId: auth.customerId,
+      ...(query.page !== undefined ? { page: query.page } : {}),
+      ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
+    });
+    res.json(result);
+  }
+
+  private async getMine(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.customerId) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Account is not linked to a customer profile.',
+      });
+      return;
+    }
+    const result = await this.getRental.execute({
+      rentalId: req.params['id'] as string,
+      requestingCustomerId: auth.customerId,
+    });
+    res.json(result);
+  }
+
+  private async cancelMine(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.customerId) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Account is not linked to a customer profile.',
+      });
+      return;
+    }
+    const body = CancelRentalSchema.parse(req.body);
+    const result = await this.cancelRental.execute({
+      rentalId: req.params['id'] as string,
+      cancelledAt: body.cancelledAt,
+      note: body.note,
+      requestingCustomerId: auth.customerId,
+    });
+    res.json(result);
+  }
+
   private async list(req: Request, res: Response): Promise<void> {
     const query = ListRentalsQuerySchema.parse(req.query);
     const amountBucket =
@@ -84,6 +147,9 @@ export class RentalController {
       ...(query.startDateFrom ? { startDateFrom: query.startDateFrom } : {}),
       ...(query.startDateTo ? { startDateTo: query.startDateTo } : {}),
       ...(amountBucket ? { amountBucket } : {}),
+      ...(query.search !== undefined && query.search.trim() !== '' ? { search: query.search.trim() } : {}),
+      ...(query.page !== undefined ? { page: query.page } : {}),
+      ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
     });
     res.json(result);
   }

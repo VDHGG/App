@@ -36,7 +36,15 @@ export function LoginPage() {
   }
 
   if (user) {
-    return <Navigate to={fromPath.startsWith('/') ? fromPath : '/'} replace />
+    const dest =
+      fromPath && fromPath !== '/'
+        ? fromPath.startsWith('/')
+          ? fromPath
+          : '/'
+        : user.role === 'admin'
+          ? '/admin'
+          : '/discovery'
+    return <Navigate to={dest} replace />
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -46,7 +54,15 @@ export function LoginPage() {
     try {
       const res = await login(email.trim(), password)
       await setSessionFromLogin(res.accessToken)
-      navigate(fromPath.startsWith('/') ? fromPath : '/', { replace: true })
+      const dest =
+        fromPath && fromPath !== '/'
+          ? fromPath.startsWith('/')
+            ? fromPath
+            : '/'
+          : res.role === 'admin'
+            ? '/admin'
+            : '/discovery'
+      navigate(dest, { replace: true })
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {

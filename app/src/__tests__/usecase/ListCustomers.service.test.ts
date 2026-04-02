@@ -17,6 +17,9 @@ describe('ListCustomersService', () => {
     const result = await listCustomers.execute();
 
     expect(result.customers).toEqual([]);
+    expect(result.total).toBe(0);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
   });
 
   it('returns all customers', async () => {
@@ -28,5 +31,8 @@ describe('ListCustomersService', () => {
 
     expect(result.customers).toHaveLength(2);
     expect(result.customers.map((c) => c.fullName).sort()).toEqual(['A', 'B']);
+    expect(result.total).toBe(2);
+    expect(result.page).toBe(1);
+    expect(result.totalPages).toBe(1);
   });
 });

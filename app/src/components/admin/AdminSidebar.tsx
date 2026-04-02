@@ -50,6 +50,12 @@ export function AdminSidebar() {
           </span>
           <span className="text-sm font-medium">Customers</span>
         </NavLink>
+        <NavLink to="/admin/system-users" className={navClass}>
+          <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
+            manage_accounts
+          </span>
+          <span className="text-sm font-medium">System users</span>
+        </NavLink>
         <NavLink to="/admin/shoes" className={navClass}>
           <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
             inventory_2

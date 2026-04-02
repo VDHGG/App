@@ -4,11 +4,18 @@ type ContentPageShellProps = {
   title: string
   intro?: string
   children: ReactNode
+  /** Tailwind max-width class for the content column (default `max-w-3xl`). */
+  maxWidthClassName?: string
 }
 
-export function ContentPageShell({ title, intro, children }: ContentPageShellProps) {
+export function ContentPageShell({
+  title,
+  intro,
+  children,
+  maxWidthClassName = 'max-w-3xl',
+}: ContentPageShellProps) {
   return (
-    <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 lg:py-14">
+    <div className={`${maxWidthClassName} mx-auto px-4 sm:px-6 py-10 lg:py-14`}>
       <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-3">{title}</h1>
       {intro && (
         <p className="text-slate-500 dark:text-slate-400 text-sm mb-10 leading-relaxed border-b border-slate-200 dark:border-slate-800 pb-8">

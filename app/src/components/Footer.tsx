@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 
 export function Footer() {
+  const { user } = useAuth()
+  const isCustomer = user?.role === 'customer' && Boolean(user?.customerId)
   return (
     <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,10 +33,22 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <a href="#" className="hover:text-primary transition-colors">
+                <Link to="/how-it-works" className="hover:text-primary transition-colors">
                   How it Works
-                </a>
+                </Link>
               </li>
+              <li>
+                <Link to="/account" className="hover:text-primary transition-colors">
+                  Account
+                </Link>
+              </li>
+              {isCustomer && (
+                <li>
+                  <Link to="/wishlist" className="hover:text-primary transition-colors">
+                    Wishlist
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
           <div>

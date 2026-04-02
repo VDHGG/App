@@ -1,5 +1,6 @@
 import { ConflictError } from '@domain/errors/ConflictError';
 import type { AccessTokenService } from '@port/AccessTokenService.port';
+import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { IdGenerator } from '@port/IdGenerator.port';
 import type { SystemUserRepository } from '@port/SystemUserRepository.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
@@ -11,8 +12,20 @@ import bcrypt from 'bcryptjs';
 
 const USER_ROLE_ID = 1;
 
+function normalizeFullName(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeSignupPhone(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const digits = t.replace(/[\s().-]/g, '');
+  return digits.length > 0 ? digits : null;
+}
+
 export class RegisterUserService implements RegisterUserUseCase {
   private readonly transactionManager: TransactionManager;
+  private readonly customerRepository: CustomerRepository;
   private readonly registerCustomer: RegisterCustomerUseCase;
   private readonly systemUsers: SystemUserRepository;
   private readonly userIdGenerator: IdGenerator;
@@ -20,12 +33,14 @@ export class RegisterUserService implements RegisterUserUseCase {
 
   constructor(
     transactionManager: TransactionManager,
+    customerRepository: CustomerRepository,
     registerCustomer: RegisterCustomerUseCase,
     systemUsers: SystemUserRepository,
     userIdGenerator: IdGenerator,
     accessTokenService: AccessTokenService
   ) {
     this.transactionManager = transactionManager;
+    this.customerRepository = customerRepository;
     this.registerCustomer = registerCustomer;
     this.systemUsers = systemUsers;
     this.userIdGenerator = userIdGenerator;
@@ -34,6 +49,9 @@ export class RegisterUserService implements RegisterUserUseCase {
 
   async execute(request: RegisterUserRequest): Promise<LoginUserResponse> {
     const email = request.email.trim().toLowerCase();
+    const fullName = normalizeFullName(request.fullName);
+    const phoneForUser = normalizeSignupPhone(request.phone);
+
     const existingUser = await this.systemUsers.findByEmail(email);
     if (existingUser) {
       throw new ConflictError('EMAIL_CONFLICT', 'An account with this email already exists.');
@@ -42,8 +60,29 @@ export class RegisterUserService implements RegisterUserUseCase {
     const passwordHash = bcrypt.hashSync(request.password, 10);
 
     const { customerId } = await this.transactionManager.runInTransaction(async () => {
+      const existingCustomer = await this.customerRepository.findByEmail(email);
+
+      if (existingCustomer) {
+        existingCustomer.rename(fullName);
+        existingCustomer.changePhone(phoneForUser);
+        await this.customerRepository.save(existingCustomer);
+
+        await this.systemUsers.save({
+          userId: this.userIdGenerator.next(),
+          fullName,
+          email,
+          phone: phoneForUser,
+          roleId: USER_ROLE_ID,
+          passwordHash,
+          customerId: existingCustomer.id,
+          isActive: true,
+        });
+
+        return { customerId: existingCustomer.id };
+      }
+
       const cust = await this.registerCustomer.execute({
-        fullName: request.fullName.trim(),
+        fullName,
         email,
         phone: request.phone.trim(),
         rank: undefined,
@@ -51,9 +90,9 @@ export class RegisterUserService implements RegisterUserUseCase {
 
       await this.systemUsers.save({
         userId: this.userIdGenerator.next(),
-        fullName: request.fullName.trim(),
+        fullName,
         email,
-        phone: request.phone.replace(/[\s().-]/g, '') || null,
+        phone: phoneForUser,
         roleId: USER_ROLE_ID,
         passwordHash,
         customerId: cust.customerId,

@@ -3,7 +3,11 @@ import { Rental } from '@domain/Rental.aggregate';
 import { RentalItem } from '@domain/RentalItem.vo';
 import { RentalPeriod } from '@domain/RentalPeriod.vo';
 import type { RentalStatus } from '@domain/RentalStatus.enum';
-import type { ListRentalsFilters, RentalRepository } from '@port/RentalRepository.port';
+import type {
+  ListRentalsFilters,
+  ListRentalsResult,
+  RentalRepository,
+} from '@port/RentalRepository.port';
 import { transactionContext } from '@infra/db/transactionContext';
 
 interface RentalRow extends RowDataPacket {
@@ -93,12 +97,16 @@ export class MysqlRentalRepository implements RentalRepository {
     return toRental(rentalRows[0], itemRows);
   }
 
-  async findList(filters?: ListRentalsFilters): Promise<Rental[]> {
+  async findList(filters?: ListRentalsFilters): Promise<ListRentalsResult> {
     const conn = this.conn();
 
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
 
+    if (filters?.customerId) {
+      conditions.push('r.customer_id = ?');
+      params.push(filters.customerId);
+    }
     if (filters?.status) {
       conditions.push('r.status = ?');
       params.push(filters.status);
@@ -131,22 +139,43 @@ export class MysqlRentalRepository implements RentalRepository {
       conditions.push(`${totalExpr} > 300`);
     }
 
-    const listSql = `
+    if (filters?.search?.trim()) {
+      const t = `%${filters.search.trim()}%`;
+      conditions.push('(r.rental_id LIKE ? OR cust.full_name LIKE ?)');
+      params.push(t, t);
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const rentalFrom = `rentals r INNER JOIN customers cust ON cust.customer_id = r.customer_id`;
+
+    const [countRows] = await conn.query<RowDataPacket[]>(
+      `SELECT COUNT(*) AS cnt FROM ${rentalFrom} WHERE ${whereClause}`,
+      params
+    );
+    const total = Number(countRows[0]?.['cnt'] ?? 0);
+
+    let listSql = `
       SELECT r.rental_id, r.customer_id, r.start_date, r.expected_return_date,
              r.actual_return_date, r.status, r.late_fee, r.note, r.created_at,
              r.activated_at, r.cancelled_at
-      FROM rentals r
-      WHERE ${conditions.join(' AND ')}
+      FROM ${rentalFrom}
+      WHERE ${whereClause}
       ORDER BY r.created_at DESC`;
 
-    const [rentalRows] = await conn.query<RentalRow[]>(listSql, params);
+    const listParams = [...params];
+    if (filters?.limit !== undefined) {
+      listSql += ' LIMIT ? OFFSET ?';
+      listParams.push(filters.limit, filters.offset ?? 0);
+    }
+
+    const [rentalRows] = await conn.query<RentalRow[]>(listSql, listParams);
 
     const rentals: Rental[] = [];
     for (const row of rentalRows) {
       const [itemRows] = await conn.query<RentalItemRow[]>(ITEMS_SQL, [row.rental_id]);
       rentals.push(toRental(row, itemRows));
     }
-    return rentals;
+    return { items: rentals, total };
   }
 
   async save(rental: Rental): Promise<void> {

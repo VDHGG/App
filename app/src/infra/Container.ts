@@ -1,6 +1,7 @@
 import { InMemoryCustomerRepository } from '@adapter/persistence/InMemoryCustomerRepository.adapter';
 import { InMemoryRentalAvailabilityChecker } from '@adapter/persistence/InMemoryRentalAvailabilityChecker.adapter';
 import { InMemoryRentalRepository } from '@adapter/persistence/InMemoryRentalRepository.adapter';
+import { InMemoryWishlistRepository } from '@adapter/persistence/InMemoryWishlistRepository.adapter';
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { NoopTransactionManager } from '@adapter/persistence/NoopTransactionManager.adapter';
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
@@ -21,6 +22,7 @@ import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
 import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.port';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
+import type { WishlistUseCase } from '@usecase/WishlistUseCase.port';
 import { ActivateRentalService } from '@usecase/ActivateRental.service';
 import { AddShoeService } from '@usecase/AddShoe.service';
 import { DeactivateShoeService } from '@usecase/DeactivateShoe.service';
@@ -35,11 +37,13 @@ import { CancelRentalService } from '@usecase/CancelRental.service';
 import { CreateRentalService } from '@usecase/CreateRental.service';
 import { RegisterCustomerService } from '@usecase/RegisterCustomer.service';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
+import { WishlistService } from '@usecase/Wishlist.service';
 
 export class Container {
   private readonly customerRepository: InMemoryCustomerRepository;
   private readonly shoeRepository: InMemoryShoeRepository;
   private readonly rentalRepository: InMemoryRentalRepository;
+  private readonly wishlistRepository: InMemoryWishlistRepository;
   private readonly transactionManager: NoopTransactionManager;
   private readonly shoeImageService: NoopShoeImageService;
   private readonly catalogLookup: NoopCatalogLookup;
@@ -48,6 +52,7 @@ export class Container {
     this.customerRepository = new InMemoryCustomerRepository();
     this.shoeRepository = new InMemoryShoeRepository();
     this.rentalRepository = new InMemoryRentalRepository();
+    this.wishlistRepository = new InMemoryWishlistRepository();
     this.transactionManager = new NoopTransactionManager();
     this.shoeImageService = new NoopShoeImageService();
     this.catalogLookup = new NoopCatalogLookup();
@@ -122,6 +127,10 @@ export class Container {
 
   getGetRentalUseCase(): GetRentalUseCase {
     return new GetRentalService(this.rentalRepository);
+  }
+
+  getWishlistUseCase(): WishlistUseCase {
+    return new WishlistService(this.shoeRepository, this.wishlistRepository, this.shoeImageService);
   }
 
   getCustomerRepository(): InMemoryCustomerRepository {

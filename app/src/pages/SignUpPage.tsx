@@ -24,7 +24,7 @@ export function SignUpPage() {
   }
 
   if (user) {
-    return <Navigate to="/" replace />
+    return <Navigate to={user.role === 'admin' ? '/admin' : '/discovery'} replace />
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -43,7 +43,7 @@ export function SignUpPage() {
         password,
       })
       await setSessionFromLogin(res.accessToken)
-      navigate('/', { replace: true })
+      navigate(res.role === 'admin' ? '/admin' : '/discovery', { replace: true })
     } catch (err) {
       setError(getApiErrorMessage(err))
     } finally {

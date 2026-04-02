@@ -1,7 +1,7 @@
 import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { Shoe } from '@domain/Shoe.aggregate';
 import { ShoeVariant } from '@domain/ShoeVariant.entity';
-import type { ListShoesFilters, ShoeRepository } from '@port/ShoeRepository.port';
+import type { ListShoesFilters, ListShoesResult, ShoeRepository } from '@port/ShoeRepository.port';
 import { transactionContext } from '@infra/db/transactionContext';
 
 interface ShoeVariantRow extends RowDataPacket {
@@ -102,7 +102,7 @@ export class MysqlShoeRepository implements ShoeRepository {
     return this.findById(idRows[0]['shoe_id'] as string);
   }
 
-  async findAll(filters?: ListShoesFilters): Promise<Shoe[]> {
+  async findAll(filters?: ListShoesFilters): Promise<ListShoesResult> {
     const conditions: string[] = ['1=1'];
 
     const priceBucket = filters?.priceBucket ?? 'all';
@@ -126,24 +126,35 @@ export class MysqlShoeRepository implements ShoeRepository {
       conditions.push(`${stockExpr} >= 6`);
     }
 
-    const sql = `
-      SELECT s.shoe_id
+    const whereClause = conditions.join(' AND ');
+    const baseFrom = `
       FROM shoes s
       LEFT JOIN (
         SELECT shoe_id, SUM(on_hand_quantity) AS stock_sum
         FROM shoe_variants
         GROUP BY shoe_id
       ) v ON v.shoe_id = s.shoe_id
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY s.shoe_id`;
+      WHERE ${whereClause}`;
 
-    const [rows] = await this.conn().query<RowDataPacket[]>(sql);
+    const [countRows] = await this.conn().query<RowDataPacket[]>(
+      `SELECT COUNT(s.shoe_id) AS cnt ${baseFrom}`
+    );
+    const total = Number(countRows[0]?.['cnt'] ?? 0);
+
+    let listSql = `SELECT s.shoe_id ${baseFrom} ORDER BY s.shoe_id`;
+    const listParams: unknown[] = [];
+    if (filters?.limit !== undefined) {
+      listSql += ' LIMIT ? OFFSET ?';
+      listParams.push(filters.limit, filters.offset ?? 0);
+    }
+
+    const [rows] = await this.conn().query<RowDataPacket[]>(listSql, listParams);
     const shoes: Shoe[] = [];
     for (const row of rows) {
       const shoe = await this.findById(row['shoe_id'] as string);
       if (shoe) shoes.push(shoe);
     }
-    return shoes;
+    return { items: shoes, total };
   }
 
   async save(shoe: Shoe): Promise<void> {

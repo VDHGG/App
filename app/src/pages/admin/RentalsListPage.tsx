@@ -14,6 +14,8 @@ import { AdminHeader } from '../../components/admin/AdminHeader'
 import { RentalStatusBadge } from '../../components/admin/RentalStatusBadge'
 import { formatDate, formatCurrency, formatDurationDays } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
+import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
+import { AdminPagination } from '../../components/admin/AdminPagination'
 
 const STATUS_OPTIONS: { value: '' | RentalStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -31,6 +33,16 @@ const AMOUNT_OPTIONS: { value: ListRentalsQuery['amountBucket']; label: string }
   { value: 'gt300', label: 'Over $300' },
 ]
 
+function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean {
+  const msg =
+    action === 'activate'
+      ? 'Activate this rental? The reservation will become active.'
+      : action === 'return'
+        ? 'Mark this rental as returned?'
+        : 'Cancel this reservation? This cannot be undone.'
+  return window.confirm(msg)
+}
+
 export function RentalsListPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
@@ -44,22 +56,45 @@ export function RentalsListPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [listMeta, setListMeta] = useState({
+    total: 0,
+    totalPages: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
 
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
-  const rentalQuery = useMemo((): ListRentalsQuery | undefined => {
-    const q: ListRentalsQuery = {}
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput), 350)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  const rentalQuery = useMemo((): ListRentalsQuery => {
+    const q: ListRentalsQuery = { page, pageSize: DEFAULT_PAGE_SIZE }
     if (statusFilter) q.status = statusFilter
     if (startDateFrom) q.startDateFrom = startDateFrom
     if (startDateTo) q.startDateTo = startDateTo
     if (amountBucket && amountBucket !== 'all') q.amountBucket = amountBucket
-    return Object.keys(q).length > 0 ? q : undefined
-  }, [statusFilter, startDateFrom, startDateTo, amountBucket])
+    if (search.trim()) q.search = search.trim()
+    return q
+  }, [statusFilter, startDateFrom, startDateTo, amountBucket, page, search])
 
   useEffect(() => {
     Promise.all([listRentals(rentalQuery), listCustomers()])
       .then(([rentalsRes, customersRes]) => {
         setRentals(rentalsRes.rentals)
+        setListMeta({
+          total: rentalsRes.total,
+          totalPages: rentalsRes.totalPages,
+          pageSize: rentalsRes.pageSize,
+        })
         setCustomers(customersRes.customers)
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
@@ -70,6 +105,7 @@ export function RentalsListPage() {
     rentalId: string,
     action: 'activate' | 'return' | 'cancel'
   ) => {
+    if (!confirmRentalAction(action)) return
     setActionLoading(rentalId)
     setActionError(null)
     try {
@@ -78,6 +114,11 @@ export function RentalsListPage() {
       else await cancelRental(rentalId)
       const res = await listRentals(rentalQuery)
       setRentals(res.rentals)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {
@@ -114,13 +155,28 @@ export function RentalsListPage() {
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-col lg:flex-row lg:flex-wrap gap-4 lg:items-end lg:justify-between">
             <div className="flex flex-col sm:flex-row flex-wrap gap-4">
+              <div className="flex flex-col gap-1 min-w-[200px]">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Search
+                </span>
+                <input
+                  type="search"
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  placeholder="Rental id or customer name…"
+                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-medium min-w-[220px]"
+                />
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   Status
                 </span>
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter((e.target.value || '') as '' | RentalStatus)}
+                  onChange={(e) => {
+                    setPage(1)
+                    setStatusFilter((e.target.value || '') as '' | RentalStatus)
+                  }}
                   className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[160px]"
                 >
                   {STATUS_OPTIONS.map((opt) => (
@@ -137,7 +193,10 @@ export function RentalsListPage() {
                 <input
                   type="date"
                   value={startDateFrom}
-                  onChange={(e) => setStartDateFrom(e.target.value)}
+                  onChange={(e) => {
+                    setPage(1)
+                    setStartDateFrom(e.target.value)
+                  }}
                   className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold"
                 />
               </div>
@@ -148,7 +207,10 @@ export function RentalsListPage() {
                 <input
                   type="date"
                   value={startDateTo}
-                  onChange={(e) => setStartDateTo(e.target.value)}
+                  onChange={(e) => {
+                    setPage(1)
+                    setStartDateTo(e.target.value)
+                  }}
                   className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold"
                 />
               </div>
@@ -158,9 +220,10 @@ export function RentalsListPage() {
                 </span>
                 <select
                   value={amountBucket}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setPage(1)
                     setAmountBucket(e.target.value as NonNullable<ListRentalsQuery['amountBucket']>)
-                  }
+                  }}
                   className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
                 >
                   {AMOUNT_OPTIONS.map((opt) => (
@@ -172,7 +235,7 @@ export function RentalsListPage() {
               </div>
             </div>
             <p className="text-sm text-slate-500 lg:text-right shrink-0">
-              {rentals.length} rental(s)
+              {listMeta.total} rental(s) total
             </p>
           </div>
         </div>
@@ -188,6 +251,9 @@ export function RentalsListPage() {
             <table className="w-full text-left">
               <thead className="bg-slate-50 dark:bg-slate-800/50">
                 <tr>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Rental
+                  </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Customer
                   </th>
@@ -214,7 +280,7 @@ export function RentalsListPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rentals.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                       No rentals found
                     </td>
                   </tr>
@@ -227,8 +293,13 @@ export function RentalsListPage() {
                       <td className="px-6 py-4">
                         <Link
                           to={`/admin/rentals/${r.rentalId}`}
-                          className="flex items-center gap-3 hover:text-primary"
+                          className="font-mono text-sm font-semibold text-primary hover:underline"
                         >
+                          {r.rentalId}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
                           <div className="size-8 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-400">
                             {(customerMap[r.customerId]?.fullName ?? r.customerId)
                               .slice(0, 2)
@@ -237,7 +308,7 @@ export function RentalsListPage() {
                           <span className="text-sm font-semibold">
                             {customerMap[r.customerId]?.fullName ?? r.customerId}
                           </span>
-                        </Link>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm">{r.totalItems} item(s)</td>
                       <td className="px-6 py-4 text-sm text-slate-500">
@@ -305,6 +376,15 @@ export function RentalsListPage() {
                 )}
               </tbody>
             </table>
+          </div>
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+            <AdminPagination
+              page={page}
+              totalPages={listMeta.totalPages}
+              total={listMeta.total}
+              pageSize={listMeta.pageSize}
+              onPageChange={setPage}
+            />
           </div>
         </div>
       </div>

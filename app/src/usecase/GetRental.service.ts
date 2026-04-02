@@ -23,6 +23,13 @@ export class GetRentalService implements GetRentalUseCase {
       throw new NotFoundError('Rental', request.rentalId);
     }
 
+    if (request.requestingCustomerId !== undefined) {
+      const cid = request.requestingCustomerId.trim();
+      if (rental.customerId !== cid) {
+        throw new NotFoundError('Rental', request.rentalId);
+      }
+    }
+
     return {
       rentalId: rental.id,
       customerId: rental.customerId,

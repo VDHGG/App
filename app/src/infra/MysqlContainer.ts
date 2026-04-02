@@ -6,6 +6,7 @@ import { MysqlShoeRepository } from '@adapter/persistence/MysqlShoeRepository.ad
 import { MysqlCatalogLookup } from '@adapter/persistence/MysqlCatalogLookup.adapter';
 import { MysqlCatalogAdmin } from '@adapter/persistence/MysqlCatalogAdmin.adapter';
 import { MysqlRentalRepository } from '@adapter/persistence/MysqlRentalRepository.adapter';
+import { MysqlWishlistRepository } from '@adapter/persistence/MysqlWishlistRepository.adapter';
 import { MysqlRentalAvailabilityChecker } from '@adapter/persistence/MysqlRentalAvailabilityChecker.adapter';
 import { MysqlTransactionManager } from '@adapter/persistence/MysqlTransactionManager.adapter';
 import { UuidGenerator } from '@adapter/persistence/UuidGenerator.adapter';
@@ -27,11 +28,15 @@ import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
 import type { ListCustomersUseCase } from '@usecase/ListCustomersUseCase.port';
 import type { ListRentalsUseCase } from '@usecase/ListRentalsUseCase.port';
+import type { AdminListSystemUsersUseCase } from '@usecase/AdminListSystemUsersUseCase.port';
+import type { AdminUpdateSystemUserUseCase } from '@usecase/AdminUpdateSystemUserUseCase.port';
+import type { UpdateCustomerAdminUseCase } from '@usecase/UpdateCustomerAdminUseCase.port';
 import type { ListShoesUseCase } from '@usecase/ListShoesUseCase.port';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
 import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.port';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
+import type { WishlistUseCase } from '@usecase/WishlistUseCase.port';
 import type { UploadShoeImageUseCase } from '@usecase/UploadShoeImageUseCase.port';
 import type { CatalogLookupPort } from '@port/CatalogLookup.port';
 import type { CatalogAdminRepository } from '@port/CatalogAdminRepository.port';
@@ -49,11 +54,15 @@ import { CancelRentalService } from '@usecase/CancelRental.service';
 import { CreateRentalService } from '@usecase/CreateRental.service';
 import { RegisterCustomerService } from '@usecase/RegisterCustomer.service';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
+import { WishlistService } from '@usecase/Wishlist.service';
 import { LoginUserService } from '@usecase/LoginUser.service';
 import { RegisterUserService } from '@usecase/RegisterUser.service';
 import { UpdateProfileService } from '@usecase/UpdateProfile.service';
 import { ChangePasswordService } from '@usecase/ChangePassword.service';
 import { UploadShoeImageService } from '@usecase/UploadShoeImage.service';
+import { AdminListSystemUsersService } from '@usecase/AdminListSystemUsers.service';
+import { AdminUpdateSystemUserService } from '@usecase/AdminUpdateSystemUser.service';
+import { UpdateCustomerAdminService } from '@usecase/UpdateCustomerAdmin.service';
 import { createPool } from './db/MysqlConnection';
 
 export class MysqlContainer {
@@ -62,6 +71,7 @@ export class MysqlContainer {
   private readonly systemUserRepository: MysqlSystemUserRepository;
   private readonly shoeRepository: MysqlShoeRepository;
   private readonly rentalRepository: MysqlRentalRepository;
+  private readonly wishlistRepository: MysqlWishlistRepository;
   private readonly transactionManager: MysqlTransactionManager;
   private readonly accessTokenService: JoseAccessTokenService;
   private readonly registerCustomer: RegisterCustomerService;
@@ -79,6 +89,7 @@ export class MysqlContainer {
     this.systemUserRepository = new MysqlSystemUserRepository(this.pool);
     this.shoeRepository = new MysqlShoeRepository(this.pool);
     this.rentalRepository = new MysqlRentalRepository(this.pool);
+    this.wishlistRepository = new MysqlWishlistRepository(this.pool);
     this.transactionManager = new MysqlTransactionManager(this.pool);
 
     this.accessTokenService = new JoseAccessTokenService(
@@ -95,6 +106,7 @@ export class MysqlContainer {
 
     this.registerUser = new RegisterUserService(
       this.transactionManager,
+      this.customerRepository,
       this.registerCustomer,
       this.systemUserRepository,
       new UuidGenerator('U'),
@@ -213,12 +225,36 @@ export class MysqlContainer {
     return new GetCustomerService(this.customerRepository);
   }
 
+  getUpdateCustomerAdminUseCase(): UpdateCustomerAdminUseCase {
+    return new UpdateCustomerAdminService(
+      this.transactionManager,
+      this.customerRepository,
+      this.systemUserRepository
+    );
+  }
+
+  getAdminListSystemUsersUseCase(): AdminListSystemUsersUseCase {
+    return new AdminListSystemUsersService(this.systemUserRepository);
+  }
+
+  getAdminUpdateSystemUserUseCase(): AdminUpdateSystemUserUseCase {
+    return new AdminUpdateSystemUserService(
+      this.transactionManager,
+      this.systemUserRepository,
+      this.customerRepository
+    );
+  }
+
   getListRentalsUseCase(): ListRentalsUseCase {
     return new ListRentalsService(this.rentalRepository);
   }
 
   getGetRentalUseCase(): GetRentalUseCase {
     return new GetRentalService(this.rentalRepository);
+  }
+
+  getWishlistUseCase(): WishlistUseCase {
+    return new WishlistService(this.shoeRepository, this.wishlistRepository, this.shoeImageService);
   }
 
   async pingDatabase(): Promise<boolean> {

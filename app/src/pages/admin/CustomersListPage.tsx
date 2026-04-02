@@ -1,21 +1,135 @@
 import { useEffect, useState } from 'react'
-import { listCustomers } from '../../lib/customers.api'
-import type { CustomerSummary } from '../../lib/customers.api'
+import {
+  listCustomers,
+  getCustomer,
+  updateCustomerAdmin,
+  type CustomerSummary,
+  type CustomerRank,
+  type GetCustomerResponse,
+} from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
+import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
+import { AdminPagination } from '../../components/admin/AdminPagination'
+import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
+import { getApiErrorMessage } from '../../lib/api'
+
+const RANKS: CustomerRank[] = ['BRONZE', 'SILVER', 'GOLD', 'DIAMOND']
+
+function emptyForm(): GetCustomerResponse {
+  return {
+    customerId: '',
+    fullName: '',
+    email: '',
+    phone: null,
+    rank: 'BRONZE',
+    isActive: true,
+    currentRentedItems: 0,
+  }
+}
 
 export function CustomersListPage() {
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
+  const [page, setPage] = useState(1)
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [listMeta, setListMeta] = useState({
+    total: 0,
+    totalPages: 1,
+    pageSize: DEFAULT_PAGE_SIZE,
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    listCustomers()
-      .then((res) => setCustomers(res.customers))
-      .catch((err) => setError(err.message ?? 'Failed to load'))
-      .finally(() => setLoading(false))
-  }, [])
+  const [editOpen, setEditOpen] = useState(false)
+  const [editLoading, setEditLoading] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [form, setForm] = useState<GetCustomerResponse>(() => emptyForm())
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [saveLoading, setSaveLoading] = useState(false)
 
-  if (loading) {
+  useEffect(() => {
+    const t = window.setTimeout(() => setSearch(searchInput), 350)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  useEffect(() => {
+    setPage(1)
+  }, [search])
+
+  useEffect(() => {
+    setLoading(true)
+    listCustomers({
+      page,
+      pageSize: DEFAULT_PAGE_SIZE,
+      ...(search.trim() ? { search: search.trim() } : {}),
+    })
+      .then((res) => {
+        setCustomers(res.customers)
+        setListMeta({
+          total: res.total,
+          totalPages: res.totalPages,
+          pageSize: res.pageSize,
+        })
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
+      .finally(() => setLoading(false))
+  }, [page, search])
+
+  const openEdit = (customerId: string) => {
+    setEditError(null)
+    setEditOpen(true)
+    setEditLoading(true)
+    getCustomer(customerId)
+      .then((c) => setForm(c))
+      .catch((err: unknown) => setEditError(getApiErrorMessage(err)))
+      .finally(() => setEditLoading(false))
+  }
+
+  const closeEdit = () => {
+    setEditOpen(false)
+    setEditError(null)
+    setForm(emptyForm())
+    setConfirmOpen(false)
+  }
+
+  const requestSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    setEditError(null)
+    setConfirmOpen(true)
+  }
+
+  const saveCustomer = async () => {
+    setSaveLoading(true)
+    setEditError(null)
+    try {
+      await updateCustomerAdmin(form.customerId, {
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        phone: form.phone?.trim() ? form.phone.trim() : null,
+        rank: form.rank,
+        isActive: form.isActive,
+      })
+      setConfirmOpen(false)
+      closeEdit()
+      const res = await listCustomers({
+        page,
+        pageSize: DEFAULT_PAGE_SIZE,
+        ...(search.trim() ? { search: search.trim() } : {}),
+      })
+      setCustomers(res.customers)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
+    } catch (err: unknown) {
+      setEditError(getApiErrorMessage(err))
+    } finally {
+      setSaveLoading(false)
+    }
+  }
+
+  if (loading && customers.length === 0) {
     return (
       <>
         <AdminHeader title="Customers" />
@@ -41,7 +155,21 @@ export function CustomersListPage() {
     <>
       <AdminHeader title="Customers" />
       <div className="p-6 lg:p-8">
-        <p className="text-sm text-slate-500 mb-6">{customers.length} customer(s)</p>
+        <div className="flex flex-col sm:flex-row gap-4 mb-6 sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1 max-w-md w-full">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Search (name or email)
+            </label>
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search…"
+              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm"
+            />
+          </div>
+          <p className="text-sm text-slate-500 shrink-0">{listMeta.total} customer(s) total</p>
+        </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -58,15 +186,19 @@ export function CustomersListPage() {
                     Rank
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Current Rented
                   </th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {customers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
-                      No customers yet
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                      No customers found
                     </td>
                   </tr>
                 ) : (
@@ -91,15 +223,178 @@ export function CustomersListPage() {
                           {c.rank}
                         </span>
                       </td>
+                      <td className="px-6 py-4">
+                        <span
+                          className={`text-xs font-semibold px-2 py-1 rounded ${
+                            c.isActive
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300'
+                              : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
+                          }`}
+                        >
+                          {c.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
                       <td className="px-6 py-4 text-sm font-bold">{c.currentRentedItems}</td>
+                      <td className="px-6 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(c.customerId)}
+                          className="text-sm font-semibold text-primary hover:underline"
+                        >
+                          Edit
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+            <AdminPagination
+              page={page}
+              totalPages={listMeta.totalPages}
+              total={listMeta.total}
+              pageSize={listMeta.pageSize}
+              onPageChange={setPage}
+            />
+          </div>
         </div>
       </div>
+
+      {editOpen && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+            <div className="flex justify-between items-start gap-4">
+              <h2 className="text-lg font-bold">Edit customer</h2>
+              <button
+                type="button"
+                onClick={closeEdit}
+                className="text-slate-400 hover:text-slate-600"
+                aria-label="Close"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            {editLoading ? (
+              <p className="text-slate-500 text-sm">Loading…</p>
+            ) : (
+              <form onSubmit={requestSave} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Customer id
+                  </label>
+                  <p className="font-mono text-sm">{form.customerId}</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Full name
+                  </label>
+                  <input
+                    required
+                    value={form.fullName}
+                    onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Email
+                  </label>
+                  <input
+                    required
+                    type="email"
+                    value={form.email}
+                    onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Phone
+                  </label>
+                  <input
+                    value={form.phone ?? ''}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, phone: e.target.value.trim() ? e.target.value : null }))
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                    Rank
+                  </label>
+                  <select
+                    value={form.rank}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, rank: e.target.value as CustomerRank }))
+                    }
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                  >
+                    {RANKS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="cust-active"
+                    type="checkbox"
+                    checked={form.isActive}
+                    onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
+                    className="rounded border-slate-300"
+                  />
+                  <label htmlFor="cust-active" className="text-sm font-medium">
+                    Active
+                  </label>
+                </div>
+                <p className="text-xs text-slate-500">
+                  If this customer has a linked login account, contact fields and active status are
+                  mirrored to that account when you save.
+                </p>
+                {editError && (
+                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm">
+                    {editError}
+                  </div>
+                )}
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={closeEdit}
+                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-600 text-sm font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Save customer?"
+        message="Apply these changes? Linked system user data will stay in sync when applicable."
+        confirmLabel="Save"
+        loading={saveLoading}
+        onCancel={() => !saveLoading && setConfirmOpen(false)}
+        onConfirm={() => void saveCustomer()}
+      />
     </>
   )
 }

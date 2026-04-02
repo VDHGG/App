@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+
+<html class="scroll-smooth" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Cobalt Kinetic | Discovery &amp; Trends</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-fixed": "#dbeafe",
+              "surface-dim": "#d9d9e2",
+              "surface-container-high": "#f1f1f4",
+              "secondary-fixed-dim": "#e2e8f0",
+              "surface-container": "#ffffff",
+              "outline-variant": "#cbd5e1",
+              "inverse-on-surface": "#f1f5f9",
+              "primary-container": "rgba(19, 71, 174, 0.1)",
+              "on-background": "#0f172a",
+              "error": "#e11d48",
+              "on-primary": "#ffffff",
+              "inverse-surface": "#1e293b",
+              "on-surface": "#0f172a",
+              "on-secondary-fixed-variant": "#334155",
+              "on-secondary": "#ffffff",
+              "primary-fixed-dim": "#bfdbfe",
+              "on-secondary-container": "#1e293b",
+              "on-tertiary-container": "#065f46",
+              "secondary-container": "#e2e8f0",
+              "surface-container-highest": "#e8e8eb",
+              "on-tertiary-fixed-variant": "#0f766e",
+              "on-surface-variant": "#64748b",
+              "on-secondary-fixed": "#0f172a",
+              "on-primary-fixed": "#1e3a8a",
+              "tertiary-fixed": "#ccfbf1",
+              "on-tertiary": "#ffffff",
+              "surface-tint": "#1347ae",
+              "on-primary-fixed-variant": "#1d4ed8",
+              "surface-variant": "#ffffff",
+              "surface-bright": "#ffffff",
+              "secondary-fixed": "#f1f5f9",
+              "on-tertiary-fixed": "#134e4a",
+              "on-error-container": "#9f1239",
+              "surface": "#f6f6f8",
+              "outline": "#e2e8f0",
+              "surface-container-lowest": "#ffffff",
+              "inverse-primary": "#b3c5ff",
+              "on-primary-container": "#1347ae",
+              "surface-container-low": "#ffffff",
+              "primary": "#1347ae",
+              "tertiary-fixed-dim": "#99f6e4",
+              "on-error": "#ffffff",
+              "secondary": "#475569",
+              "tertiary": "#059669",
+              "error-container": "#fff1f2",
+              "background": "#f6f6f8",
+              "tertiary-container": "#d1fae5"
+            },
+            fontFamily: {
+              "headline": ["Inter"],
+              "body": ["Inter"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-surface font-body text-on-surface antialiased">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 shadow-sm">
+<div class="flex justify-between items-center px-8 py-4 max-w-full mx-auto">
+<div class="flex items-center gap-8">
+<span class="text-xl font-black tracking-tighter text-slate-900 dark:text-slate-50 uppercase">Cobalt Kinetic</span>
+<div class="hidden md:flex gap-6 items-center font-inter font-medium text-sm tracking-tight">
+<a class="text-blue-700 dark:text-blue-500 font-bold border-b-2 border-blue-700 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Discover</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Trends</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Rental Guide</a>
+<a class="text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" href="#">Editorial</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden lg:flex items-center bg-slate-100 rounded-full px-4 py-1.5 border border-outline">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs w-48 ml-2" placeholder="Search archives..." type="text"/>
+</div>
+<button class="bg-primary text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg hover:scale-95 duration-200 transition-all">Sign In</button>
+</div>
+</div>
+</nav>
+<!-- Side Navigation Bar -->
+<aside class="h-screen w-64 fixed left-0 top-0 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-full py-6 px-4 z-40 hidden xl:flex">
+<div class="mb-12 pt-16">
+<span class="text-lg font-black text-slate-900 dark:text-slate-50 uppercase">Kinetic Menu</span>
+</div>
+<div class="flex flex-col gap-1 flex-1 font-inter font-medium text-[14px]">
+<a class="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-r-4 border-blue-700 ease-in-out duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span> Home
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all ease-in-out duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="star">star</span> Top 5 Luxury
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all ease-in-out duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span> Budget Picks
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all ease-in-out duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="trending_up">trending_up</span> Trending Now
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all ease-in-out duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="auto_stories">auto_stories</span> The Archive
+            </a>
+</div>
+<div class="mt-auto border-t border-outline pt-6">
+<div class="flex items-center gap-3 px-2 mb-6">
+<div class="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="portrait of a stylish modern professional in a clean minimalist studio lighting high fashion aesthetic" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBETJYsj55oeHerdW2ia7Rbll4NthNWPO2D0Z4Lg9U8x-ww2dqyHHUd3AWoc42vK-8ACocmy0de3blDiH0xZQPrrVlIVljvJwVqigOIEhQTYCEachXDZUFQWRDHE82KsJMXBWfaM7pcOpAwInrhogjD9sroztOhfWag-H2erm-TUsvuDBKOHIveXzm0MhU6QShoSOrjVK2R6eDdKkQV2LLeSXmHiX0qjc1j3ZXDReWof-1mCdOO3GTibuGfXtXTt-lHpVBjd9T3CA"/>
+</div>
+<div>
+<p class="text-sm font-bold text-slate-900 dark:text-slate-50">Kinetic Member</p>
+<p class="text-[10px] uppercase tracking-widest text-blue-700 font-bold">Elite Tier</p>
+</div>
+</div>
+<button class="w-full bg-primary text-white py-3 rounded-xl font-bold shadow-lg hover:bg-blue-800 transition-colors mb-4">Rent Now</button>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 px-4 py-2 text-slate-500 text-xs hover:text-blue-700 transition-colors" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="settings">settings</span> Settings
+                </a>
+<a class="flex items-center gap-3 px-4 py-2 text-slate-500 text-xs hover:text-blue-700 transition-colors" href="#">
+<span class="material-symbols-outlined text-sm" data-icon="help">help</span> Support
+                </a>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="xl:pl-64 pt-20">
+<!-- Hero Section -->
+<section class="relative h-[819px] w-full overflow-hidden flex items-end px-12 pb-24 group">
+<div class="absolute inset-0 z-0">
+<div class="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent z-10"></div>
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="High-end editorial photograph of a luxury designer sneaker on a minimalist dark architectural pedestal with dramatic cobalt blue lighting accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAA1In5eGF1DGL4SZSyyvK8TpGl0F4NIufV1p9-xUQjshfBpRWHH-9Pn5RBzE39CAgLBw1HDBc950KAJwE479MGc3P0BUx5HZv6XuS51V1KyO8LWKkR4YlinEm8aokVLdLUIVXUKRcM4gDXHKzXd21QMxv_NocoAjg2dgawLcjM6QYNi7MyOK-Zlhpiod3inn-uZ7tFg3PPT_i7cqD9EVxcQIpXq9T40IjLZs_gD2Dp_Nbo37yNfSIwHMWkJ9Jy0ww-i4IVP7jXZw"/>
+</div>
+<div class="relative z-20 max-w-4xl">
+<span class="text-[10px] uppercase tracking-[0.3em] font-black text-blue-400 mb-4 block">Archive Edition 01</span>
+<h1 class="text-6xl md:text-8xl font-black tracking-tighter text-white mb-6 leading-none">THE KINETIC<br/>CURATION.</h1>
+<p class="text-lg text-slate-300 max-w-xl font-light leading-relaxed mb-8">Exploring the intersection of high-velocity performance and artisanal craftsmanship. Discover our latest arrivals for the modern explorer.</p>
+<div class="flex gap-4">
+<button class="bg-white text-slate-900 px-8 py-4 rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-primary hover:text-white transition-all duration-300">Explore Collection</button>
+<button class="bg-white/10 backdrop-blur-md text-white border border-white/20 px-8 py-4 rounded-xl font-bold text-sm uppercase tracking-widest hover:bg-white/20 transition-all duration-300">View Editorial</button>
+</div>
+</div>
+</section>
+<!-- Top 5 Luxury Rentals -->
+<section class="py-24 px-8 bg-surface">
+<div class="flex justify-between items-end mb-12">
+<div>
+<h2 class="text-3xl font-black tracking-tight text-on-surface uppercase mb-2">Top 5 Luxury Rentals</h2>
+<p class="text-on-surface-variant font-medium">The pinnacle of artisanal shoemaking and exclusive prestige.</p>
+</div>
+<a class="text-primary font-bold text-sm uppercase tracking-widest flex items-center gap-2 group" href="#">
+                    View All <span class="material-symbols-outlined group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6">
+<!-- Luxury Card 1 -->
+<div class="group cursor-pointer">
+<div class="aspect-[4/5] rounded-xl overflow-hidden bg-white shadow-sm mb-4 relative">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="close up detail of premium leather handcrafted dress shoes with exquisite stitching on a marble surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0wT30EYU758w4LwKH4JEguLGZ3EfdgAtbFNnsbPJKeGnS4BfPN74ovDp8PloSMssJBOdSqtDPIoN2LATHGzUL9SRaHfs1X8W8a4U-OQhofseinhfoeLMGZmD7YDpYgKSyvZ4m4B32YqTM0i65VUISoiGyn4yMdeEc9zcqNOcmJwUgOxxr5DDg2I6kVAWcyLnkMbxmZJDrcjfn-fIAnZ50RIAqbhkB1mLCF8bcYTCRznCyWnAR71gx2ofcmGBCBeIzJFbYy-d8Ag"/>
+<div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Rank #1</div>
+</div>
+<p class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Oxford Masterclass</p>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight mb-1">Aurelian Gold Stitched</h3>
+<p class="text-sm font-medium text-on-surface-variant">$450 / Weekend</p>
+</div>
+<!-- Luxury Card 2 -->
+<div class="group cursor-pointer">
+<div class="aspect-[4/5] rounded-xl overflow-hidden bg-white shadow-sm mb-4 relative">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="designer luxury sneakers in vibrant colors against a clean architectural concrete background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjIVsHCeV5MkhpmR0g6jIXgxyILcEs7jyCyEgLPCY8jxb-0ThRkGcgqx_RYKhf9UkRJpyQCkPnJLPa1UQ6khAOktHlceYKTgzSIdkCzMMR8QFtYXYBA4_UVixWs7BFni41aVUvXJMW-2-gl6n6hzUFuy-c3Q4bqRKe5M8C5TzFDJ742ZjzI-wH1JDbLZZhi3l6XfZMD378KXiUE0bJDOz4z2Wlh-z4oDbsMz7BYvXN4i5T2ewKntBQVE-Z7CAnqmXRAdDYueFLVg"/>
+<div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Rank #2</div>
+</div>
+<p class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Limited Release</p>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight mb-1">Cinnabar Kinetic V1</h3>
+<p class="text-sm font-medium text-on-surface-variant">$380 / Weekend</p>
+</div>
+<!-- Luxury Card 3 -->
+<div class="group cursor-pointer">
+<div class="aspect-[4/5] rounded-xl overflow-hidden bg-white shadow-sm mb-4 relative">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="sleek modern black leather boots on a reflective dark surface with sharp dramatic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDKvEQNQAESUm_nzTTItmEo1l8cL_ITHJxg_p1xWpNx9OpaA_6qE6HV6miyV59OYKHW-tLFTJ3M4TmjOTOjIGYngYs2aANFllaFEF-Xpw-p16cc9juNkxWVslZFOXfFsiwXFiG44FTrlKIPmV9FrvE3mnM83atZ0TlJQaC9BW_9qVnbsB9nynN_vOUA3SCTegoiCqzKL2_-x08tCjbMH-_QxiYFzlr_6G9mH9cDjRIhRa4vU6pqAII_I-gyn5-HNooEPFJhOc7_hw"/>
+<div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Rank #3</div>
+</div>
+<p class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Handmade Italian</p>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight mb-1">Vantablack Chelsea</h3>
+<p class="text-sm font-medium text-on-surface-variant">$320 / Weekend</p>
+</div>
+<!-- Luxury Card 4 -->
+<div class="group cursor-pointer">
+<div class="aspect-[4/5] rounded-xl overflow-hidden bg-white shadow-sm mb-4 relative">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="elegant brown loafers in high grain leather resting on a premium oak wood surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCIQlg3h7os9SzlEKGsB4L-zS8jStlaHJq4VLBXsXlnxnNuAljnEomlKBEFeUIgoUdb-qXmekBLhpV_QBzFamE8QKep9OrQ2ccJ1LMbKcEu3XpDOXyH00pcZ7HQxF5pIbJSqpZA2O07TJehSh6WD7s-HJFQqL7jL8bNNYRdqri4T9Iy2F5AANlNxF28MDgKrxfH3OO5g7GsHfw6bKCPniU-1mwG1elBBK41K-eSOIk8l5OMvMN0gB35WUvYnRVP06NbN20Yr1Jjeg"/>
+<div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Rank #4</div>
+</div>
+<p class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Heritage Collection</p>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight mb-1">Sienna Tassel Loafer</h3>
+<p class="text-sm font-medium text-on-surface-variant">$295 / Weekend</p>
+</div>
+<!-- Luxury Card 5 -->
+<div class="group cursor-pointer">
+<div class="aspect-[4/5] rounded-xl overflow-hidden bg-white shadow-sm mb-4 relative">
+<img class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="high fashion heels with unique architectural design and metallic details in a soft ethereal studio setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQd7Z0I5oCfJr9mAM2fTfqD1JqXfnBXr4jStwVdbanRA_xUMC_HbMSyZ4g-XN8bIIC7SYrSkZW7E1C4rX-byF3Yhy9PIsFd9qlxuVRkMuxbUhpz0e0eTVdTGlz4fbibvWky4MiKKnxCo4Cr2CwmnpzzMlENPgxINJmVA8PX1XhvCsTHePJfsHHWmF9fNOrrPAahVhq0zo-z-NciyxtDKoWn4Z3Ot-NQe3QniWX32jwRYSL3wlXKXBKBwRvLdor8L4wppK0aP9WDg"/>
+<div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-black tracking-widest uppercase">Rank #5</div>
+</div>
+<p class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-1">Experimental Design</p>
+<h3 class="text-lg font-extrabold text-on-surface leading-tight mb-1">Chrome Helix Pump</h3>
+<p class="text-sm font-medium text-on-surface-variant">$550 / Weekend</p>
+</div>
+</div>
+</section>
+<!-- Trending Now Section -->
+<section class="py-24 px-8 bg-slate-900 text-white overflow-hidden relative">
+<div class="absolute top-0 right-0 w-1/3 h-full bg-blue-700/10 skew-x-12 transform translate-x-20"></div>
+<div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 relative z-10">
+<div>
+<div class="flex items-center gap-2 mb-4">
+<span class="material-symbols-outlined text-orange-500" data-icon="local_fire_department" style="font-variation-settings: 'FILL' 1;">local_fire_department</span>
+<span class="text-[10px] font-black tracking-[0.4em] uppercase text-blue-400">High Velocity Movement</span>
+</div>
+<h2 class="text-5xl font-black tracking-tighter uppercase leading-none">Top 5 Trending Now</h2>
+</div>
+<div class="mt-8 md:mt-0 flex gap-4">
+<button class="w-12 h-12 rounded-full border border-white/20 flex items-center justify-center hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="w-12 h-12 rounded-full bg-primary flex items-center justify-center shadow-lg">
+<span class="material-symbols-outlined" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+<div class="flex gap-8 overflow-x-auto hide-scrollbar pb-8 relative z-10">
+<!-- Trending 1 -->
+<div class="min-w-[400px] bg-slate-800 rounded-2xl p-6 flex items-center gap-6 group hover:bg-slate-700 transition-colors cursor-pointer">
+<div class="w-32 h-32 rounded-xl overflow-hidden bg-slate-900">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="vibrant red athletic running shoe with dynamic lighting and high contrast against dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDoNcQkApu6lapQ3sZ8EFVVHxsrjxQNROGsXuCudiC-SEar7ybNAWXhalSALmF6NegLHem2-GzaglZGdnXAalJJ8pQiIroBIrH11Hdai-cpFNgLdwrjVr0NVjPeLjvm1hm8QRm3etbSa3rMfy9toIrHq4RQKIm9iT_FiBej13f_KFF638_-hCmJQWq81eO77aON1teeEzR_xOxiVGmwjBMHm4p56k2SNt4r0675RWAp2UJlcAOv7Rb61dyyQk_6c53TD5di28gTpg"/>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="text-xs font-bold text-emerald-400">+124%</span>
+<span class="text-[10px] text-slate-400 uppercase tracking-widest">Growth this week</span>
+</div>
+<h3 class="text-xl font-bold mb-1">Crimson Racer Gen 2</h3>
+<p class="text-sm text-slate-400 mb-4">Performance Utility</p>
+<span class="text-xs bg-blue-600 px-3 py-1 rounded-full font-bold">In Stock</span>
+</div>
+</div>
+<!-- Trending 2 -->
+<div class="min-w-[400px] bg-slate-800 rounded-2xl p-6 flex items-center gap-6 group hover:bg-slate-700 transition-colors cursor-pointer">
+<div class="w-32 h-32 rounded-xl overflow-hidden bg-slate-900">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="clean minimal white sneakers on a simple gray studio background highlighting modern silhouette" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAPQsffozBQAka2bMFVn43cm5MHvyKZvbJ1sLbYRuR4_a18_mkIcqZYiWKiF9tZEC2RXMAODm6jrk3fDeCDuzC0YEtcpmUrPZpCZ5-vNXWIOSd-G5u7Ng03m2DIv9woYI9iBiBxrRjbdrgNNWXqr6Uf3CYQ-u_Y5HoV2XTyiJTf3lORYBY6ujwe8PDRbd0Rqlha-xrNW4ej5bdOfZQS2tfxD-2iXcwARuuhyOp6jRxyl5OuNBJJMk59LMeCPqkL2tIYIcdDcJnqCA"/>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="text-xs font-bold text-emerald-400">+89%</span>
+<span class="text-[10px] text-slate-400 uppercase tracking-widest">Trending Choice</span>
+</div>
+<h3 class="text-xl font-bold mb-1">Cloud Minimalist Low</h3>
+<p class="text-sm text-slate-400 mb-4">Everyday Essential</p>
+<span class="text-xs bg-slate-600 px-3 py-1 rounded-full font-bold">Low Stock</span>
+</div>
+</div>
+<!-- Trending 3 -->
+<div class="min-w-[400px] bg-slate-800 rounded-2xl p-6 flex items-center gap-6 group hover:bg-slate-700 transition-colors cursor-pointer">
+<div class="w-32 h-32 rounded-xl overflow-hidden bg-slate-900">
+<img class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="futuristic chunky sneaker with multi-textured panels in neutral tones on a dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD05L3GFdqKvrT0xy4RA3BkstjLOT5uc72XFHNG27ipxEznA8vCKieNZk9qAYqyD7CWemupjBNiIrcgyZaAAEHuTIKoGNXRcBTnLrfceMmc5-BfHcQ96_82ydZXnrhDFfzhzeJai-hYAUFJM0TllMFzhsVoW_1Tv2XJRvvQqkuQ9Fd_CNFK8IeOofMCgBNIFcXCOUDOgm9gAO_PN5zRyadkpijDs7zIcj8mremUTY6wX8YHOy5xoWLRuWJfjMXY9ppo1ZKKF9FwiQ"/>
+</div>
+<div>
+<div class="flex items-center gap-2 mb-2">
+<span class="text-xs font-bold text-emerald-400">+210%</span>
+<span class="text-[10px] text-slate-400 uppercase tracking-widest">Viral Item</span>
+</div>
+<h3 class="text-xl font-bold mb-1">Cyber-Pank 2099</h3>
+<p class="text-sm text-slate-400 mb-4">Streetwear Archive</p>
+<span class="text-xs bg-blue-600 px-3 py-1 rounded-full font-bold">In Stock</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Best Value Grid -->
+<section class="py-24 px-8 bg-white">
+<div class="max-w-7xl mx-auto">
+<div class="text-center mb-16">
+<h2 class="text-4xl font-black tracking-tighter uppercase mb-4">Top 5 Best Value Picks</h2>
+<p class="text-on-surface-variant max-w-2xl mx-auto">Premium style shouldn't break the bank. Our curators selected the highest quality options at accessible points.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+<!-- Value Item 1 (Featured) -->
+<div class="lg:col-span-2 lg:row-span-2 group relative rounded-2xl overflow-hidden shadow-sm border border-outline">
+<div class="h-full w-full absolute inset-0">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" data-alt="a pair of elegant suede shoes displayed artistically in a clean bright environment with soft shadows" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBuktUbEAPEspZZngd-CH3gxU2WSi58R5zAkcRVLJcO-q07GIQCpYSPEKva7DBIu3KX--I0W-BxECkQSsKkstncS_sCmLF1Q7B84GvHakZeGlkLo3WakygYc2YAii4cN6ujqvdWoHm04wUkduCMIr560YjJImhHLz0q-Gl2UgFxI0Mc9R0w-mRCP03HyFUA20LJnZuXwV6ahfCED1Iovdy88A12vaONyIzabk5wLmIJjyHtHkw9CVzZKoN6BPpTe5C82KutqTH8Q"/>
+</div>
+<div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+<div class="absolute bottom-0 left-0 p-10 text-white">
+<span class="bg-emerald-500 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mb-4 inline-block">Editor's Choice</span>
+<h3 class="text-3xl font-black uppercase mb-2">Sandstone Desert Boot</h3>
+<p class="text-slate-300 mb-6 max-w-sm">Premium Italian suede meets a resilient rubber sole for the ultimate all-day comfort.</p>
+<div class="flex items-center gap-6">
+<span class="text-2xl font-black">$45 / Day</span>
+<button class="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold text-sm uppercase">Quick Rent</button>
+</div>
+</div>
+</div>
+<!-- Value Item 2 -->
+<div class="bg-surface rounded-2xl p-6 border border-outline group hover:border-primary transition-colors">
+<div class="aspect-square rounded-xl overflow-hidden mb-6 bg-white">
+<img class="w-full h-full object-cover group-hover:rotate-6 transition-transform duration-500" data-alt="classic black and white canvas sneakers on a simple wooden floor with natural lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAK-yc3O3AVM1wiMscW-Bv2lDIca5YGoUNm7XuRqGknypltwpnQY0Tus8kKy-ex1VT3q2JT2VpRNR122bOd1e3F1-S8Hw89D-ic-J__agRwHGlK1rELmfLFP40hZKvgVS3AtPhAPNv-48TOyHCuGSdknuXuztZMRvqp_njTH5QSBoQBmjnqrio33jAMFFuFl8hZ_051Csin6gDwRP97vtp1RKlj2BkY10f46rJx2YHUz4p4VXenbJzj2RA1BWMdRaqnnVPsH83WTw"/>
+</div>
+<h3 class="text-xl font-extrabold mb-1">Classic Canvas High</h3>
+<p class="text-sm text-on-surface-variant mb-4">Timeless street appeal</p>
+<div class="flex justify-between items-center">
+<span class="font-black text-primary">$15 / Day</span>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="add_circle">add_circle</span>
+</div>
+</div>
+<!-- Value Item 3 -->
+<div class="bg-surface rounded-2xl p-6 border border-outline group hover:border-primary transition-colors">
+<div class="aspect-square rounded-xl overflow-hidden mb-6 bg-white">
+<img class="w-full h-full object-cover group-hover:-rotate-6 transition-transform duration-500" data-alt="modern techwear inspired sneakers in dark navy with multi-material construction and futuristic accents" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCBbG7p9o_23ksEHir6jfeEXtVsXJ3GnPUcZtKSRYMvQ-M-sdTTRMDhKT9BGnsQgF5_oa_MtBX7xuCZE9F1cZAw-eTcCv6Byur1zMb4rMordg_Z_2kz4vF2yUdXllHx4fVJdI2MqLRyYo7HmtCe7zm_aMKEkFeH3uKlowcC32zeHUHsHycRkuli_ujuryNHaiRSMHhFLVki_8KBLwJoxlvFYP9bSDUNnI8R4rXFAhqNAXwlBq7cAKLP6tbh-l-inNWUl_U7uH2KUQ"/>
+</div>
+<h3 class="text-xl font-extrabold mb-1">Navy Tech Trainer</h3>
+<p class="text-sm text-on-surface-variant mb-4">Performance at scale</p>
+<div class="flex justify-between items-center">
+<span class="font-black text-primary">$22 / Day</span>
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="add_circle">add_circle</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Editorial & News Section -->
+<section class="py-24 px-8 bg-slate-50">
+<div class="max-w-7xl mx-auto">
+<div class="flex items-center gap-4 mb-12">
+<div class="h-px bg-slate-300 flex-1"></div>
+<h2 class="text-2xl font-black tracking-widest uppercase text-slate-400">The Archive News</h2>
+<div class="h-px bg-slate-300 flex-1"></div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-12">
+<!-- Article 1 -->
+<article class="group">
+<div class="aspect-video overflow-hidden rounded-2xl mb-6 shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="artistic close-up of high-quality shoemaking tools and materials on a craftsman's workbench" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9ssH376ZriVQWBpIB9Q03giQDr44hnUDFyIcs1970txcZruemGgKdNqNjL3DjNPDbsvlJm6hxWJsoonTPILcnlqAYMe8TKeqR1rTYmFMecPBjIpggUcPSL-REGGgt6bOZiYChrHO-hmmWYF72-D26kRH-evw8z7jog1179ip9tWJ8RErJ3BoWjOaP77tEbaPTgMuH-bxqBoSWtRkQWLI0TNGaxinc1_5sXkoefgZYStO8vEepiMTkoKCB-980vZ7q2qx1ot4pRA"/>
+</div>
+<span class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3 block">Craftsmanship</span>
+<h3 class="text-2xl font-extrabold mb-4 leading-tight group-hover:text-primary transition-colors">The Art of the Oxford: A Masterclass in Tradition</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6 line-clamp-3">From the historic streets of London to the modern boardroom, we trace the evolution of the world's most formal footwear and how to style it today.</p>
+<a class="font-bold text-xs uppercase tracking-widest border-b-2 border-primary pb-1" href="#">Read Story</a>
+</article>
+<!-- Article 2 -->
+<article class="group">
+<div class="aspect-video overflow-hidden rounded-2xl mb-6 shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="man in stylish summer attire walking through a sun-drenched Mediterranean coastal village street" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCVkaovAYXXRu6RZ2h8tJTM3JJuzEDiSOJJoaAstzj1b7RuLOzGKZFNaht-6f12lGRC-qZ1MN1FtuJTn3kuwYnbFYKt1vGW2o7z2jKPcrPMvvz06oV6vbEhulvCUvT_vtyMJ-9g54eyHnCXP5GetVuM6BzKTrmQbwIekmo7NZ2c__y6P5mgNgPI6Ga6tQxkDdS0lgR2_H3ezQxHgvQQ9tvaNCUpyL_12_rntn5iwK32xtuvOP_UNdNV-WtiqN8BmgDZm7ZH-oh7nQ"/>
+</div>
+<span class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3 block">Seasonal Guide</span>
+<h3 class="text-2xl font-extrabold mb-4 leading-tight group-hover:text-primary transition-colors">Summer Style Guide: Breathable Luxury</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6 line-clamp-3">Don't sacrifice elegance for comfort as temperatures rise. Discover the linens, suedes, and perforated leathers dominating the season.</p>
+<a class="font-bold text-xs uppercase tracking-widest border-b-2 border-primary pb-1" href="#">Read Story</a>
+</article>
+<!-- Article 3 -->
+<article class="group">
+<div class="aspect-video overflow-hidden rounded-2xl mb-6 shadow-sm">
+<img class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" data-alt="shelves in a high-end luxury shoe store filled with various modern and classic designer footwear" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVRD1IGJt0UNt9xaQPod3Imv_qDMYZgljHMrxb--p2lDDoBzihQL-KbYHuqIdk3SV0HuweSsTeenPkXsN2JypoVyg6zECBmfTjVlK4J80F9UEzixUrZKN_jGUWdJ9N0dbXZtE_STkks942KRdRdzbQ8D2YN4sonLOWSp1yB2kzhYcI3GekYRVtRN-yVP14JGPbKLBu08xE2ZF3BJZb8rt6utLp_3AyhVIDGOEDsGRGM2xbeOBz-vkdDYck_sPS8jdcQujVaqgq4Q"/>
+</div>
+<span class="text-[10px] font-black text-blue-700 uppercase tracking-widest mb-3 block">New Drop</span>
+<h3 class="text-2xl font-extrabold mb-4 leading-tight group-hover:text-primary transition-colors">New Inventory Arrival: The Techwear Series</h3>
+<p class="text-on-surface-variant text-sm leading-relaxed mb-6 line-clamp-3">Our archive expands with twenty new pairs focusing on high-performance materials and experimental silhouettes from Tokyo's best designers.</p>
+<a class="font-bold text-xs uppercase tracking-widest border-b-2 border-primary pb-1" href="#">Read Story</a>
+</article>
+</div>
+</div>
+</section>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center max-w-7xl mx-auto">
+<div>
+<span class="font-black text-slate-900 dark:text-slate-50 text-2xl uppercase mb-4 block tracking-tighter">Cobalt Kinetic</span>
+<p class="font-inter text-xs font-medium uppercase tracking-widest text-slate-500 dark:text-slate-400">© 2024 Cobalt Kinetic. Precision movement, curated style.</p>
+</div>
+<div class="flex flex-wrap gap-x-8 gap-y-4 justify-start md:justify-end">
+<a class="font-inter text-xs font-medium uppercase tracking-widest text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition-opacity" href="#">Terms of Service</a>
+<a class="font-inter text-xs font-medium uppercase tracking-widest text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition-opacity" href="#">Privacy Policy</a>
+<a class="font-inter text-xs font-medium uppercase tracking-widest text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition-opacity" href="#">Sustainability</a>
+<a class="font-inter text-xs font-medium uppercase tracking-widest text-slate-500 hover:text-slate-900 dark:hover:text-slate-200 transition-opacity" href="#">Affiliates</a>
+</div>
+</div>
+</footer>
+</main>
+<!-- Floating Action Button - suppressed based on details page rule but often used for 'Rent' in landing -->
+<div class="fixed bottom-8 right-8 z-50">
+<button class="bg-primary text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="shopping_bag">shopping_bag</span>
+</button>
+</div>
+</body></html>

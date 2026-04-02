@@ -83,6 +83,8 @@ export class ShoeController {
     const result = await this.listShoes.execute({
       ...(query.priceBucket !== undefined ? { priceBucket: query.priceBucket } : {}),
       ...(query.stockBucket !== undefined ? { stockBucket: query.stockBucket } : {}),
+      ...(query.page !== undefined ? { page: query.page } : {}),
+      ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
     });
     res.json(result);
   }
