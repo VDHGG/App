@@ -7,6 +7,7 @@ import { ConflictError } from '@domain/errors/ConflictError';
 import { BusinessRuleError } from '@domain/errors/BusinessRuleError';
 import { UnauthorizedError } from '@domain/errors/UnauthorizedError';
 import { ForbiddenError } from '@domain/errors/ForbiddenError';
+import { RateLimitError } from '@domain/errors/RateLimitError';
 
 function statusFor(err: DomainError): number {
   if (err instanceof NotFoundError) return 404;
@@ -15,6 +16,7 @@ function statusFor(err: DomainError): number {
   if (err instanceof ValidationError) return 400;
   if (err instanceof UnauthorizedError) return 401;
   if (err instanceof ForbiddenError) return 403;
+  if (err instanceof RateLimitError) return 429;
   return 400;
 }
 

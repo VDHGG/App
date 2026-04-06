@@ -35,6 +35,31 @@ export function createBearerAuthMiddleware(accessTokenService: AccessTokenServic
   };
 }
 
+export function createOptionalBearerAuthMiddleware(accessTokenService: AccessTokenService): RequestHandler {
+  return async (req, res, next) => {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) {
+      next();
+      return;
+    }
+    const token = header.slice('Bearer '.length).trim();
+    if (!token) {
+      next();
+      return;
+    }
+    try {
+      const payload = await accessTokenService.verifyAccessToken(token);
+      req.auth = payload;
+      next();
+    } catch {
+      res.status(401).json({
+        error: 'UNAUTHORIZED',
+        message: 'Invalid or expired token.',
+      });
+    }
+  };
+}
+
 export function createRequireRolesMiddleware(...roles: AuthRole[]): RequestHandler {
   return (req, res, next) => {
     if (!req.auth) {

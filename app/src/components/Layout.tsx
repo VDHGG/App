@@ -3,6 +3,7 @@ import { WishlistProvider } from '../wishlist/WishlistContext'
 import { RentalCartProvider } from '../cart/RentalCartContext'
 import { Header } from './Header.tsx'
 import { Footer } from './Footer.tsx'
+import { ChatbotWidget } from './ChatbotWidget'
 
 export function Layout() {
   return (
@@ -14,6 +15,7 @@ export function Layout() {
             <Outlet />
           </main>
           <Footer />
+          <ChatbotWidget />
         </RentalCartProvider>
       </WishlistProvider>
     </div>

@@ -6,6 +6,7 @@ import { MysqlShoeRepository } from '@adapter/persistence/MysqlShoeRepository.ad
 import { MysqlCatalogLookup } from '@adapter/persistence/MysqlCatalogLookup.adapter';
 import { MysqlCatalogAdmin } from '@adapter/persistence/MysqlCatalogAdmin.adapter';
 import { MysqlRentalRepository } from '@adapter/persistence/MysqlRentalRepository.adapter';
+import { MysqlRentalPaymentRepository } from '@adapter/persistence/MysqlRentalPaymentRepository.adapter';
 import { MysqlWishlistRepository } from '@adapter/persistence/MysqlWishlistRepository.adapter';
 import { MysqlRentalAvailabilityChecker } from '@adapter/persistence/MysqlRentalAvailabilityChecker.adapter';
 import { MysqlTransactionManager } from '@adapter/persistence/MysqlTransactionManager.adapter';
@@ -63,6 +64,8 @@ import { UploadShoeImageService } from '@usecase/UploadShoeImage.service';
 import { AdminListSystemUsersService } from '@usecase/AdminListSystemUsers.service';
 import { AdminUpdateSystemUserService } from '@usecase/AdminUpdateSystemUser.service';
 import { UpdateCustomerAdminService } from '@usecase/UpdateCustomerAdmin.service';
+import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
+import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
 import { createPool } from './db/MysqlConnection';
 
 export class MysqlContainer {
@@ -71,6 +74,8 @@ export class MysqlContainer {
   private readonly systemUserRepository: MysqlSystemUserRepository;
   private readonly shoeRepository: MysqlShoeRepository;
   private readonly rentalRepository: MysqlRentalRepository;
+  private readonly rentalPaymentRepository: MysqlRentalPaymentRepository;
+  private readonly expirePendingOnlinePayments: ExpirePendingOnlinePaymentsService;
   private readonly wishlistRepository: MysqlWishlistRepository;
   private readonly transactionManager: MysqlTransactionManager;
   private readonly accessTokenService: JoseAccessTokenService;
@@ -89,8 +94,15 @@ export class MysqlContainer {
     this.systemUserRepository = new MysqlSystemUserRepository(this.pool);
     this.shoeRepository = new MysqlShoeRepository(this.pool);
     this.rentalRepository = new MysqlRentalRepository(this.pool);
-    this.wishlistRepository = new MysqlWishlistRepository(this.pool);
+    this.rentalPaymentRepository = new MysqlRentalPaymentRepository(this.pool);
     this.transactionManager = new MysqlTransactionManager(this.pool);
+    this.expirePendingOnlinePayments = new ExpirePendingOnlinePaymentsService(
+      this.transactionManager,
+      this.rentalPaymentRepository,
+      this.rentalRepository,
+      new CancelRentalService(this.rentalRepository, this.customerRepository)
+    );
+    this.wishlistRepository = new MysqlWishlistRepository(this.pool);
 
     this.accessTokenService = new JoseAccessTokenService(
       process.env.JWT_SECRET ?? '',
@@ -251,6 +263,14 @@ export class MysqlContainer {
 
   getGetRentalUseCase(): GetRentalUseCase {
     return new GetRentalService(this.rentalRepository);
+  }
+
+  getRentalPaymentRepository(): RentalPaymentRepository {
+    return this.rentalPaymentRepository;
+  }
+
+  getExpirePendingOnlinePaymentsService(): ExpirePendingOnlinePaymentsService {
+    return this.expirePendingOnlinePayments;
   }
 
   getWishlistUseCase(): WishlistUseCase {

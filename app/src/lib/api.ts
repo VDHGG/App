@@ -31,18 +31,43 @@ export type ApiError = {
 }
 
 export function getApiErrorMessage(err: unknown): string {
-  if (err instanceof Error) return err.message
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data
+    if (data && typeof data === 'object' && !Array.isArray(data)) {
+      const o = data as Record<string, unknown>
+      if (typeof o.message === 'string' && o.message.trim() !== '') {
+        return o.message
+      }
+      if (typeof o.error === 'string' && o.error.trim() !== '') {
+        return o.error
+      }
+    }
+    if (typeof err.message === 'string' && err.message.trim() !== '') {
+      return err.message
+    }
+    if (err.code === 'ERR_NETWORK') {
+      return 'Không kết nối được máy chủ API. Hãy chạy backend (npm run server) và thử lại.'
+    }
+  }
+  if (err instanceof Error && err.message.trim() !== '') {
+    return err.message
+  }
+  if (typeof err === 'string') return err
   return 'An unexpected error occurred.'
 }
 
 api.interceptors.response.use(
   (res) => res,
   (err) => {
+    const reqUrl = axios.isAxiosError(err) ? (err.config?.url ?? '') : ''
+    const isChatRequest = reqUrl.includes('/chat')
+
     if (axios.isAxiosError(err) && err.response?.status === 401) {
       const path =
         typeof window !== 'undefined' ? window.location.pathname : ''
       const publicPaths = ['/login', '/signup']
       if (
+        !isChatRequest &&
         getAccessToken() &&
         !publicPaths.some((p) => path === p || path.startsWith(`${p}/`))
       ) {
@@ -54,8 +79,11 @@ api.interceptors.response.use(
       }
     }
     if (axios.isAxiosError(err) && err.response?.data) {
-      const data = err.response.data as ApiError
-      err.message = data.message ?? err.message
+      const raw = err.response.data
+      if (typeof raw === 'object' && raw !== null && !Array.isArray(raw)) {
+        const data = raw as ApiError & { error?: string }
+        err.message = data.message ?? data.error ?? err.message
+      }
     }
     return Promise.reject(err)
   },

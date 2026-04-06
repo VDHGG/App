@@ -9,7 +9,7 @@ import { RentalStatus } from '@domain/RentalStatus.enum';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
 
 
-const PERIOD = new RentalPeriod(new Date('2026-04-01'), new Date('2026-04-05'));
+const PERIOD = new RentalPeriod(new Date('2026-05-01'), new Date('2026-05-05'));
 
 function seedCustomer() {
   return new Customer({
@@ -41,7 +41,7 @@ function seedRentalActive() {
     ],
     period: PERIOD,
     status: RentalStatus.ACTIVE,
-    activatedAt: new Date('2026-04-01'),
+    activatedAt: new Date('2026-05-05'),
   });
 }
 
@@ -85,7 +85,7 @@ describe('ReturnRentalService - happy path', () => {
 
     const result = await service.execute({
       rentalId: 'R001',
-      returnedAt: new Date('2026-04-10'),
+      returnedAt: new Date('2026-05-10'),
       note: 'left heel scuffed',
     });
 

@@ -22,11 +22,23 @@ app.use(express.json());
 app.use('/api/v1', createRouter(container));
 app.use(errorHandler);
 
+const expirePayments = container.getExpirePendingOnlinePaymentsService();
+const expireMs = Number(process.env.PAYMENT_EXPIRE_JOB_MS?.trim() ?? '60000');
+const intervalMs =
+  Number.isFinite(expireMs) && expireMs >= 10_000 ? Math.min(expireMs, 3600_000) : 60_000;
+const expireTimer = setInterval(() => {
+  void expirePayments.execute().catch((err) => console.error('[expire pending payments]', err));
+}, intervalMs);
+if (typeof expireTimer.unref === 'function') {
+  expireTimer.unref();
+}
+
 const server = app.listen(PORT, () => {
   console.log(`API listening on http://localhost:${PORT}  (base path /api/v1 — open UI with: npm run dev → http://localhost:5173)`);
 });
 
 process.on('SIGTERM', async () => {
+  clearInterval(expireTimer);
   server.close();
   await container.close();
 });

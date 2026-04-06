@@ -9,10 +9,13 @@ import { CatalogAdminController } from './CatalogAdminController.adapter';
 import { AdminSystemUserController } from './AdminSystemUserController.adapter';
 import { WishlistController } from './WishlistController.adapter';
 import { MomoPaymentController } from './MomoPaymentController.adapter';
+import { ChatController } from './ChatController.adapter';
 import {
   createBearerAuthMiddleware,
+  createOptionalBearerAuthMiddleware,
   createRequireRolesMiddleware,
 } from './middleware/authMiddleware';
+import rateLimit from 'express-rate-limit';
 
 export function createRouter(container: MysqlContainer): Router {
   const router = Router();
@@ -41,6 +44,7 @@ export function createRouter(container: MysqlContainer): Router {
         'GET /health',
         'POST /api/v1/payments/momo/create (customer bearer)',
         'POST /api/v1/payments/momo/ipn (MoMo server)',
+        'POST /api/v1/chat (optional Bearer; AI assistant)',
       ],
     });
   });
@@ -99,7 +103,22 @@ export function createRouter(container: MysqlContainer): Router {
   );
   const catalogAdminCtrl = new CatalogAdminController(container.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container.getWishlistUseCase());
-  const momoPaymentCtrl = new MomoPaymentController(container.getGetRentalUseCase());
+  const momoPaymentCtrl = new MomoPaymentController(
+    container.getGetRentalUseCase(),
+    container.getRentalPaymentRepository()
+  );
+  const optionalBearer = createOptionalBearerAuthMiddleware(accessTokenService);
+  const chatRateLimit = rateLimit({
+    windowMs: 60_000,
+    max: 24,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  const chatCtrl = new ChatController(
+    container.getListRentalsUseCase(),
+    container.getGetRentalUseCase(),
+    container.getListShoesUseCase()
+  );
 
   router.use('/', shoeCtrl.routes(tx, { admin: adminGuard, authenticated: storefrontAuth }));
   router.use('/', catalogAdminCtrl.routes({ admin: adminGuard }));
@@ -116,6 +135,7 @@ export function createRouter(container: MysqlContainer): Router {
   );
   router.use('/wishlist', wishlistCtrl.routes({ customer: customerOnlyAuth }));
   router.use('/', momoPaymentCtrl.routes(customerOnlyAuth));
+  router.use('/', chatCtrl.routes([chatRateLimit, optionalBearer]));
 
   return router;
 }
