@@ -62,3 +62,7 @@ export async function updateSystemUser(
   )
   return data
 }
+
+export async function deleteSystemUser(userId: string): Promise<void> {
+  await api.delete(`/system-users/${encodeURIComponent(userId)}`)
+}

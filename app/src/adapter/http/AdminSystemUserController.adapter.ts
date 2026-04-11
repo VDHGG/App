@@ -2,6 +2,7 @@ import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import type { AdminListSystemUsersUseCase } from '@usecase/AdminListSystemUsersUseCase.port';
 import type { AdminUpdateSystemUserUseCase } from '@usecase/AdminUpdateSystemUserUseCase.port';
+import type { DeleteSystemUserAdminUseCase } from '@usecase/DeleteSystemUserAdminUseCase.port';
 import type { SystemUserRepository } from '@port/SystemUserRepository.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import {
@@ -10,6 +11,7 @@ import {
 } from './adminSystemUser.schema';
 import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
 import type { TransactionManager } from '@port/TransactionManager.port';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 export type AdminSystemUserRouteGuards = {
   admin?: RequestHandler[];
@@ -19,15 +21,18 @@ export class AdminSystemUserController {
   private readonly systemUsers: SystemUserRepository;
   private readonly listUsers: AdminListSystemUsersUseCase;
   private readonly updateUser: AdminUpdateSystemUserUseCase;
+  private readonly deleteUser: DeleteSystemUserAdminUseCase;
 
   constructor(
     systemUsers: SystemUserRepository,
     listUsers: AdminListSystemUsersUseCase,
-    updateUser: AdminUpdateSystemUserUseCase
+    updateUser: AdminUpdateSystemUserUseCase,
+    deleteUser: DeleteSystemUserAdminUseCase
   ) {
     this.systemUsers = systemUsers;
     this.listUsers = listUsers;
     this.updateUser = updateUser;
+    this.deleteUser = deleteUser;
   }
 
   routes(transactionManager: TransactionManager, guards?: AdminSystemUserRouteGuards): Router {
@@ -40,6 +45,7 @@ export class AdminSystemUserController {
       ...admin,
       transactionalRoute(transactionManager, this.patch.bind(this))
     );
+    router.delete('/:userId', ...admin, asyncRoute(this.deleteById.bind(this)));
     return router;
   }
 
@@ -84,5 +90,15 @@ export class AdminSystemUserController {
       ...(body.newPassword !== undefined ? { newPassword: body.newPassword } : {}),
     });
     res.json(result);
+  }
+
+  private async deleteById(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.sub) {
+      throw new ValidationError('Authenticated user id missing.');
+    }
+    const userId = req.params['userId'] as string;
+    await this.deleteUser.execute({ userId, requestingUserId: auth.sub });
+    res.status(204).end();
   }
 }

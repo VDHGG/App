@@ -4,6 +4,7 @@ import type { GetCustomerUseCase } from '@usecase/GetCustomerUseCase.port';
 import type { ListCustomersUseCase } from '@usecase/ListCustomersUseCase.port';
 import type { RegisterCustomerUseCase } from '@usecase/RegisterCustomerUseCase.port';
 import type { UpdateCustomerAdminUseCase } from '@usecase/UpdateCustomerAdminUseCase.port';
+import type { DeleteCustomerAdminUseCase } from '@usecase/DeleteCustomerAdminUseCase.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import {
   ListCustomersQuerySchema,
@@ -21,17 +22,20 @@ export class CustomerController {
   private readonly listCustomers: ListCustomersUseCase;
   private readonly getCustomer: GetCustomerUseCase;
   private readonly updateCustomerAdmin: UpdateCustomerAdminUseCase;
+  private readonly deleteCustomerAdmin: DeleteCustomerAdminUseCase;
 
   constructor(
     registerCustomer: RegisterCustomerUseCase,
     listCustomers: ListCustomersUseCase,
     getCustomer: GetCustomerUseCase,
-    updateCustomerAdmin: UpdateCustomerAdminUseCase
+    updateCustomerAdmin: UpdateCustomerAdminUseCase,
+    deleteCustomerAdmin: DeleteCustomerAdminUseCase
   ) {
     this.registerCustomer = registerCustomer;
     this.listCustomers = listCustomers;
     this.getCustomer = getCustomer;
     this.updateCustomerAdmin = updateCustomerAdmin;
+    this.deleteCustomerAdmin = deleteCustomerAdmin;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
@@ -45,6 +49,7 @@ export class CustomerController {
       ...admin,
       transactionalRoute(transactionManager, this.patchAdmin.bind(this))
     );
+    router.delete('/:id', ...admin, asyncRoute(this.deleteAdmin.bind(this)));
     return router;
   }
 
@@ -80,5 +85,10 @@ export class CustomerController {
     const body = RegisterCustomerSchema.parse(req.body);
     const result = await this.registerCustomer.execute(body);
     res.status(201).json(result);
+  }
+
+  private async deleteAdmin(req: Request, res: Response): Promise<void> {
+    await this.deleteCustomerAdmin.execute({ customerId: req.params['id'] as string });
+    res.status(204).end();
   }
 }

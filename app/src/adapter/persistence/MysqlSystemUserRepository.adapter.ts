@@ -182,4 +182,15 @@ export class MysqlSystemUserRepository implements SystemUserRepository {
       ]
     );
   }
+
+  async unlinkCustomerLinks(customerId: string): Promise<void> {
+    await this.conn().query(
+      `UPDATE system_users SET customer_id = NULL, updated_at = NOW() WHERE customer_id = ?`,
+      [customerId]
+    );
+  }
+
+  async deleteById(userId: string): Promise<void> {
+    await this.conn().query('DELETE FROM system_users WHERE user_id = ?', [userId]);
+  }
 }

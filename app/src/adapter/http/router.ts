@@ -36,8 +36,11 @@ export function createRouter(container: MysqlContainer): Router {
         'GET /api/v1/shoes (optional ?page=&pageSize=)',
         'GET /api/v1/customers (optional ?page=&pageSize=&search=)',
         'PATCH /api/v1/customers/:id (admin)',
+        'DELETE /api/v1/customers/:id (admin)',
         'GET /api/v1/system-users (admin, optional ?page=&pageSize=&search=)',
         'PATCH /api/v1/system-users/:userId (admin)',
+        'DELETE /api/v1/system-users/:userId (admin)',
+        'DELETE /api/v1/rentals/:id (admin)',
         'GET /api/v1/rentals (optional ?page=&pageSize=&search=)',
         'GET /api/v1/rentals/me (customer)',
         'GET /api/v1/wishlist (customer)',
@@ -76,12 +79,14 @@ export function createRouter(container: MysqlContainer): Router {
     container.getRegisterCustomerUseCase(),
     container.getListCustomersUseCase(),
     container.getGetCustomerUseCase(),
-    container.getUpdateCustomerAdminUseCase()
+    container.getUpdateCustomerAdminUseCase(),
+    container.getDeleteCustomerAdminUseCase()
   );
   const adminSystemUserCtrl = new AdminSystemUserController(
     container.getSystemUserRepository(),
     container.getAdminListSystemUsersUseCase(),
-    container.getAdminUpdateSystemUserUseCase()
+    container.getAdminUpdateSystemUserUseCase(),
+    container.getDeleteSystemUserAdminUseCase()
   );
   const catalogLookup = container.getCatalogLookup();
   const shoeCtrl = new ShoeController(
@@ -99,7 +104,8 @@ export function createRouter(container: MysqlContainer): Router {
     container.getReturnRentalUseCase(),
     container.getCancelRentalUseCase(),
     container.getListRentalsUseCase(),
-    container.getGetRentalUseCase()
+    container.getGetRentalUseCase(),
+    container.getDeleteRentalAdminUseCase()
   );
   const catalogAdminCtrl = new CatalogAdminController(container.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container.getWishlistUseCase());

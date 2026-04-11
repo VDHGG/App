@@ -41,6 +41,8 @@ describe('UpdateProfileService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
 
     const customer = new Customer({
@@ -55,6 +57,7 @@ describe('UpdateProfileService', () => {
       findById: vi.fn().mockResolvedValue(customer),
       findAll: vi.fn(),
       save: vi.fn(),
+      deleteById: vi.fn(),
     };
 
     const transactionManager: TransactionManager = {
@@ -110,6 +113,8 @@ describe('UpdateProfileService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
 
     const customers: CustomerRepository = {
@@ -117,6 +122,7 @@ describe('UpdateProfileService', () => {
       findById: vi.fn(),
       findAll: vi.fn(),
       save: vi.fn(),
+      deleteById: vi.fn(),
     };
 
     const transactionManager: TransactionManager = {

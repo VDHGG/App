@@ -29,6 +29,8 @@ describe('LoginUserService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('signed-jwt'),
@@ -71,6 +73,8 @@ describe('LoginUserService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('tok'),
@@ -107,6 +111,8 @@ describe('LoginUserService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn(),

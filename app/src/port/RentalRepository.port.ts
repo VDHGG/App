@@ -23,4 +23,6 @@ export interface RentalRepository {
   findById(id: string): Promise<Rental | null>;
   findList(filters?: ListRentalsFilters): Promise<ListRentalsResult>;
   save(rental: Rental): Promise<void>;
+  deleteById(rentalId: string): Promise<void>;
+  deleteByCustomerId(customerId: string): Promise<void>;
 }

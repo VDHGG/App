@@ -3,6 +3,7 @@ import {
   listCustomers,
   getCustomer,
   updateCustomerAdmin,
+  deleteCustomerAdmin,
   type CustomerSummary,
   type CustomerRank,
   type GetCustomerResponse,
@@ -46,6 +47,8 @@ export function CustomersListPage() {
   const [form, setForm] = useState<GetCustomerResponse>(() => emptyForm())
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [saveLoading, setSaveLoading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<CustomerSummary | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearch(searchInput), 350)
@@ -90,6 +93,31 @@ export function CustomersListPage() {
     setEditError(null)
     setForm(emptyForm())
     setConfirmOpen(false)
+  }
+
+  const runDeleteCustomer = async () => {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    setError(null)
+    try {
+      await deleteCustomerAdmin(deleteTarget.customerId)
+      setDeleteTarget(null)
+      const res = await listCustomers({
+        page,
+        pageSize: DEFAULT_PAGE_SIZE,
+        ...(search.trim() ? { search: search.trim() } : {}),
+      })
+      setCustomers(res.customers)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err))
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   const requestSave = (e: React.FormEvent) => {
@@ -191,7 +219,9 @@ export function CustomersListPage() {
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Current Rented
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider" />
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -236,13 +266,23 @@ export function CustomersListPage() {
                       </td>
                       <td className="px-6 py-4 text-sm font-bold">{c.currentRentedItems}</td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          type="button"
-                          onClick={() => openEdit(c.customerId)}
-                          className="text-sm font-semibold text-primary hover:underline"
-                        >
-                          Edit
-                        </button>
+                        <div className="flex items-center justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => openEdit(c.customerId)}
+                            className="text-sm font-semibold text-primary hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(c)}
+                            disabled={deleteLoading}
+                            className="text-sm font-semibold text-red-600 hover:underline disabled:opacity-50"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -394,6 +434,22 @@ export function CustomersListPage() {
         loading={saveLoading}
         onCancel={() => !saveLoading && setConfirmOpen(false)}
         onConfirm={() => void saveCustomer()}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Xóa khách hàng?"
+        message={
+          deleteTarget
+            ? `Xóa vĩnh viễn ${deleteTarget.fullName} (${deleteTarget.customerId})? Mọi đơn thuê của khách sẽ bị xóa; tài khoản đăng nhập (nếu có) sẽ được gỡ liên kết khách hàng. Không thể hoàn tác.`
+            : ''
+        }
+        confirmLabel="Xóa"
+        cancelLabel="Hủy"
+        danger
+        loading={deleteLoading}
+        onCancel={() => !deleteLoading && setDeleteTarget(null)}
+        onConfirm={() => void runDeleteCustomer()}
       />
     </>
   )

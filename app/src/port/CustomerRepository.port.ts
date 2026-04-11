@@ -16,4 +16,5 @@ export interface CustomerRepository {
   findAll(options?: ListCustomersOptions): Promise<ListCustomersResult>;
   findByEmail(email: string): Promise<Customer | null>;
   save(customer: Customer): Promise<void>;
+  deleteById(customerId: string): Promise<void>;
 }

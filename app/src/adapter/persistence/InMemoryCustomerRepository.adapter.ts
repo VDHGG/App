@@ -33,4 +33,8 @@ export class InMemoryCustomerRepository implements CustomerRepository {
   async save(customer: Customer): Promise<void> {
     this.store.set(customer.id, customer);
   }
+
+  async deleteById(customerId: string): Promise<void> {
+    this.store.delete(customerId);
+  }
 }

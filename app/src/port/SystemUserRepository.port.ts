@@ -61,4 +61,6 @@ export interface SystemUserRepository {
     userId: string,
     fields: { fullName: string; email: string; phone: string | null; isActive: boolean }
   ): Promise<void>;
+  unlinkCustomerLinks(customerId: string): Promise<void>;
+  deleteById(userId: string): Promise<void>;
 }

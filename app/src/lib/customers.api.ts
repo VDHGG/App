@@ -90,3 +90,7 @@ export async function updateCustomerAdmin(
   )
   return data
 }
+
+export async function deleteCustomerAdmin(customerId: string): Promise<void> {
+  await api.delete(`/customers/${encodeURIComponent(customerId)}`)
+}

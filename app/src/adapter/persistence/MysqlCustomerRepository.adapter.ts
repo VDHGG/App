@@ -160,4 +160,8 @@ export class MysqlCustomerRepository implements CustomerRepository {
       ]
     );
   }
+
+  async deleteById(customerId: string): Promise<void> {
+    await this.conn().query('DELETE FROM customers WHERE customer_id = ?', [customerId]);
+  }
 }

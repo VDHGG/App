@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listSystemUsers } from '../../lib/systemUsers.api'
+import { listSystemUsers, deleteSystemUser } from '../../lib/systemUsers.api'
 import type { SystemUserSummary } from '../../lib/systemUsers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
+import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
+import { useAuth } from '../../auth/AuthContext'
+import { getApiErrorMessage } from '../../lib/api'
 import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
 import { AdminPagination } from '../../components/admin/AdminPagination'
 
@@ -12,6 +15,7 @@ const ROLE_LABEL: Record<number, string> = {
 }
 
 export function AdminSystemUsersPage() {
+  const { user: me } = useAuth()
   const [users, setUsers] = useState<SystemUserSummary[]>([])
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
@@ -23,6 +27,8 @@ export function AdminSystemUsersPage() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SystemUserSummary | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
     const t = window.setTimeout(() => setSearch(searchInput), 350)
@@ -53,6 +59,31 @@ export function AdminSystemUsersPage() {
       )
       .finally(() => setLoading(false))
   }, [page, search])
+
+  const runDeleteUser = async () => {
+    if (!deleteTarget) return
+    setDeleteLoading(true)
+    setError(null)
+    try {
+      await deleteSystemUser(deleteTarget.userId)
+      setDeleteTarget(null)
+      const res = await listSystemUsers({
+        page,
+        pageSize: DEFAULT_PAGE_SIZE,
+        ...(search.trim() ? { search: search.trim() } : {}),
+      })
+      setUsers(res.users)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err))
+    } finally {
+      setDeleteLoading(false)
+    }
+  }
 
   if (loading && users.length === 0) {
     return (
@@ -121,7 +152,9 @@ export function AdminSystemUsersPage() {
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider" />
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -171,12 +204,29 @@ export function AdminSystemUsersPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <Link
-                          to={`/admin/system-users/${encodeURIComponent(u.userId)}`}
-                          className="text-sm font-semibold text-primary hover:underline"
-                        >
-                          Edit
-                        </Link>
+                        <div className="flex items-center justify-end gap-3">
+                          <Link
+                            to={`/admin/system-users/${encodeURIComponent(u.userId)}`}
+                            className="text-sm font-semibold text-primary hover:underline"
+                          >
+                            Edit
+                          </Link>
+                          <button
+                            type="button"
+                            disabled={
+                              deleteLoading || (me?.sub != null && me.sub === u.userId)
+                            }
+                            onClick={() => setDeleteTarget(u)}
+                            className="text-sm font-semibold text-red-600 hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={
+                              me?.sub === u.userId
+                                ? 'You cannot delete your own account'
+                                : 'Delete account'
+                            }
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -195,6 +245,22 @@ export function AdminSystemUsersPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Xóa tài khoản hệ thống?"
+        message={
+          deleteTarget
+            ? `Xóa vĩnh viễn ${deleteTarget.fullName} (${deleteTarget.email})? Không thể hoàn tác. Phải còn ít nhất một admin hoạt động khác nếu đây là admin.`
+            : ''
+        }
+        confirmLabel="Xóa"
+        cancelLabel="Hủy"
+        danger
+        loading={deleteLoading}
+        onCancel={() => !deleteLoading && setDeleteTarget(null)}
+        onConfirm={() => void runDeleteUser()}
+      />
     </>
   )
 }

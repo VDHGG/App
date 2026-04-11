@@ -38,6 +38,8 @@ describe('RegisterUserService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('token-new'),
@@ -102,6 +104,8 @@ describe('RegisterUserService', () => {
       countActiveAdminsExcluding: vi.fn().mockResolvedValue(0),
       updateAdminFields: vi.fn(),
       updateMirrorFromCustomer: vi.fn(),
+      unlinkCustomerLinks: vi.fn(),
+      deleteById: vi.fn(),
     };
     const accessTokenService: AccessTokenService = {
       createAccessToken: vi.fn().mockResolvedValue('token-link'),

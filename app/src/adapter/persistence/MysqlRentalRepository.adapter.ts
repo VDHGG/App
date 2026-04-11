@@ -228,4 +228,12 @@ export class MysqlRentalRepository implements RentalRepository {
       );
     }
   }
+
+  async deleteById(rentalId: string): Promise<void> {
+    await this.conn().query('DELETE FROM rentals WHERE rental_id = ?', [rentalId]);
+  }
+
+  async deleteByCustomerId(customerId: string): Promise<void> {
+    await this.conn().query('DELETE FROM rentals WHERE customer_id = ?', [customerId]);
+  }
 }

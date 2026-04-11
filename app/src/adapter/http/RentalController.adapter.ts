@@ -6,6 +6,7 @@ import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import type { ListRentalsUseCase } from '@usecase/ListRentalsUseCase.port';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
+import type { DeleteRentalAdminUseCase } from '@usecase/DeleteRentalAdminUseCase.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import {
   CreateRentalSchema,
@@ -30,6 +31,7 @@ export class RentalController {
   private readonly cancelRental: CancelRentalUseCase;
   private readonly listRentals: ListRentalsUseCase;
   private readonly getRental: GetRentalUseCase;
+  private readonly deleteRentalAdmin: DeleteRentalAdminUseCase;
 
   constructor(
     createRental: CreateRentalUseCase,
@@ -37,7 +39,8 @@ export class RentalController {
     returnRental: ReturnRentalUseCase,
     cancelRental: CancelRentalUseCase,
     listRentals: ListRentalsUseCase,
-    getRental: GetRentalUseCase
+    getRental: GetRentalUseCase,
+    deleteRentalAdmin: DeleteRentalAdminUseCase
   ) {
     this.createRental = createRental;
     this.activateRental = activateRental;
@@ -45,6 +48,7 @@ export class RentalController {
     this.cancelRental = cancelRental;
     this.listRentals = listRentals;
     this.getRental = getRental;
+    this.deleteRentalAdmin = deleteRentalAdmin;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
@@ -81,6 +85,7 @@ export class RentalController {
       ...admin,
       transactionalRoute(transactionManager, this.cancel.bind(this))
     );
+    router.delete('/:id', ...admin, asyncRoute(this.deleteAdmin.bind(this)));
     return router;
   }
 
@@ -194,5 +199,10 @@ export class RentalController {
     const body = CancelRentalSchema.parse(req.body);
     const result = await this.cancelRental.execute({ rentalId: req.params['id'] as string, ...body });
     res.json(result);
+  }
+
+  private async deleteAdmin(req: Request, res: Response): Promise<void> {
+    await this.deleteRentalAdmin.execute({ rentalId: req.params['id'] as string });
+    res.status(204).end();
   }
 }

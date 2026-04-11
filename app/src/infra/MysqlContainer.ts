@@ -32,6 +32,9 @@ import type { ListRentalsUseCase } from '@usecase/ListRentalsUseCase.port';
 import type { AdminListSystemUsersUseCase } from '@usecase/AdminListSystemUsersUseCase.port';
 import type { AdminUpdateSystemUserUseCase } from '@usecase/AdminUpdateSystemUserUseCase.port';
 import type { UpdateCustomerAdminUseCase } from '@usecase/UpdateCustomerAdminUseCase.port';
+import type { DeleteRentalAdminUseCase } from '@usecase/DeleteRentalAdminUseCase.port';
+import type { DeleteCustomerAdminUseCase } from '@usecase/DeleteCustomerAdminUseCase.port';
+import type { DeleteSystemUserAdminUseCase } from '@usecase/DeleteSystemUserAdminUseCase.port';
 import type { ListShoesUseCase } from '@usecase/ListShoesUseCase.port';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
@@ -64,6 +67,9 @@ import { UploadShoeImageService } from '@usecase/UploadShoeImage.service';
 import { AdminListSystemUsersService } from '@usecase/AdminListSystemUsers.service';
 import { AdminUpdateSystemUserService } from '@usecase/AdminUpdateSystemUser.service';
 import { UpdateCustomerAdminService } from '@usecase/UpdateCustomerAdmin.service';
+import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
+import { DeleteCustomerAdminService } from '@usecase/DeleteCustomerAdmin.service';
+import { DeleteSystemUserAdminService } from '@usecase/DeleteSystemUserAdmin.service';
 import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
 import { createPool } from './db/MysqlConnection';
@@ -243,6 +249,23 @@ export class MysqlContainer {
       this.customerRepository,
       this.systemUserRepository
     );
+  }
+
+  getDeleteRentalAdminUseCase(): DeleteRentalAdminUseCase {
+    return new DeleteRentalAdminService(this.rentalRepository);
+  }
+
+  getDeleteCustomerAdminUseCase(): DeleteCustomerAdminUseCase {
+    return new DeleteCustomerAdminService(
+      this.transactionManager,
+      this.customerRepository,
+      this.rentalRepository,
+      this.systemUserRepository
+    );
+  }
+
+  getDeleteSystemUserAdminUseCase(): DeleteSystemUserAdminUseCase {
+    return new DeleteSystemUserAdminService(this.systemUserRepository);
   }
 
   getAdminListSystemUsersUseCase(): AdminListSystemUsersUseCase {

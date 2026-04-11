@@ -66,4 +66,14 @@ export class InMemoryRentalRepository implements RentalRepository {
   async save(rental: Rental): Promise<void> {
     this.store.set(rental.id, rental);
   }
+
+  async deleteById(rentalId: string): Promise<void> {
+    this.store.delete(rentalId);
+  }
+
+  async deleteByCustomerId(customerId: string): Promise<void> {
+    for (const [id, r] of this.store) {
+      if (r.customerId === customerId) this.store.delete(id);
+    }
+  }
 }

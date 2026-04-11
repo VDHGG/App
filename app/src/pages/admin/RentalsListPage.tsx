@@ -5,6 +5,7 @@ import {
   activateRental,
   returnRental,
   cancelRental,
+  deleteRentalAdmin,
   type ListRentalsQuery,
 } from '../../lib/rentals.api'
 import type { RentalSummary, RentalStatus } from '../../lib/rentals.api'
@@ -16,6 +17,7 @@ import { formatDate, formatCurrency, formatDurationDays } from '../../lib/format
 import { getApiErrorMessage } from '../../lib/api'
 import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
 import { AdminPagination } from '../../components/admin/AdminPagination'
+import { ConfirmDialog } from '../../components/admin/ConfirmDialog'
 
 const STATUS_OPTIONS: { value: '' | RentalStatus; label: string }[] = [
   { value: '', label: 'All' },
@@ -56,6 +58,8 @@ export function RentalsListPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [confirmDeleteRental, setConfirmDeleteRental] = useState<RentalSummary | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -123,6 +127,27 @@ export function RentalsListPage() {
       setActionError(getApiErrorMessage(err))
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  const confirmDeleteRentalAction = async () => {
+    if (!confirmDeleteRental) return
+    setDeleteLoading(true)
+    setActionError(null)
+    try {
+      await deleteRentalAdmin(confirmDeleteRental.rentalId)
+      setConfirmDeleteRental(null)
+      const res = await listRentals(rentalQuery)
+      setRentals(res.rentals)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err))
+    } finally {
+      setDeleteLoading(false)
     }
   }
 
@@ -369,6 +394,15 @@ export function RentalsListPage() {
                           >
                             <span className="material-symbols-outlined text-lg">visibility</span>
                           </Link>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteRental(r)}
+                            disabled={actionLoading === r.rentalId || deleteLoading}
+                            className="p-1 hover:text-red-600 transition-colors disabled:opacity-50"
+                            title="Delete permanently"
+                          >
+                            <span className="material-symbols-outlined text-lg">delete</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -388,6 +422,22 @@ export function RentalsListPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDeleteRental !== null}
+        title="Xóa đơn thuê?"
+        message={
+          confirmDeleteRental
+            ? `Xóa vĩnh viễn đơn ${confirmDeleteRental.rentalId}? Hành động này không thể hoàn tác (gồm cả lịch sử thanh toán liên quan trong DB).`
+            : ''
+        }
+        confirmLabel="Xóa"
+        cancelLabel="Hủy"
+        danger
+        loading={deleteLoading}
+        onCancel={() => !deleteLoading && setConfirmDeleteRental(null)}
+        onConfirm={() => void confirmDeleteRentalAction()}
+      />
     </>
   )
 }

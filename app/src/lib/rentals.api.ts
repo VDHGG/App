@@ -155,3 +155,7 @@ export async function cancelRental(
   const { data } = await api.patch<GetRentalResponse>(`/rentals/${rentalId}/cancel`, body ?? {})
   return data
 }
+
+export async function deleteRentalAdmin(rentalId: string): Promise<void> {
+  await api.delete(`/rentals/${encodeURIComponent(rentalId)}`)
+}

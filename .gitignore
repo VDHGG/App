@@ -29,3 +29,6 @@ migrate_shoe_variants.sql
 # Tài liệu kiến trúc local (README!.md — dùng ? thay một ký tự vì ! gây khó trong gitignore)
 app/READMEE.md
 GuildChatBot.md
+Hexagonal Architecture-final.md
+ReportFinal.md
+ReportForEPU.md
