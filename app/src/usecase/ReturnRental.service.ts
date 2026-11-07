@@ -6,7 +6,6 @@ import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import { ValidationError } from '@domain/errors/ValidationError';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import { RentalStatus } from '@domain/RentalStatus.enum';
-import { resolveRankByTotalSpentVnd, upgradeRankIfHigher } from '@domain/CustomerRank.enum';
 
 export class ReturnRentalService implements ReturnRentalUseCase {
   private readonly rentalRepository: RentalRepository;
@@ -48,10 +47,7 @@ export class ReturnRentalService implements ReturnRentalUseCase {
         status: RentalStatus.RETURNED,
       });
       const totalSpent = returnedList.items.reduce((sum, r) => sum + r.totalAmount, 0);
-      const nextRank = upgradeRankIfHigher(customer.rank, resolveRankByTotalSpentVnd(totalSpent));
-      if (nextRank !== customer.rank) {
-        customer.changeRank(nextRank);
-      }
+      customer.upgradeRankForTotalSpent(totalSpent);
 
       await this.customerRepository.save(customer);
     }

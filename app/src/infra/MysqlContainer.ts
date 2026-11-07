@@ -264,7 +264,11 @@ export class MysqlContainer {
   }
 
   getDeleteRentalAdminUseCase(): DeleteRentalAdminUseCase {
-    return new DeleteRentalAdminService(this.rentalRepository, this.voucherRepository);
+    return new DeleteRentalAdminService(
+      this.rentalRepository,
+      this.voucherRepository,
+      this.customerRepository
+    );
   }
 
   getDeleteCustomerAdminUseCase(): DeleteCustomerAdminUseCase {

@@ -1,11 +1,7 @@
 import type { RentalRepository } from '@port/RentalRepository.port';
 import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
-import { RentalPeriod } from '@domain/RentalPeriod.vo';
 import { NotFoundError } from '@domain/errors/NotFoundError';
-import { ForbiddenError } from '@domain/errors/ForbiddenError';
-import { ValidationError } from '@domain/errors/ValidationError';
-import { BusinessRuleError } from '@domain/errors/BusinessRuleError';
-import { RentalStatus } from '@domain/RentalStatus.enum';
+import type { RentalStatus } from '@domain/RentalStatus.enum';
 
 export interface ExtendRentalRequest {
   rentalId: string;
@@ -38,38 +34,17 @@ export class ExtendRentalService {
       throw new NotFoundError('Rental', req.rentalId);
     }
 
-    if (req.requestingCustomerId && rental.customerId !== req.requestingCustomerId) {
-      throw new ForbiddenError('FORBIDDEN', 'You do not have permission to modify this rental.');
+    if (req.requestingCustomerId) {
+      rental.assertOwnedBy(req.requestingCustomerId, 'You do not have permission to modify this rental.');
     }
 
-    if (rental.status !== RentalStatus.RESERVED && rental.status !== RentalStatus.ACTIVE) {
-      throw new BusinessRuleError(
-        'INVALID_RENTAL_STATE',
-        `Only RESERVED or ACTIVE rental can be extended. Current status: ${rental.status}.`
-      );
-    }
-
-    const oldEnd = rental.period.endDate;
-    const oldEndNorm = new Date(oldEnd.getFullYear(), oldEnd.getMonth(), oldEnd.getDate());
-    const newEndNorm = new Date(
-      req.newEndDate.getFullYear(),
-      req.newEndDate.getMonth(),
-      req.newEndDate.getDate()
-    );
-    if (newEndNorm.getTime() <= oldEndNorm.getTime()) {
-      throw new ValidationError('New return date must be after current return date.');
-    }
-    const extStart = new Date(
-      oldEndNorm.getFullYear(),
-      oldEndNorm.getMonth(),
-      oldEndNorm.getDate() + 1
-    );
-    const extensionPeriod = new RentalPeriod(extStart, newEndNorm);
-    for (const item of rental.items) {
+    const extensionPeriod = rental.buildExtensionPeriod(req.newEndDate);
+    const sortedItems = [...rental.items].sort((a, b) => a.variantId.localeCompare(b.variantId));
+    for (const item of sortedItems) {
       await this.availabilityChecker.ensureVariantAvailable(item.variantId, item.quantity, extensionPeriod);
     }
 
-    rental.extendPeriod(newEndNorm, req.note);
+    rental.extendPeriod(extensionPeriod.endDate, req.note);
     await this.rentalRepository.save(rental);
 
     return {

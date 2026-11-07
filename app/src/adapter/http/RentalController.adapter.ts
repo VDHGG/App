@@ -166,7 +166,11 @@ export class RentalController {
       ...admin,
       transactionalRoute(transactionManager, this.extendAdmin.bind(this))
     );
-    router.delete('/:id', ...admin, asyncRoute(this.deleteAdmin.bind(this)));
+    router.delete(
+      '/:id',
+      ...admin,
+      transactionalRoute(transactionManager, this.deleteAdmin.bind(this))
+    );
     return router;
   }
 
@@ -221,7 +225,7 @@ export class RentalController {
       });
       return;
     }
-    const body = CancelRentalSchema.parse(req.body);
+    const body = CancelRentalSchema.parse(req.body ?? {});
     const result = await this.cancelRental.execute({
       rentalId: req.params['id'] as string,
       cancelledAt: body.cancelledAt,
@@ -282,13 +286,13 @@ export class RentalController {
   }
 
   private async return(req: Request, res: Response): Promise<void> {
-    const body = ReturnRentalSchema.parse(req.body);
+    const body = ReturnRentalSchema.parse(req.body ?? {});
     const result = await this.returnRental.execute({ rentalId: req.params['id'] as string, ...body });
     res.json(result);
   }
 
   private async cancel(req: Request, res: Response): Promise<void> {
-    const body = CancelRentalSchema.parse(req.body);
+    const body = CancelRentalSchema.parse(req.body ?? {});
     const result = await this.cancelRental.execute({ rentalId: req.params['id'] as string, ...body });
     res.json(result);
   }

@@ -71,4 +71,24 @@ export class RentalItem {
 
     return this.pricePerDay * this.quantity * days;
   }
+
+  withDiscountPercent(discountPercent: number): RentalItem {
+    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      throw new ValidationError('Discount percent must be between 0 and 100.');
+    }
+    if (discountPercent === 0) return this;
+    const discountedPrice = Math.max(
+      1,
+      Math.round((this.pricePerDay * (100 - discountPercent)) / 100)
+    );
+    return new RentalItem({
+      shoeId: this.shoeId,
+      variantId: this.variantId,
+      shoeName: this.shoeName,
+      size: this.size,
+      color: this.color,
+      pricePerDay: discountedPrice,
+      quantity: this.quantity,
+    });
+  }
 }

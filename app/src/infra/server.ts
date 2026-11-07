@@ -18,7 +18,7 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 app.use('/api/v1', createRouter(container));
 app.use(errorHandler);
 

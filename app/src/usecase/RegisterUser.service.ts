@@ -1,4 +1,5 @@
 import { ConflictError } from '@domain/errors/ConflictError';
+import { ForbiddenError } from '@domain/errors/ForbiddenError';
 import type { AccessTokenService } from '@port/AccessTokenService.port';
 import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { IdGenerator } from '@port/IdGenerator.port';
@@ -63,6 +64,12 @@ export class RegisterUserService implements RegisterUserUseCase {
       const existingCustomer = await this.customerRepository.findByEmail(email);
 
       if (existingCustomer) {
+        if (!existingCustomer.isActive) {
+          throw new ForbiddenError(
+            'CUSTOMER_INACTIVE',
+            'This customer profile has been deactivated.'
+          );
+        }
         existingCustomer.rename(fullName);
         existingCustomer.changePhone(phoneForUser);
         await this.customerRepository.save(existingCustomer);

@@ -21,6 +21,16 @@ import rateLimit from 'express-rate-limit';
 export function createRouter(container: MysqlContainer): Router {
   const router = Router();
 
+  const writeBurstLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 180,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS',
+    message: { error: 'RATE_LIMITED', message: 'Too many write requests. Please slow down.' },
+  });
+  router.use(writeBurstLimiter);
+
   router.get('/', (_req, res) => {
     res.json({
       ok: true,

@@ -211,17 +211,20 @@ export class MomoPaymentController {
 
   private async ipn(req: Request, res: Response): Promise<void> {
     const secret = process.env.MOMO_SECRET_KEY?.trim();
-    const body = req.body as Record<string, string | number | undefined>;
+    const body = (req.body ?? {}) as Record<string, string | number | undefined>;
 
-    if (secret && Object.keys(body).length > 0) {
-      const asStrings: Record<string, string | number | undefined> = {};
-      for (const [k, v] of Object.entries(body)) {
-        asStrings[k] = v;
-      }
-      if (!verifyMomoIpnSignature(asStrings, secret)) {
-        res.status(400).json({ message: 'Invalid MoMo signature' });
-        return;
-      }
+    if (!secret) {
+      res.status(503).json({ message: 'MoMo IPN is not configured' });
+      return;
+    }
+
+    const asStrings: Record<string, string | number | undefined> = {};
+    for (const [k, v] of Object.entries(body)) {
+      asStrings[k] = v;
+    }
+    if (!verifyMomoIpnSignature(asStrings, secret)) {
+      res.status(400).json({ message: 'Invalid MoMo signature' });
+      return;
     }
 
     const orderId = body.orderId != null ? String(body.orderId) : '';

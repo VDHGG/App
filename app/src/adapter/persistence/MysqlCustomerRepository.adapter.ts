@@ -80,7 +80,11 @@ export class MysqlCustomerRepository implements CustomerRepository {
   }
 
   async findById(id: string): Promise<Customer | null> {
-    const [rows] = await this.conn().query<CustomerRow[]>(LOAD_SQL, [id]);
+    const conn = this.conn();
+    if (transactionContext.getStore()) {
+      await conn.query('SELECT customer_id FROM customers WHERE customer_id = ? FOR UPDATE', [id]);
+    }
+    const [rows] = await conn.query<CustomerRow[]>(LOAD_SQL, [id]);
     return rows.length > 0 ? toCustomer(rows[0]) : null;
   }
 

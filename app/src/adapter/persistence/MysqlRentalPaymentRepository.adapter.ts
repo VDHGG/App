@@ -153,7 +153,7 @@ export class MysqlRentalPaymentRepository implements RentalPaymentRepository {
         gateway_message = ?,
         raw_ipn_json = ?,
         updated_at = NOW()
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'PENDING'`,
       [
         patch.status,
         patch.paidAt ?? null,

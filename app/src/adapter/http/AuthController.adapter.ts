@@ -95,8 +95,8 @@ export class AuthController {
       return;
     }
     const row = await this.systemUsers.findById(auth.sub);
-    if (!row) {
-      res.status(401).json({ error: 'UNAUTHORIZED', message: 'User not found.' });
+    if (!row || !row.isActive) {
+      res.status(401).json({ error: 'UNAUTHORIZED', message: 'User not found or account disabled.' });
       return;
     }
     const customerId = auth.customerId ?? row.customerId;
@@ -105,6 +105,10 @@ export class AuthController {
     if (customerId && this.customerRepository) {
       const c = await this.customerRepository.findById(customerId);
       if (c) {
+        if (!c.isActive) {
+          res.status(401).json({ error: 'UNAUTHORIZED', message: 'Customer profile is disabled.' });
+          return;
+        }
         rank = c.rank;
         rankDiscountPercent = getDiscountPercentByRank(c.rank);
       }

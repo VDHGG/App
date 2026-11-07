@@ -63,12 +63,12 @@ function ensureVariantDeactivationAllowed(params) {
   }
 }
 function ensureValidEntityId(id, entityLabel) {
-  if (!id || id.trim().length === 0 || id.length > 10) {
+  if (!id || id.trim().length === 0 || id.trim().length > 10) {
     throw new ValidationError(`${entityLabel} id must be between 1 and 10 characters.`);
   }
 }
 function ensureValidRentalItemReferenceId(id, partLabel) {
-  if (!id || id.trim().length === 0 || id.length > 10) {
+  if (!id || id.trim().length === 0 || id.trim().length > 10) {
     throw new ValidationError(`Rental item ${partLabel} is invalid.`);
   }
 }
@@ -81,12 +81,12 @@ function normalizeDateToCalendarTime(value) {
   return new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
 }
 function ensureValidNonNegativeNumber(value, message) {
-  if (typeof value !== "number" || Number.isNaN(value) || value < 0) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new ValidationError(message);
   }
 }
 function ensureValidPositiveNumber(value, message) {
-  if (typeof value !== "number" || Number.isNaN(value) || value <= 0) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
     throw new ValidationError(message);
   }
 }
@@ -112,7 +112,7 @@ function ensureValidRentalNote(note) {
   }
 }
 function ensureValidCustomerEmail(email) {
-  if (!email || email.trim().length === 0 || email.length > 255 || !email.includes("@")) {
+  if (!email || email.trim().length === 0 || email.trim().length > 255 || !/^[^\s@]+@[^\s@]+$/.test(email.trim())) {
     throw new ValidationError("Customer email is invalid.");
   }
 }
@@ -379,6 +379,15 @@ class Customer {
     ensureCurrentItemsWithinRankLimit(newRank, this.currentRentedItemsValue);
     this.rankValue = newRank;
   }
+  upgradeRankForTotalSpent(totalSpentVnd) {
+    const candidate = resolveRankByTotalSpentVnd(totalSpentVnd);
+    const nextRank = upgradeRankIfHigher(this.rankValue, candidate);
+    if (nextRank !== this.rankValue) {
+      this.changeRank(nextRank);
+      return true;
+    }
+    return false;
+  }
   activate() {
     this.activeValue = true;
   }
@@ -462,7 +471,11 @@ class MysqlCustomerRepository {
     return transactionContext.getStore() ?? this.pool;
   }
   async findById(id) {
-    const [rows] = await this.conn().query(LOAD_SQL, [id]);
+    const conn = this.conn();
+    if (transactionContext.getStore()) {
+      await conn.query("SELECT customer_id FROM customers WHERE customer_id = ? FOR UPDATE", [id]);
+    }
+    const [rows] = await conn.query(LOAD_SQL, [id]);
     return rows.length > 0 ? toCustomer(rows[0]) : null;
   }
   async findAll(options) {
@@ -734,6 +747,25 @@ class RentalItem {
   subtotalFor(days) {
     ensureValidPositiveInteger(days, "Rental days must be a positive integer.");
     return this.pricePerDay * this.quantity * days;
+  }
+  withDiscountPercent(discountPercent) {
+    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+      throw new ValidationError("Discount percent must be between 0 and 100.");
+    }
+    if (discountPercent === 0) return this;
+    const discountedPrice = Math.max(
+      1,
+      Math.round(this.pricePerDay * (100 - discountPercent) / 100)
+    );
+    return new RentalItem({
+      shoeId: this.shoeId,
+      variantId: this.variantId,
+      shoeName: this.shoeName,
+      size: this.size,
+      color: this.color,
+      pricePerDay: discountedPrice,
+      quantity: this.quantity
+    });
   }
 }
 function ensureValidShoeLabel(value, label) {
@@ -1314,6 +1346,11 @@ const RentalStatus = {
   RETURNED: "RETURNED",
   CANCELLED: "CANCELLED"
 };
+class ForbiddenError extends DomainError {
+  constructor(code = "FORBIDDEN", message = "Access denied.") {
+    super(code, message);
+  }
+}
 const MS_PER_CALENDAR_DAY = 24 * 60 * 60 * 1e3;
 function mergeNotePreservingDiscountTag(existingNote, incomingNote, suffixTag) {
   const discountMatch = existingNote?.match(/\[Ưu đãi:[^\]]+\]/);
@@ -1511,6 +1548,62 @@ class Rental {
       this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note);
     }
   }
+  assertOwnedBy(customerId, message = "You do not have permission to access or modify this rental.") {
+    const cid = customerId?.trim() ?? "";
+    if (!cid) {
+      throw new ValidationError("Customer id is required for this operation.");
+    }
+    if (this.customerIdValue !== cid) {
+      throw new ForbiddenError("FORBIDDEN", message);
+    }
+  }
+  buildExtensionPeriod(newEndDate) {
+    if (this.statusValue !== RentalStatus.RESERVED && this.statusValue !== RentalStatus.ACTIVE) {
+      throw new BusinessRuleError(
+        "INVALID_RENTAL_STATE",
+        `Only RESERVED or ACTIVE rental can be extended. Current status: ${this.statusValue}.`
+      );
+    }
+    ensureValidDate(newEndDate, "newEndDate");
+    const oldEnd = this.periodValue.endDate;
+    const oldEndNorm = new Date(oldEnd.getFullYear(), oldEnd.getMonth(), oldEnd.getDate());
+    const newEndNorm = new Date(
+      newEndDate.getFullYear(),
+      newEndDate.getMonth(),
+      newEndDate.getDate()
+    );
+    if (newEndNorm.getTime() <= oldEndNorm.getTime()) {
+      throw new ValidationError("New return date must be after current return date.");
+    }
+    const extStart = new Date(
+      oldEndNorm.getFullYear(),
+      oldEndNorm.getMonth(),
+      oldEndNorm.getDate() + 1
+    );
+    return new RentalPeriod(extStart, newEndNorm);
+  }
+  static formatDiscountNote(rawNote, customerRank, rankDiscountPercent, appliedVoucherCode, voucherDiscountPercent) {
+    let noteText = rawNote?.trim() || "";
+    const totalDiscount = Math.min(50, rankDiscountPercent + voucherDiscountPercent);
+    if (totalDiscount > 0) {
+      const tagParts = [];
+      if (rankDiscountPercent > 0) {
+        tagParts.push(`Hạng ${customerRank} -${rankDiscountPercent}%`);
+      }
+      if (appliedVoucherCode) {
+        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
+      }
+      const tag = `[Ưu đãi: ${tagParts.join(", ")}]`;
+      if (noteText) {
+        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
+        const safePrefix = noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
+        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
+      } else {
+        noteText = tag;
+      }
+    }
+    return noteText || null;
+  }
   assertCustomerCancellationAllowed(at) {
     if (this.statusValue !== RentalStatus.RESERVED) {
       throw new BusinessRuleError(
@@ -1628,7 +1721,8 @@ class MysqlRentalRepository {
   }
   async findById(id) {
     const conn = this.conn();
-    const [rentalRows] = await conn.query(RENTAL_SQL, [id]);
+    const sql = transactionContext.getStore() ? `${RENTAL_SQL} FOR UPDATE` : RENTAL_SQL;
+    const [rentalRows] = await conn.query(sql, [id]);
     if (rentalRows.length === 0) return null;
     const [itemRows] = await conn.query(ITEMS_SQL, [id]);
     return toRental(rentalRows[0], itemRows);
@@ -1869,7 +1963,7 @@ class MysqlRentalPaymentRepository {
         gateway_message = ?,
         raw_ipn_json = ?,
         updated_at = NOW()
-       WHERE id = ?`,
+       WHERE id = ? AND status = 'PENDING'`,
       [
         patch.status,
         patch.paidAt ?? null,
@@ -2692,11 +2786,6 @@ class ListShoesService {
     };
   }
 }
-class ForbiddenError extends DomainError {
-  constructor(code = "FORBIDDEN", message = "Access denied.") {
-    super(code, message);
-  }
-}
 class CancelRentalService {
   rentalRepository;
   customerRepository;
@@ -2717,13 +2806,7 @@ class CancelRentalService {
     const totalItems = rental.totalItems;
     const cancelledAt = request.cancelledAt ?? /* @__PURE__ */ new Date();
     if (request.requestingCustomerId !== void 0) {
-      const cid = request.requestingCustomerId.trim();
-      if (cid.length === 0) {
-        throw new ValidationError("Customer id is required for this operation.");
-      }
-      if (rental.customerId !== cid) {
-        throw new ForbiddenError("FORBIDDEN", "You cannot cancel this rental.");
-      }
+      rental.assertOwnedBy(request.requestingCustomerId, "You cannot cancel this rental.");
       rental.assertCustomerCancellationAllowed(cancelledAt);
     }
     const originalNote = rental.note ?? "";
@@ -2825,7 +2908,20 @@ class CreateRentalService {
     const totalDiscountPercent = Math.min(50, rankDiscount + voucherDiscountPercent);
     const loadedShoes = /* @__PURE__ */ new Map();
     const originalRentalItems = [];
-    for (const requestedItem of request.items) {
+    const seenVariants = /* @__PURE__ */ new Set();
+    for (const item of request.items) {
+      const vid = item.variantId.trim();
+      if (seenVariants.has(vid)) {
+        throw new ValidationError(
+          `Duplicate variant ${vid} in the same rental is not allowed.`
+        );
+      }
+      seenVariants.add(vid);
+    }
+    const sortedItems = [...request.items].sort(
+      (a, b) => a.variantId.trim().localeCompare(b.variantId.trim())
+    );
+    for (const requestedItem of sortedItems) {
       const shoe = await this.loadShoeForVariant(requestedItem.variantId, loadedShoes);
       if (!shoe) throw new NotFoundError("Variant", requestedItem.variantId);
       await this.availabilityChecker.ensureVariantAvailable(
@@ -2833,49 +2929,27 @@ class CreateRentalService {
         requestedItem.quantity,
         rentalPeriod
       );
+    }
+    for (const requestedItem of request.items) {
+      const shoe = await this.loadShoeForVariant(requestedItem.variantId, loadedShoes);
+      if (!shoe) throw new NotFoundError("Variant", requestedItem.variantId);
       originalRentalItems.push(shoe.createRentalItem(requestedItem.variantId, requestedItem.quantity));
     }
-    let finalRentalItems;
-    if (totalDiscountPercent > 0) {
-      finalRentalItems = originalRentalItems.map(
-        (item) => new RentalItem({
-          shoeId: item.shoeId,
-          variantId: item.variantId,
-          shoeName: item.shoeName,
-          size: item.size,
-          color: item.color,
-          pricePerDay: Math.max(1, Math.round(item.pricePerDay * (100 - totalDiscountPercent) / 100)),
-          quantity: item.quantity
-        })
-      );
-    } else {
-      finalRentalItems = originalRentalItems;
-    }
+    const finalRentalItems = totalDiscountPercent > 0 ? originalRentalItems.map((item) => item.withDiscountPercent(totalDiscountPercent)) : originalRentalItems;
     const originalBasePrice = originalRentalItems.reduce((sum, item) => sum + item.pricePerDay * item.quantity, 0) * rentalPeriod.durationInDays;
-    let noteText = request.note?.trim() || "";
-    if (totalDiscountPercent > 0) {
-      const tagParts = [];
-      if (rankDiscount > 0) {
-        tagParts.push(`Hạng ${customer.rank} -${rankDiscount}%`);
-      }
-      if (appliedVoucherCode) {
-        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
-      }
-      const tag = `[Ưu đãi: ${tagParts.join(", ")}]`;
-      if (noteText) {
-        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
-        const safePrefix = noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
-        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
-      } else {
-        noteText = tag;
-      }
-    }
+    const noteText = Rental.formatDiscountNote(
+      request.note,
+      customer.rank,
+      rankDiscount,
+      appliedVoucherCode,
+      voucherDiscountPercent
+    );
     const rental = new Rental({
       id: this.idGenerator.next(),
       customerId: customer.id,
       items: finalRentalItems,
       period: rentalPeriod,
-      note: noteText || null
+      note: noteText
     });
     customer.registerRental(totalRequestedQuantity);
     await this.customerRepository.save(customer);
@@ -2975,10 +3049,7 @@ class ReturnRentalService {
         status: RentalStatus.RETURNED
       });
       const totalSpent = returnedList.items.reduce((sum, r) => sum + r.totalAmount, 0);
-      const nextRank = upgradeRankIfHigher(customer.rank, resolveRankByTotalSpentVnd(totalSpent));
-      if (nextRank !== customer.rank) {
-        customer.changeRank(nextRank);
-      }
+      customer.upgradeRankForTotalSpent(totalSpent);
       await this.customerRepository.save(customer);
     }
     return {
@@ -3120,6 +3191,12 @@ class RegisterUserService {
     const { customerId } = await this.transactionManager.runInTransaction(async () => {
       const existingCustomer = await this.customerRepository.findByEmail(email);
       if (existingCustomer) {
+        if (!existingCustomer.isActive) {
+          throw new ForbiddenError(
+            "CUSTOMER_INACTIVE",
+            "This customer profile has been deactivated."
+          );
+        }
         existingCustomer.rename(fullName);
         existingCustomer.changePhone(phoneForUser);
         await this.customerRepository.save(existingCustomer);
@@ -3473,9 +3550,11 @@ class UpdateCustomerAdminService {
 class DeleteRentalAdminService {
   rentals;
   voucherRepository;
-  constructor(rentals, voucherRepository) {
+  customerRepository;
+  constructor(rentals, voucherRepository, customerRepository) {
     this.rentals = rentals;
     this.voucherRepository = voucherRepository;
+    this.customerRepository = customerRepository;
   }
   async execute(request) {
     const rentalId = request.rentalId?.trim() ?? "";
@@ -3486,10 +3565,19 @@ class DeleteRentalAdminService {
     if (!existing) {
       throw new NotFoundError("Rental", rentalId);
     }
-    if (this.voucherRepository && (existing.status === "RESERVED" || existing.status === "ACTIVE")) {
-      const match = (existing.note ?? "").match(/Voucher\s+([A-Za-z0-9_-]+)\s+-\d+%/i);
-      if (match) {
-        await this.voucherRepository.decrementUsedCount(match[1].toUpperCase());
+    if (existing.status === "RESERVED" || existing.status === "ACTIVE") {
+      if (this.customerRepository) {
+        const customer = await this.customerRepository.findById(existing.customerId);
+        if (customer && customer.currentRentedItems >= existing.totalItems) {
+          customer.completeRental(existing.totalItems);
+          await this.customerRepository.save(customer);
+        }
+      }
+      if (this.voucherRepository) {
+        const match = (existing.note ?? "").match(/Voucher\s+([A-Za-z0-9_-]+)\s+-\d+%/i);
+        if (match) {
+          await this.voucherRepository.decrementUsedCount(match[1].toUpperCase());
+        }
       }
     }
     await this.rentals.deleteById(rentalId);
@@ -3620,35 +3708,15 @@ class ExtendRentalService {
     if (!rental) {
       throw new NotFoundError("Rental", req.rentalId);
     }
-    if (req.requestingCustomerId && rental.customerId !== req.requestingCustomerId) {
-      throw new ForbiddenError("FORBIDDEN", "You do not have permission to modify this rental.");
+    if (req.requestingCustomerId) {
+      rental.assertOwnedBy(req.requestingCustomerId, "You do not have permission to modify this rental.");
     }
-    if (rental.status !== RentalStatus.RESERVED && rental.status !== RentalStatus.ACTIVE) {
-      throw new BusinessRuleError(
-        "INVALID_RENTAL_STATE",
-        `Only RESERVED or ACTIVE rental can be extended. Current status: ${rental.status}.`
-      );
-    }
-    const oldEnd = rental.period.endDate;
-    const oldEndNorm = new Date(oldEnd.getFullYear(), oldEnd.getMonth(), oldEnd.getDate());
-    const newEndNorm = new Date(
-      req.newEndDate.getFullYear(),
-      req.newEndDate.getMonth(),
-      req.newEndDate.getDate()
-    );
-    if (newEndNorm.getTime() <= oldEndNorm.getTime()) {
-      throw new ValidationError("New return date must be after current return date.");
-    }
-    const extStart = new Date(
-      oldEndNorm.getFullYear(),
-      oldEndNorm.getMonth(),
-      oldEndNorm.getDate() + 1
-    );
-    const extensionPeriod = new RentalPeriod(extStart, newEndNorm);
-    for (const item of rental.items) {
+    const extensionPeriod = rental.buildExtensionPeriod(req.newEndDate);
+    const sortedItems = [...rental.items].sort((a, b) => a.variantId.localeCompare(b.variantId));
+    for (const item of sortedItems) {
       await this.availabilityChecker.ensureVariantAvailable(item.variantId, item.quantity, extensionPeriod);
     }
-    rental.extendPeriod(newEndNorm, req.note);
+    rental.extendPeriod(extensionPeriod.endDate, req.note);
     await this.rentalRepository.save(rental);
     return {
       rentalId: rental.id,
@@ -3828,7 +3896,11 @@ class MysqlContainer {
     );
   }
   getDeleteRentalAdminUseCase() {
-    return new DeleteRentalAdminService(this.rentalRepository, this.voucherRepository);
+    return new DeleteRentalAdminService(
+      this.rentalRepository,
+      this.voucherRepository,
+      this.customerRepository
+    );
   }
   getDeleteCustomerAdminUseCase() {
     return new DeleteCustomerAdminService(
@@ -4479,11 +4551,11 @@ const ReturnRentalSchema = z.object({
   returnedAt: z.coerce.date().optional(),
   note: z.string().max(255).optional(),
   damageFee: z.coerce.number().int().min(0).max(5e7).optional()
-});
+}).default({});
 const CancelRentalSchema = z.object({
   cancelledAt: z.coerce.date().optional(),
   note: z.string().max(255).optional()
-});
+}).default({});
 const ExtendRentalSchema = z.object({
   newEndDate: z.coerce.date(),
   note: z.string().max(255).optional()
@@ -4622,7 +4694,11 @@ class RentalController {
       ...admin,
       transactionalRoute(transactionManager, this.extendAdmin.bind(this))
     );
-    router.delete("/:id", ...admin, asyncRoute(this.deleteAdmin.bind(this)));
+    router.delete(
+      "/:id",
+      ...admin,
+      transactionalRoute(transactionManager, this.deleteAdmin.bind(this))
+    );
     return router;
   }
   async lazySweepExpiredMomo() {
@@ -4673,7 +4749,7 @@ class RentalController {
       });
       return;
     }
-    const body = CancelRentalSchema.parse(req.body);
+    const body = CancelRentalSchema.parse(req.body ?? {});
     const result = await this.cancelRental.execute({
       rentalId: req.params["id"],
       cancelledAt: body.cancelledAt,
@@ -4725,12 +4801,12 @@ class RentalController {
     res.json(result);
   }
   async return(req, res) {
-    const body = ReturnRentalSchema.parse(req.body);
+    const body = ReturnRentalSchema.parse(req.body ?? {});
     const result = await this.returnRental.execute({ rentalId: req.params["id"], ...body });
     res.json(result);
   }
   async cancel(req, res) {
-    const body = CancelRentalSchema.parse(req.body);
+    const body = CancelRentalSchema.parse(req.body ?? {});
     const result = await this.cancelRental.execute({ rentalId: req.params["id"], ...body });
     res.json(result);
   }
@@ -5367,15 +5443,15 @@ class RentalController {
   }
 }
 const LoginBodySchema = z.object({
-  email: z.string().min(1, "Email is required."),
-  password: z.string().min(1, "Password is required.")
+  email: z.string().min(1, "Email is required.").max(255),
+  password: z.string().min(1, "Password is required.").max(128)
 });
 const phoneSchema = z.string().min(1, "Phone is required.").max(20).transform((v) => v.trim());
 const RegisterUserSchema = z.object({
   fullName: z.string().min(1).max(100).trim(),
   email: z.string().email().max(255).transform((v) => v.toLowerCase()),
   phone: phoneSchema,
-  password: z.string().min(8, "Password must be at least 8 characters.")
+  password: z.string().min(8, "Password must be at least 8 characters.").max(128)
 });
 const UpdateProfileSchema = z.object({
   fullName: z.string().min(1).max(100).trim(),
@@ -5383,8 +5459,8 @@ const UpdateProfileSchema = z.object({
   phone: phoneSchema
 });
 const ChangePasswordSchema = z.object({
-  currentPassword: z.string().min(1, "Current password is required."),
-  newPassword: z.string().min(8, "New password must be at least 8 characters.")
+  currentPassword: z.string().min(1, "Current password is required.").max(128),
+  newPassword: z.string().min(8, "New password must be at least 8 characters.").max(128)
 });
 function createAuthRateLimiter() {
   return rateLimit({
@@ -5449,8 +5525,8 @@ class AuthController {
       return;
     }
     const row = await this.systemUsers.findById(auth.sub);
-    if (!row) {
-      res.status(401).json({ error: "UNAUTHORIZED", message: "User not found." });
+    if (!row || !row.isActive) {
+      res.status(401).json({ error: "UNAUTHORIZED", message: "User not found or account disabled." });
       return;
     }
     const customerId = auth.customerId ?? row.customerId;
@@ -5459,6 +5535,10 @@ class AuthController {
     if (customerId && this.customerRepository) {
       const c = await this.customerRepository.findById(customerId);
       if (c) {
+        if (!c.isActive) {
+          res.status(401).json({ error: "UNAUTHORIZED", message: "Customer profile is disabled." });
+          return;
+        }
         rank = c.rank;
         rankDiscountPercent = getDiscountPercentByRank(c.rank);
       }
@@ -5963,16 +6043,18 @@ class MomoPaymentController {
   }
   async ipn(req, res) {
     const secret = process.env.MOMO_SECRET_KEY?.trim();
-    const body = req.body;
-    if (secret && Object.keys(body).length > 0) {
-      const asStrings = {};
-      for (const [k, v] of Object.entries(body)) {
-        asStrings[k] = v;
-      }
-      if (!verifyMomoIpnSignature(asStrings, secret)) {
-        res.status(400).json({ message: "Invalid MoMo signature" });
-        return;
-      }
+    const body = req.body ?? {};
+    if (!secret) {
+      res.status(503).json({ message: "MoMo IPN is not configured" });
+      return;
+    }
+    const asStrings = {};
+    for (const [k, v] of Object.entries(body)) {
+      asStrings[k] = v;
+    }
+    if (!verifyMomoIpnSignature(asStrings, secret)) {
+      res.status(400).json({ message: "Invalid MoMo signature" });
+      return;
     }
     const orderId = body.orderId != null ? String(body.orderId) : "";
     if (!orderId) {
@@ -6745,6 +6827,15 @@ function createRequireRolesMiddleware(...roles) {
 }
 function createRouter(container2) {
   const router = Router();
+  const writeBurstLimiter = rateLimit({
+    windowMs: 6e4,
+    max: 180,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: (req) => req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS",
+    message: { error: "RATE_LIMITED", message: "Too many write requests. Please slow down." }
+  });
+  router.use(writeBurstLimiter);
   router.get("/", (_req, res) => {
     res.json({
       ok: true,
@@ -6898,7 +6989,31 @@ function statusFor(err) {
 function isMulterLimitFileSize(err) {
   return typeof err === "object" && err !== null && err.name === "MulterError" && err.code === "LIMIT_FILE_SIZE";
 }
+function isPayloadTooLarge(err) {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err;
+  return e.type === "entity.too.large" || e.status === 413 || e.statusCode === 413;
+}
+function isBodyParseError(err) {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err;
+  return e.type === "entity.parse.failed" || err instanceof SyntaxError && e.status === 400;
+}
 function errorHandler(err, _req, res, _next) {
+  if (isPayloadTooLarge(err)) {
+    res.status(413).json({
+      error: "PAYLOAD_TOO_LARGE",
+      message: "Request payload exceeds the 64 KB limit."
+    });
+    return;
+  }
+  if (isBodyParseError(err)) {
+    res.status(400).json({
+      error: "INVALID_JSON",
+      message: "Malformed JSON request body."
+    });
+    return;
+  }
   if (err instanceof ZodError) {
     res.status(400).json({
       error: "VALIDATION_ERROR",
@@ -6937,7 +7052,7 @@ app.get("/health", async (_req, res) => {
     database: database ? "up" : "down"
   });
 });
-app.use(express.json());
+app.use(express.json({ limit: "64kb" }));
 app.use("/api/v1", (_req, _res, next) => {
   void container.getExpirePendingOnlinePaymentsService().execute().catch((err) => console.error("[expire pending payments]", err));
   next();

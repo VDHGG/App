@@ -29,12 +29,40 @@ function isMulterLimitFileSize(err: unknown): boolean {
   );
 }
 
+function isPayloadTooLarge(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { type?: string; status?: number; statusCode?: number };
+  return e.type === 'entity.too.large' || e.status === 413 || e.statusCode === 413;
+}
+
+function isBodyParseError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as { type?: string; status?: number };
+  return e.type === 'entity.parse.failed' || (err instanceof SyntaxError && e.status === 400);
+}
+
 export function errorHandler(
   err: unknown,
   _req: Request,
   res: Response,
   _next: NextFunction
 ): void {
+  if (isPayloadTooLarge(err)) {
+    res.status(413).json({
+      error: 'PAYLOAD_TOO_LARGE',
+      message: 'Request payload exceeds the 64 KB limit.',
+    });
+    return;
+  }
+
+  if (isBodyParseError(err)) {
+    res.status(400).json({
+      error: 'INVALID_JSON',
+      message: 'Malformed JSON request body.',
+    });
+    return;
+  }
+
   if (err instanceof ZodError) {
     res.status(400).json({
       error: 'VALIDATION_ERROR',

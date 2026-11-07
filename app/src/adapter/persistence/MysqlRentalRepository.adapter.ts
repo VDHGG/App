@@ -97,7 +97,8 @@ export class MysqlRentalRepository implements RentalRepository {
 
   async findById(id: string): Promise<Rental | null> {
     const conn = this.conn();
-    const [rentalRows] = await conn.query<RentalRow[]>(RENTAL_SQL, [id]);
+    const sql = transactionContext.getStore() ? `${RENTAL_SQL} FOR UPDATE` : RENTAL_SQL;
+    const [rentalRows] = await conn.query<RentalRow[]>(sql, [id]);
     if (rentalRows.length === 0) return null;
 
     const [itemRows] = await conn.query<RentalItemRow[]>(ITEMS_SQL, [id]);

@@ -19,16 +19,20 @@ export const CreateRentalSchema = z
     path: ['endDate'],
   });
 
-export const ReturnRentalSchema = z.object({
-  returnedAt: z.coerce.date().optional(),
-  note: z.string().max(255).optional(),
-  damageFee: z.coerce.number().int().min(0).max(50000000).optional(),
-});
+export const ReturnRentalSchema = z
+  .object({
+    returnedAt: z.coerce.date().optional(),
+    note: z.string().max(255).optional(),
+    damageFee: z.coerce.number().int().min(0).max(50000000).optional(),
+  })
+  .default({});
 
-export const CancelRentalSchema = z.object({
-  cancelledAt: z.coerce.date().optional(),
-  note: z.string().max(255).optional(),
-});
+export const CancelRentalSchema = z
+  .object({
+    cancelledAt: z.coerce.date().optional(),
+    note: z.string().max(255).optional(),
+  })
+  .default({});
 
 export const ExtendRentalSchema = z.object({
   newEndDate: z.coerce.date(),

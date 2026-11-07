@@ -3,6 +3,7 @@ import { RentalPeriod } from './RentalPeriod.vo';
 import { RentalStatus } from './RentalStatus.enum';
 import { ValidationError } from './errors/ValidationError';
 import { BusinessRuleError } from './errors/BusinessRuleError';
+import { ForbiddenError } from './errors/ForbiddenError';
 import {
   ensureValidDate,
   ensureValidEntityId,
@@ -289,6 +290,78 @@ export class Rental {
     if (note !== undefined && note.trim().length > 0) {
       this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note);
     }
+  }
+
+  assertOwnedBy(
+    customerId: string,
+    message: string = 'You do not have permission to access or modify this rental.'
+  ): void {
+    const cid = customerId?.trim() ?? '';
+    if (!cid) {
+      throw new ValidationError('Customer id is required for this operation.');
+    }
+    if (this.customerIdValue !== cid) {
+      throw new ForbiddenError('FORBIDDEN', message);
+    }
+  }
+
+  buildExtensionPeriod(newEndDate: Date): RentalPeriod {
+    if (
+      this.statusValue !== RentalStatus.RESERVED &&
+      this.statusValue !== RentalStatus.ACTIVE
+    ) {
+      throw new BusinessRuleError(
+        'INVALID_RENTAL_STATE',
+        `Only RESERVED or ACTIVE rental can be extended. Current status: ${this.statusValue}.`
+      );
+    }
+    ensureValidDate(newEndDate, 'newEndDate');
+    const oldEnd = this.periodValue.endDate;
+    const oldEndNorm = new Date(oldEnd.getFullYear(), oldEnd.getMonth(), oldEnd.getDate());
+    const newEndNorm = new Date(
+      newEndDate.getFullYear(),
+      newEndDate.getMonth(),
+      newEndDate.getDate()
+    );
+    if (newEndNorm.getTime() <= oldEndNorm.getTime()) {
+      throw new ValidationError('New return date must be after current return date.');
+    }
+    const extStart = new Date(
+      oldEndNorm.getFullYear(),
+      oldEndNorm.getMonth(),
+      oldEndNorm.getDate() + 1
+    );
+    return new RentalPeriod(extStart, newEndNorm);
+  }
+
+  static formatDiscountNote(
+    rawNote: string | undefined,
+    customerRank: string,
+    rankDiscountPercent: number,
+    appliedVoucherCode: string | null,
+    voucherDiscountPercent: number
+  ): string | null {
+    let noteText = rawNote?.trim() || '';
+    const totalDiscount = Math.min(50, rankDiscountPercent + voucherDiscountPercent);
+    if (totalDiscount > 0) {
+      const tagParts: string[] = [];
+      if (rankDiscountPercent > 0) {
+        tagParts.push(`Hạng ${customerRank} -${rankDiscountPercent}%`);
+      }
+      if (appliedVoucherCode) {
+        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
+      }
+      const tag = `[Ưu đãi: ${tagParts.join(', ')}]`;
+      if (noteText) {
+        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
+        const safePrefix =
+          noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
+        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
+      } else {
+        noteText = tag;
+      }
+    }
+    return noteText || null;
   }
   
   

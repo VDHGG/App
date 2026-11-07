@@ -95,7 +95,22 @@ export class CreateRentalService implements CreateRentalUseCase {
     const loadedShoes = new Map<string, Awaited<ReturnType<ShoeRepository['findByVariantId']>>>();
     const originalRentalItems: RentalItem[] = [];
 
-    for (const requestedItem of request.items) {
+    const seenVariants = new Set<string>();
+    for (const item of request.items) {
+      const vid = item.variantId.trim();
+      if (seenVariants.has(vid)) {
+        throw new ValidationError(
+          `Duplicate variant ${vid} in the same rental is not allowed.`
+        );
+      }
+      seenVariants.add(vid);
+    }
+
+    const sortedItems = [...request.items].sort((a, b) =>
+      a.variantId.trim().localeCompare(b.variantId.trim())
+    );
+
+    for (const requestedItem of sortedItems) {
       const shoe = await this.loadShoeForVariant(requestedItem.variantId, loadedShoes);
       if (!shoe) throw new NotFoundError('Variant', requestedItem.variantId);
 
@@ -104,58 +119,37 @@ export class CreateRentalService implements CreateRentalUseCase {
         requestedItem.quantity,
         rentalPeriod
       );
+    }
 
+    for (const requestedItem of request.items) {
+      const shoe = await this.loadShoeForVariant(requestedItem.variantId, loadedShoes);
+      if (!shoe) throw new NotFoundError('Variant', requestedItem.variantId);
       originalRentalItems.push(shoe.createRentalItem(requestedItem.variantId, requestedItem.quantity));
     }
 
-    let finalRentalItems: RentalItem[];
-    if (totalDiscountPercent > 0) {
-      finalRentalItems = originalRentalItems.map(
-        (item) =>
-          new RentalItem({
-            shoeId: item.shoeId,
-            variantId: item.variantId,
-            shoeName: item.shoeName,
-            size: item.size,
-            color: item.color,
-            pricePerDay: Math.max(1, Math.round((item.pricePerDay * (100 - totalDiscountPercent)) / 100)),
-            quantity: item.quantity,
-          })
-      );
-    } else {
-      finalRentalItems = originalRentalItems;
-    }
+    const finalRentalItems: RentalItem[] =
+      totalDiscountPercent > 0
+        ? originalRentalItems.map((item) => item.withDiscountPercent(totalDiscountPercent))
+        : originalRentalItems;
 
     const originalBasePrice =
       originalRentalItems.reduce((sum, item) => sum + item.pricePerDay * item.quantity, 0) *
       rentalPeriod.durationInDays;
 
-    let noteText = request.note?.trim() || '';
-    if (totalDiscountPercent > 0) {
-      const tagParts: string[] = [];
-      if (rankDiscount > 0) {
-        tagParts.push(`Hạng ${customer.rank} -${rankDiscount}%`);
-      }
-      if (appliedVoucherCode) {
-        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
-      }
-      const tag = `[Ưu đãi: ${tagParts.join(', ')}]`;
-      if (noteText) {
-        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
-        const safePrefix =
-          noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
-        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
-      } else {
-        noteText = tag;
-      }
-    }
+    const noteText = Rental.formatDiscountNote(
+      request.note,
+      customer.rank,
+      rankDiscount,
+      appliedVoucherCode,
+      voucherDiscountPercent
+    );
 
     const rental = new Rental({
       id: this.idGenerator.next(),
       customerId: customer.id,
       items: finalRentalItems,
       period: rentalPeriod,
-      note: noteText || null,
+      note: noteText,
     });
 
     customer.registerRental(totalRequestedQuantity);

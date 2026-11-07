@@ -1,4 +1,9 @@
-import { CustomerRank, getMaxRentalItemsByRank } from './CustomerRank.enum';
+import {
+  CustomerRank,
+  getMaxRentalItemsByRank,
+  resolveRankByTotalSpentVnd,
+  upgradeRankIfHigher,
+} from './CustomerRank.enum';
 import { BusinessRuleError } from './errors/BusinessRuleError';
 import {
   ensureValidBoundedString,
@@ -152,6 +157,16 @@ export class Customer {
   changeRank(newRank: CustomerRank): void {
     ensureCurrentItemsWithinRankLimit(newRank, this.currentRentedItemsValue);
     this.rankValue = newRank;
+  }
+
+  upgradeRankForTotalSpent(totalSpentVnd: number): boolean {
+    const candidate = resolveRankByTotalSpentVnd(totalSpentVnd);
+    const nextRank = upgradeRankIfHigher(this.rankValue, candidate);
+    if (nextRank !== this.rankValue) {
+      this.changeRank(nextRank);
+      return true;
+    }
+    return false;
   }
 
   activate(): void {

@@ -2,7 +2,7 @@ import { ValidationError } from './ValidationError';
 
 /** Short alphanumeric id (1–10 chars) used for Rental, Customer, Shoe, Variant, etc. */
 export function ensureValidEntityId(id: string, entityLabel: string): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
+  if (!id || id.trim().length === 0 || id.trim().length > 10) {
     throw new ValidationError(`${entityLabel} id must be between 1 and 10 characters.`);
   }
 }
@@ -12,7 +12,7 @@ export function ensureValidRentalItemReferenceId(
   id: string,
   partLabel: 'shoe id' | 'variant id'
 ): void {
-  if (!id || id.trim().length === 0 || id.length > 10) {
+  if (!id || id.trim().length === 0 || id.trim().length > 10) {
     throw new ValidationError(`Rental item ${partLabel} is invalid.`);
   }
 }
@@ -29,13 +29,13 @@ export function normalizeDateToCalendarTime(value: Date): number {
 }
 
 export function ensureValidNonNegativeNumber(value: number, message: string): void {
-  if (typeof value !== 'number' || Number.isNaN(value) || value < 0) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new ValidationError(message);
   }
 }
 
 export function ensureValidPositiveNumber(value: number, message: string): void {
-  if (typeof value !== 'number' || Number.isNaN(value) || value <= 0) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new ValidationError(message);
   }
 }
@@ -71,7 +71,12 @@ export function ensureValidRentalNote(note: string | null): void {
 }
 
 export function ensureValidCustomerEmail(email: string): void {
-  if (!email || email.trim().length === 0 || email.length > 255 || !email.includes('@')) {
+  if (
+    !email ||
+    email.trim().length === 0 ||
+    email.trim().length > 255 ||
+    !/^[^\s@]+@[^\s@]+$/.test(email.trim())
+  ) {
     throw new ValidationError('Customer email is invalid.');
   }
 }

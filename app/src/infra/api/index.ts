@@ -16,7 +16,7 @@ app.get('/health', async (_req, res) => {
   });
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 app.use('/api/v1', (_req, _res, next) => {
   void container
     .getExpirePendingOnlinePaymentsService()
