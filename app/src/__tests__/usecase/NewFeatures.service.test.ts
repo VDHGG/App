@@ -25,8 +25,11 @@ import { CancelRentalService } from '@usecase/CancelRental.service';
 import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
 import { ExtendRentalService } from '@usecase/ExtendRental.service';
 import { ListRentalsService } from '@usecase/ListRentals.service';
+import { ListShoesService } from '@usecase/ListShoes.service';
 import { GetRentalService } from '@usecase/GetRental.service';
 import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
+import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
+import { ListRentalsQuerySchema } from '@adapter/http/rental.schema';
 import { ChatController } from '@adapter/http/ChatController.adapter';
 import type { RentalPaymentRepository, RentalPaymentRecord, RentalPaymentStatus } from '@port/RentalPaymentRepository.port';
 import { transactionalRoute } from '@adapter/http/middleware/routeMiddleware';
@@ -1823,6 +1826,94 @@ describe('New Features - Unit Tests', () => {
       expect(paymentMap.get(201)?.status).toBe('EXPIRED');
       expect((await customerRepo.findById('C_MOMO2'))?.currentRentedItems).toBe(1);
       expect((await voucherRepo.findByCode('PAID10'))?.usedCount).toBe(1);
+    });
+  });
+
+  describe('Phase M & O — ListShoesService variants & ListRentalsService customerId filter', () => {
+    it('includes variants (variantId, size, color, totalQuantity) on each ShoeSummary in ListShoesService', async () => {
+      const shoeRepo = new InMemoryShoeRepository();
+      const shoe = new Shoe({
+        id: 'S_VAR',
+        name: 'Pegasus 41',
+        brand: 'Nike',
+        category: 'Running',
+        pricePerDay: 250000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'SV_40_BLK',
+          size: 40,
+          color: 'Black',
+          totalQuantity: 4,
+          availableQuantity: 4,
+        })
+      );
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'SV_42_WHT',
+          size: 42,
+          color: 'White',
+          totalQuantity: 2,
+          availableQuantity: 2,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      const listShoes = new ListShoesService(shoeRepo, new NoopShoeImageService());
+      const res = await listShoes.execute();
+
+      expect(res.shoes).toHaveLength(1);
+      expect(res.shoes[0].variants).toEqual([
+        { variantId: 'SV_40_BLK', size: 40, color: 'Black', totalQuantity: 4 },
+        { variantId: 'SV_42_WHT', size: 42, color: 'White', totalQuantity: 2 },
+      ]);
+    });
+
+    it('filters rentals by customerId in ListRentalsService and validates customerId in ListRentalsQuerySchema', async () => {
+      const rentalRepo = new InMemoryRentalRepository();
+      const item = new RentalItem({
+        shoeId: 'S1',
+        variantId: 'V1',
+        shoeName: 'Air Max',
+        size: 42,
+        color: 'Black',
+        pricePerDay: 200000,
+        quantity: 1,
+      });
+
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_CUST_1',
+          customerId: 'CUST_A',
+          items: [item],
+          period: new RentalPeriod(new Date('2026-07-01'), new Date('2026-07-03')),
+          status: RentalStatus.RETURNED,
+          activatedAt: new Date('2026-07-01'),
+          returnedAt: new Date('2026-07-03'),
+        })
+      );
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_CUST_2',
+          customerId: 'CUST_B',
+          items: [item],
+          period: new RentalPeriod(new Date('2026-07-05'), new Date('2026-07-06')),
+          status: RentalStatus.ACTIVE,
+          activatedAt: new Date('2026-07-05'),
+        })
+      );
+
+      const parsedQuery = ListRentalsQuerySchema.parse({ customerId: '  CUST_A  ' });
+      expect(parsedQuery.customerId).toBe('CUST_A');
+
+      const listRentals = new ListRentalsService(rentalRepo);
+      const resultA = await listRentals.execute({ customerId: parsedQuery.customerId });
+      expect(resultA.total).toBe(1);
+      expect(resultA.rentals.map((r) => r.rentalId)).toEqual(['R_CUST_1']);
+
+      const resultB = await listRentals.execute({ customerId: 'CUST_B' });
+      expect(resultB.total).toBe(1);
+      expect(resultB.rentals.map((r) => r.rentalId)).toEqual(['R_CUST_2']);
     });
   });
 });

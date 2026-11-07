@@ -6,11 +6,16 @@ import {
   cancelRental,
   fetchAdminStatsOverview,
   sweepExpiredMomoRentals,
+  fetchActivityFeed,
   exportRentalsToCsv,
   type RentalSummary,
   type AdminStatsOverviewResponse,
   type StatsPeriod,
+  type LowStockVariantDto,
+  type ActivityFeedFilterType,
+  type ActivityFeedItem,
 } from '../../lib/rentals.api'
+import { updateShoe } from '../../lib/shoes.api'
 import { listCustomers } from '../../lib/customers.api'
 import type { CustomerSummary } from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
@@ -45,6 +50,10 @@ export function AdminDashboardPage() {
   const [period, setPeriod] = useState<StatsPeriod>('all')
   const [sweepLoading, setSweepLoading] = useState(false)
   const [sweepMessage, setSweepMessage] = useState<string | null>(null)
+  const [restockLoadingId, setRestockLoadingId] = useState<string | null>(null)
+  const [feedFilter, setFeedFilter] = useState<ActivityFeedFilterType>('ALL')
+  const [feedEvents, setFeedEvents] = useState<ActivityFeedItem[]>([])
+  const [feedLoading, setFeedLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -57,11 +66,17 @@ export function AdminDashboardPage() {
       listRentals(),
       listCustomers(),
       fetchAdminStatsOverview('all').catch(() => null),
+      fetchActivityFeed({ type: 'ALL', limit: 20 }).catch(() => ({
+        type: 'ALL',
+        events: [] as ActivityFeedItem[],
+        total: 0,
+      })),
     ])
-      .then(([rentalsRes, customersRes, statsRes]) => {
+      .then(([rentalsRes, customersRes, statsRes, feedRes]) => {
         setRentals(rentalsRes.rentals)
         setCustomers(customersRes.customers)
         setStats(statsRes)
+        setFeedEvents(feedRes.events)
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
@@ -77,6 +92,42 @@ export function AdminDashboardPage() {
     }
   }
 
+  const handleFeedFilterChange = async (nextType: ActivityFeedFilterType) => {
+    setFeedFilter(nextType)
+    setFeedLoading(true)
+    try {
+      const res = await fetchActivityFeed({ type: nextType, limit: 20 })
+      setFeedEvents(res.events)
+    } catch {
+      // ignore
+    } finally {
+      setFeedLoading(false)
+    }
+  }
+
+  const handleQuickRestock = async (variant: LowStockVariantDto, delta: number) => {
+    setRestockLoadingId(`${variant.variantId}:${delta}`)
+    setSweepMessage(null)
+    setActionError(null)
+    try {
+      const nextTotal = variant.totalQuantity + delta
+      await updateShoe(variant.shoeId, {
+        variantQuantityUpdates: [
+          { variantId: variant.variantId, totalQuantity: nextTotal },
+        ],
+      })
+      const statsRes = await fetchAdminStatsOverview(period).catch(() => null)
+      if (statsRes) setStats(statsRes)
+      setSweepMessage(
+        `Đã nhập kho nhanh +${delta} đôi cho ${variant.shoeName} (Size EU ${variant.size} · ${variant.color}). Tổng tồn kho mới: ${nextTotal} đôi.`
+      )
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err))
+    } finally {
+      setRestockLoadingId(null)
+    }
+  }
+
   const handleSweepExpiredMomo = async () => {
     setSweepLoading(true)
     setSweepMessage(null)
@@ -84,12 +135,14 @@ export function AdminDashboardPage() {
     try {
       const res = await sweepExpiredMomoRentals()
       setSweepMessage(`Đã quét và giải phóng ${res.sweptCount} đơn treo MoMo quá hạn.`)
-      const [rentalsRes, statsRes] = await Promise.all([
+      const [rentalsRes, statsRes, feedRes] = await Promise.all([
         listRentals(),
         fetchAdminStatsOverview(period).catch(() => null),
+        fetchActivityFeed({ type: feedFilter, limit: 20 }).catch(() => null),
       ])
       setRentals(rentalsRes.rentals)
       setStats(statsRes)
+      if (feedRes) setFeedEvents(feedRes.events)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {
@@ -119,12 +172,14 @@ export function AdminDashboardPage() {
     try {
       if (action === 'activate') await activateRental(rentalId)
       else await cancelRental(rentalId)
-      const [res, statsRes] = await Promise.all([
+      const [res, statsRes, feedRes] = await Promise.all([
         listRentals(),
         fetchAdminStatsOverview(period).catch(() => null),
+        fetchActivityFeed({ type: feedFilter, limit: 20 }).catch(() => null),
       ])
       setRentals(res.rentals)
       setStats(statsRes)
+      if (feedRes) setFeedEvents(feedRes.events)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {
@@ -514,6 +569,239 @@ export function AdminDashboardPage() {
               <span className="font-black text-slate-900 dark:text-white text-sm">
                 {stats?.totalRentals ?? totalRentals} đơn
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Phase N (Low-Stock Alerts + Quick Restock) & Phase P (Live Operations Audit Feed) */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Low-Stock Variant Alerts */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-rose-500">inventory</span>
+                  Cảnh báo Tồn kho Thấp & Nhập nhanh
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Các biến thể có số lượng khả dụng hôm nay ≤ 1 đôi
+                </p>
+              </div>
+              <span
+                className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                  (stats?.lowStockVariants?.length ?? 0) > 0
+                    ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'
+                    : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+                }`}
+              >
+                {(stats?.lowStockVariants?.length ?? 0) > 0
+                  ? `${stats?.lowStockVariants?.length} biến thể cần chú ý`
+                  : 'Đủ hàng'}
+              </span>
+            </div>
+
+            <div className="p-6 flex-1 max-h-[420px] overflow-y-auto">
+              {(stats?.lowStockVariants?.length ?? 0) === 0 ? (
+                <div className="h-48 flex flex-col items-center justify-center text-center gap-2 text-slate-500">
+                  <span className="material-symbols-outlined text-3xl text-emerald-500">
+                    verified
+                  </span>
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                    Tất cả biến thể giày đều đủ tồn kho khả dụng hôm nay (&gt; 1 đôi).
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(stats?.lowStockVariants ?? []).map((v) => (
+                    <div
+                      key={v.variantId}
+                      className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Link
+                            to={`/admin/shoes/${v.shoeId}/edit`}
+                            className="font-bold text-sm text-slate-900 dark:text-white hover:text-primary transition-colors"
+                          >
+                            {v.shoeName}
+                          </Link>
+                          <span className="px-2 py-0.5 rounded text-xs font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                            Size EU {v.size} · {v.color}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                          <span>Tồn kho: <strong>{v.totalQuantity}</strong></span>
+                          <span>Đang giữ: <strong>{v.reservedToday}</strong></span>
+                          <span
+                            className={`px-2 py-0.5 rounded font-bold ${
+                              v.availableToday === 0
+                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                            }`}
+                          >
+                            Khả dụng hôm nay: {v.availableToday} đôi
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          disabled={restockLoadingId !== null}
+                          onClick={() => void handleQuickRestock(v, 1)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 disabled:opacity-50"
+                        >
+                          {restockLoadingId === `${v.variantId}:1` ? '...' : '+1 đôi'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={restockLoadingId !== null}
+                          onClick={() => void handleQuickRestock(v, 5)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+                        >
+                          {restockLoadingId === `${v.variantId}:5` ? '...' : '+5 đôi'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Live Operations Audit Feed */}
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary">bolt</span>
+                    Nhật ký Vận hành Thời gian thực
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Tổng hợp luồng sự kiện Đặt đơn, MoMo, Giao/Trả giày & Đánh giá mới nhất
+                  </p>
+                </div>
+                <span className="text-xs font-semibold text-slate-400">
+                  {feedEvents.length} sự kiện
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Bộ lọc sự kiện vận hành">
+                {(
+                  [
+                    { value: 'ALL', label: 'Tất cả (ALL)' },
+                    { value: 'RESERVED', label: 'Đặt đơn' },
+                    { value: 'MOMO', label: 'MoMo' },
+                    { value: 'ACTIVE', label: 'Giao giày' },
+                    { value: 'RETURNED', label: 'Trả giày' },
+                    { value: 'CANCELLED', label: 'Đã hủy' },
+                    { value: 'REVIEW', label: 'Đánh giá' },
+                  ] as { value: ActivityFeedFilterType; label: string }[]
+                ).map((pill) => (
+                  <button
+                    key={pill.value}
+                    type="button"
+                    onClick={() => void handleFeedFilterChange(pill.value)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors ${
+                      feedFilter === pill.value
+                        ? 'bg-primary text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 flex-1 max-h-[420px] overflow-y-auto">
+              {feedLoading ? (
+                <div className="h-48 flex items-center justify-center text-sm text-slate-400">
+                  Đang tải nhật ký sự kiện…
+                </div>
+              ) : feedEvents.length === 0 ? (
+                <div className="h-48 flex items-center justify-center text-sm text-slate-400">
+                  Chưa có sự kiện nào thuộc bộ lọc này.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {feedEvents.map((ev) => {
+                    const badgeMeta =
+                      ev.type === 'MOMO_PAID'
+                        ? {
+                            icon: 'paid',
+                            cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+                          }
+                        : ev.type === 'MOMO_EXPIRED' || ev.type === 'CANCELLED'
+                          ? {
+                              icon: ev.type === 'MOMO_EXPIRED' ? 'timer_off' : 'cancel',
+                              cls: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300',
+                            }
+                          : ev.type === 'RETURNED'
+                            ? {
+                                icon: 'assignment_turned_in',
+                                cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+                              }
+                            : ev.type === 'ACTIVE'
+                              ? {
+                                  icon: 'directions_walk',
+                                  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+                                }
+                              : ev.type === 'REVIEW'
+                                ? {
+                                    icon: 'star',
+                                    cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+                                  }
+                                : {
+                                    icon: 'event_available',
+                                    cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+                                  }
+
+                    return (
+                      <div
+                        key={ev.id}
+                        className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-start justify-between gap-3"
+                      >
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className={`p-2 rounded-lg shrink-0 ${badgeMeta.cls}`}>
+                            <span className="material-symbols-outlined text-base leading-none">
+                              {badgeMeta.icon}
+                            </span>
+                          </div>
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">
+                              {ev.title}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                              {ev.subtitle}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-slate-400">
+                              <span>{formatDate(ev.timestamp)}</span>
+                              {ev.amountVnd !== null && (
+                                <span className="font-bold text-slate-700 dark:text-slate-200">
+                                  · {formatCurrency(ev.amountVnd)}
+                                </span>
+                              )}
+                              {ev.rating !== null && (
+                                <span className="font-bold text-amber-500">
+                                  · {ev.rating} ★
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <Link
+                          to={ev.link}
+                          className="text-xs font-bold text-primary hover:underline shrink-0"
+                        >
+                          Chi tiết →
+                        </Link>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

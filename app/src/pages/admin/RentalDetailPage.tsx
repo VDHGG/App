@@ -267,8 +267,18 @@ export function RentalDetailPage() {
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">
                 Customer
               </h3>
-              <p className="font-semibold">{customerName}</p>
-              <p className="text-sm text-slate-500">{rental.customerId}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{customerName}</p>
+                  <p className="text-sm text-slate-500">{rental.customerId}</p>
+                </div>
+                <Link
+                  to={`/admin/customers/${rental.customerId}`}
+                  className="text-xs font-semibold text-primary hover:underline"
+                >
+                  Xem hồ sơ 360° →
+                </Link>
+              </div>
             </div>
 
             <div>

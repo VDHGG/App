@@ -26,6 +26,8 @@ export function StorefrontPage() {
   const [localSearch, setLocalSearch] = useState(qFromUrl)
   const [categories, setCategories] = useState<Set<string>>(new Set())
   const [brands, setBrands] = useState<Set<string>>(new Set())
+  const [selectedSizes, setSelectedSizes] = useState<Set<number>>(new Set())
+  const [selectedColors, setSelectedColors] = useState<Set<string>>(new Set())
   const [priceMin, setPriceMin] = useState<string>('')
   const [priceMax, setPriceMax] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortOption>('featured')
@@ -49,6 +51,26 @@ export function StorefrontPage() {
 
   const uniqueBrands = useMemo(() => {
     const s = new Set(shoes.map((x) => x.brand).filter(Boolean))
+    return [...s].sort((a, b) => a.localeCompare(b))
+  }, [shoes])
+
+  const uniqueSizes = useMemo(() => {
+    const s = new Set<number>()
+    for (const shoe of shoes) {
+      for (const v of shoe.variants ?? []) {
+        if (v.totalQuantity > 0) s.add(v.size)
+      }
+    }
+    return [...s].sort((a, b) => a - b)
+  }, [shoes])
+
+  const uniqueColors = useMemo(() => {
+    const s = new Set<string>()
+    for (const shoe of shoes) {
+      for (const v of shoe.variants ?? []) {
+        if (v.totalQuantity > 0 && v.color) s.add(v.color)
+      }
+    }
     return [...s].sort((a, b) => a.localeCompare(b))
   }, [shoes])
 
@@ -76,6 +98,17 @@ export function StorefrontPage() {
     }
     if (brands.size > 0) {
       list = list.filter((s) => brands.has(s.brand))
+    }
+
+    if (selectedSizes.size > 0 || selectedColors.size > 0) {
+      list = list.filter((s) =>
+        (s.variants ?? []).some(
+          (v) =>
+            v.totalQuantity > 0 &&
+            (selectedSizes.size === 0 || selectedSizes.has(v.size)) &&
+            (selectedColors.size === 0 || selectedColors.has(v.color)),
+        ),
+      )
     }
 
     const minN = priceMin === '' ? null : Number(priceMin)
@@ -107,7 +140,17 @@ export function StorefrontPage() {
     }
 
     return list
-  }, [shoes, qFromUrl, categories, brands, priceMin, priceMax, sortBy])
+  }, [
+    shoes,
+    qFromUrl,
+    categories,
+    brands,
+    selectedSizes,
+    selectedColors,
+    priceMin,
+    priceMax,
+    sortBy,
+  ])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const safePage = Math.min(page, totalPages)
@@ -119,7 +162,7 @@ export function StorefrontPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [qFromUrl, categories, brands, priceMin, priceMax, sortBy])
+  }, [qFromUrl, categories, brands, selectedSizes, selectedColors, priceMin, priceMax, sortBy])
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
@@ -140,6 +183,8 @@ export function StorefrontPage() {
   const clearFilters = useCallback(() => {
     setCategories(new Set())
     setBrands(new Set())
+    setSelectedSizes(new Set())
+    setSelectedColors(new Set())
     setPriceMin('')
     setPriceMax('')
     setSortBy('featured')
@@ -283,6 +328,64 @@ export function StorefrontPage() {
 
           <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
             <h4 className="font-semibold mb-3 text-xs uppercase tracking-wider text-slate-500">
+              Size EU
+            </h4>
+            {uniqueSizes.length === 0 ? (
+              <p className="text-sm text-slate-400">—</p>
+            ) : (
+              <div className="grid grid-cols-4 gap-1.5" role="group" aria-label="Filter by EU Size">
+                {uniqueSizes.map((sz) => {
+                  const active = selectedSizes.has(sz)
+                  return (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => setSelectedSizes((prev) => toggleSet(prev, sz))}
+                      className={`h-8 rounded-lg text-xs font-bold border transition-colors ${
+                        active
+                          ? 'bg-primary text-white border-primary shadow-sm'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary'
+                      }`}
+                    >
+                      {sz}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+            <h4 className="font-semibold mb-3 text-xs uppercase tracking-wider text-slate-500">
+              Color
+            </h4>
+            {uniqueColors.length === 0 ? (
+              <p className="text-sm text-slate-400">—</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by Color">
+                {uniqueColors.map((col) => {
+                  const active = selectedColors.has(col)
+                  return (
+                    <button
+                      key={col}
+                      type="button"
+                      onClick={() => setSelectedColors((prev) => toggleSet(prev, col))}
+                      className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${
+                        active
+                          ? 'bg-primary text-white border-primary shadow-sm'
+                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary'
+                      }`}
+                    >
+                      {col}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+            <h4 className="font-semibold mb-3 text-xs uppercase tracking-wider text-slate-500">
               Category
             </h4>
             <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
@@ -373,30 +476,104 @@ export function StorefrontPage() {
               of <span className="text-slate-900 dark:text-white">{filtered.length}</span>{' '}
               {filtered.length === 1 ? 'pair' : 'pairs'}
             </p>
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  type="button"
-                  disabled={safePage <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-slate-500">Sắp xếp:</span>
+                <select
+                  aria-label="Sắp xếp danh sách giày"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="h-9 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold focus:ring-2 focus:ring-primary"
                 >
-                  Previous
-                </button>
-                <span className="text-sm text-slate-600 dark:text-slate-400">
-                  Page {safePage} / {totalPages}
-                </span>
-                <button
-                  type="button"
-                  disabled={safePage >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  Next
-                </button>
+                  <option value="featured">Mặc định (Tồn kho)</option>
+                  <option value="price-asc">Giá: Thấp → Cao</option>
+                  <option value="price-desc">Giá: Cao → Thấp</option>
+                  <option value="name-asc">Tên: A → Z</option>
+                  <option value="name-desc">Tên: Z → A</option>
+                </select>
               </div>
-            )}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    disabled={safePage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-slate-600 dark:text-slate-400">
+                    Page {safePage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={safePage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
+
+          {(selectedSizes.size > 0 ||
+            selectedColors.size > 0 ||
+            categories.size > 0 ||
+            brands.size > 0 ||
+            Boolean(qFromUrl)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500">Đang lọc:</span>
+              {[...selectedSizes].map((sz) => (
+                <button
+                  key={`sz-${sz}`}
+                  type="button"
+                  onClick={() => setSelectedSizes((prev) => toggleSet(prev, sz))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  Size EU {sz} ×
+                </button>
+              ))}
+              {[...selectedColors].map((col) => (
+                <button
+                  key={`col-${col}`}
+                  type="button"
+                  onClick={() => setSelectedColors((prev) => toggleSet(prev, col))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  Màu {col} ×
+                </button>
+              ))}
+              {[...categories].map((cat) => (
+                <button
+                  key={`cat-${cat}`}
+                  type="button"
+                  onClick={() => setCategories((prev) => toggleSet(prev, cat))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                >
+                  {cat} ×
+                </button>
+              ))}
+              {[...brands].map((br) => (
+                <button
+                  key={`br-${br}`}
+                  type="button"
+                  onClick={() => setBrands((prev) => toggleSet(prev, br))}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                >
+                  {br} ×
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs font-bold text-rose-600 hover:underline ml-1"
+              >
+                Xóa tất cả bộ lọc
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
             {pageSlice.length === 0 ? (

@@ -125,6 +125,7 @@ export class RentalController {
     router.get('/vouchers/active', ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
     router.get('/notifications', ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get('/stats/overview', ...admin, asyncRoute(this.getStatsOverview.bind(this)));
+    router.get('/activity-feed', ...admin, asyncRoute(this.getActivityFeed.bind(this)));
     router.post('/sweep-expired-momo', ...admin, asyncRoute(this.sweepExpiredMomo.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
@@ -238,6 +239,7 @@ export class RentalController {
 
     const result = await this.listRentals.execute({
       ...(query.status ? { status: query.status } : {}),
+      ...(query.customerId ? { customerId: query.customerId } : {}),
       ...(query.startDateFrom ? { startDateFrom: query.startDateFrom } : {}),
       ...(query.startDateTo ? { startDateTo: query.startDateTo } : {}),
       ...(amountBucket ? { amountBucket } : {}),
@@ -639,6 +641,16 @@ export class RentalController {
       totalUnitsRented: number;
       averageRating: number | null;
     }> = [];
+    let lowStockVariants: Array<{
+      variantId: string;
+      shoeId: string;
+      shoeName: string;
+      size: number;
+      color: string;
+      totalQuantity: number;
+      reservedToday: number;
+      availableToday: number;
+    }> = [];
 
     if (this.pool) {
       try {
@@ -716,6 +728,52 @@ export class RentalController {
       } catch {
         // ignore
       }
+
+      try {
+        const [lowStockRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT
+             sv.variant_id AS variantId,
+             sv.shoe_id AS shoeId,
+             s.name AS shoeName,
+             sv.size AS size,
+             c.name AS color,
+             sv.on_hand_quantity AS totalQuantity,
+             COALESCE(SUM(CASE WHEN r.rental_id IS NOT NULL THEN ri.quantity ELSE 0 END), 0) AS reservedToday
+           FROM shoe_variants sv
+           INNER JOIN shoes s ON s.shoe_id = sv.shoe_id
+           INNER JOIN colors c ON c.id = sv.color_id
+           LEFT JOIN rental_items ri ON ri.variant_id = sv.variant_id
+           LEFT JOIN rentals r ON r.rental_id = ri.rental_id
+             AND r.status IN ('RESERVED', 'ACTIVE')
+             AND r.start_date <= ?
+             AND r.expected_return_date >= ?
+           WHERE s.is_active = 1
+           GROUP BY sv.variant_id, sv.shoe_id, s.name, sv.size, c.name, sv.on_hand_quantity
+           HAVING sv.on_hand_quantity <= 2
+              OR (sv.on_hand_quantity - COALESCE(SUM(CASE WHEN r.rental_id IS NOT NULL THEN ri.quantity ELSE 0 END), 0)) <= 1
+           ORDER BY (sv.on_hand_quantity - COALESCE(SUM(CASE WHEN r.rental_id IS NOT NULL THEN ri.quantity ELSE 0 END), 0)) ASC,
+                    sv.on_hand_quantity ASC,
+                    s.name ASC
+           LIMIT 12`,
+          [todayStr, todayStr]
+        );
+        lowStockVariants = lowStockRows.map((row) => {
+          const totalQuantity = Number(row['totalQuantity'] || 0);
+          const reservedToday = Number(row['reservedToday'] || 0);
+          return {
+            variantId: String(row['variantId']),
+            shoeId: String(row['shoeId']),
+            shoeName: String(row['shoeName']),
+            size: Number(row['size'] || 0),
+            color: String(row['color']),
+            totalQuantity,
+            reservedToday,
+            availableToday: Math.max(0, totalQuantity - reservedToday),
+          };
+        });
+      } catch {
+        // ignore
+      }
     }
 
     res.json({
@@ -730,7 +788,269 @@ export class RentalController {
       momoPaidAmountVnd,
       totalCustomers,
       topShoes,
+      lowStockVariants,
       revenueSeries,
+    });
+  }
+
+  private async getActivityFeed(req: Request, res: Response): Promise<void> {
+    await this.lazySweepExpiredMomo();
+    const rawType = String(req.query['type'] ?? 'ALL').trim().toUpperCase();
+    const parsedLimit = Number(req.query['limit'] ?? 20);
+    const limit = Number.isFinite(parsedLimit)
+      ? Math.min(50, Math.max(1, Math.trunc(parsedLimit)))
+      : 20;
+
+    type ActivityFeedEvent = {
+      id: string;
+      type:
+        | 'RESERVED'
+        | 'MOMO_PAID'
+        | 'MOMO_EXPIRED'
+        | 'ACTIVE'
+        | 'RETURNED'
+        | 'CANCELLED'
+        | 'REVIEW';
+      title: string;
+      subtitle: string;
+      amountVnd: number | null;
+      rating: number | null;
+      link: string;
+      timestamp: string;
+    };
+
+    const events: ActivityFeedEvent[] = [];
+    const nowIso = new Date().toISOString();
+    const toIso = (val: unknown, fallbackIso: string): string => {
+      if (val instanceof Date && !Number.isNaN(val.getTime())) {
+        return val.toISOString();
+      }
+      if (typeof val === 'string' && val.trim() !== '') {
+        const d = new Date(val);
+        if (!Number.isNaN(d.getTime())) {
+          return d.toISOString();
+        }
+      }
+      return fallbackIso;
+    };
+
+    const recentList = await this.listRentals.execute({ page: 1, pageSize: 50 });
+    const summaryById = new Map(recentList.rentals.map((r) => [r.rentalId, r]));
+
+    if (this.pool) {
+      try {
+        const [rentalRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT r.*, c.full_name AS customer_name
+           FROM rentals r
+           LEFT JOIN customers c ON c.customer_id = r.customer_id
+           ORDER BY r.created_at DESC
+           LIMIT 40`
+        );
+        for (const row of rentalRows) {
+          const rentalId = String(row['rental_id']);
+          const summary = summaryById.get(rentalId);
+          const customerName = String(
+            row['customer_name'] ?? summary?.customerId ?? row['customer_id'] ?? 'Khách hàng'
+          );
+          const totalItems = summary?.totalItems ?? 1;
+          const totalAmount = summary?.totalAmount ?? 0;
+          const status = String(row['status'] ?? summary?.status ?? 'RESERVED');
+          const createdAtIso = toIso(row['created_at'] ?? row['start_date'], nowIso);
+
+          events.push({
+            id: `rental-reserved-${rentalId}`,
+            type: 'RESERVED',
+            title: `Đơn thuê mới #${rentalId}`,
+            subtitle: `${customerName} đặt ${totalItems} đôi giày`,
+            amountVnd: totalAmount,
+            rating: null,
+            link: `/admin/rentals/${rentalId}`,
+            timestamp: createdAtIso,
+          });
+
+          if (row['activated_at'] !== null && row['activated_at'] !== undefined) {
+            events.push({
+              id: `rental-active-${rentalId}`,
+              type: 'ACTIVE',
+              title: `Đã giao giày #${rentalId}`,
+              subtitle: `${customerName} đang thuê (${totalItems} đôi)`,
+              amountVnd: totalAmount,
+              rating: null,
+              link: `/admin/rentals/${rentalId}`,
+              timestamp: toIso(row['activated_at'], createdAtIso),
+            });
+          }
+
+          if (status === 'RETURNED') {
+            events.push({
+              id: `rental-returned-${rentalId}`,
+              type: 'RETURNED',
+              title: `Đã hoàn trả #${rentalId}`,
+              subtitle: `${customerName} hoàn tất trả giày`,
+              amountVnd: totalAmount,
+              rating: null,
+              link: `/admin/rentals/${rentalId}`,
+              timestamp: toIso(
+                row['updated_at'] ?? row['actual_return_date'] ?? row['created_at'],
+                createdAtIso
+              ),
+            });
+          }
+
+          if (status === 'CANCELLED') {
+            events.push({
+              id: `rental-cancelled-${rentalId}`,
+              type: 'CANCELLED',
+              title: `Đã hủy đơn #${rentalId}`,
+              subtitle: `${customerName} — đơn đã hủy`,
+              amountVnd: totalAmount,
+              rating: null,
+              link: `/admin/rentals/${rentalId}`,
+              timestamp: toIso(
+                row['cancelled_at'] ?? row['updated_at'] ?? row['created_at'],
+                createdAtIso
+              ),
+            });
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [paymentRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT rp.*, c.full_name AS customer_name
+           FROM rental_payments rp
+           LEFT JOIN customers c ON c.customer_id = rp.customer_id
+           WHERE rp.status IN ('PAID', 'EXPIRED')
+           ORDER BY COALESCE(rp.paid_at, rp.updated_at, rp.created_at) DESC
+           LIMIT 30`
+        );
+        for (const row of paymentRows) {
+          const paymentId = String(row['id'] ?? row['gateway_order_id']);
+          const rentalId = String(row['rental_id']);
+          const pStatus = String(row['status']);
+          const customerName = String(
+            row['customer_name'] ?? row['customer_id'] ?? 'Khách hàng'
+          );
+          const gatewayOrderId = String(row['gateway_order_id'] ?? '');
+          const ts = toIso(row['paid_at'] ?? row['updated_at'] ?? row['created_at'], nowIso);
+          events.push({
+            id: `momo-${paymentId}`,
+            type: pStatus === 'PAID' ? 'MOMO_PAID' : 'MOMO_EXPIRED',
+            title:
+              pStatus === 'PAID'
+                ? `Thanh toán MoMo thành công #${rentalId}`
+                : `Giao dịch MoMo hết hạn #${rentalId}`,
+            subtitle: `${customerName} · Mã GD: ${gatewayOrderId}`,
+            amountVnd: Number(row['amount_vnd'] || 0),
+            rating: null,
+            link: `/admin/rentals/${rentalId}`,
+            timestamp: ts,
+          });
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [reviewRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT sr.*, s.name AS shoe_name
+           FROM shoe_reviews sr
+           LEFT JOIN shoes s ON s.shoe_id = sr.shoe_id
+           ORDER BY sr.created_at DESC
+           LIMIT 30`
+        );
+        for (const row of reviewRows) {
+          const reviewId = String(
+            row['review_id'] ?? row['id'] ?? `${row['shoe_id']}-${row['customer_id']}`
+          );
+          const shoeName = String(row['shoe_name'] ?? row['shoe_id'] ?? 'Giày');
+          const customerName = String(row['customer_name'] ?? 'Khách hàng');
+          const comment = String(row['comment'] ?? '').slice(0, 80);
+          const rating = Number(row['rating'] || 5);
+          const ts = toIso(row['created_at'], nowIso);
+          events.push({
+            id: `review-${reviewId}`,
+            type: 'REVIEW',
+            title: `Đánh giá ${rating}★ cho ${shoeName}`,
+            subtitle: `${customerName}: "${comment}"`,
+            amountVnd: null,
+            rating,
+            link: '/admin/reviews',
+            timestamp: ts,
+          });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (!this.pool || events.length === 0) {
+      for (const r of recentList.rentals.slice(0, 30)) {
+        const createdIso = toIso(r.startDate, nowIso);
+        events.push({
+          id: `rental-reserved-${r.rentalId}`,
+          type: 'RESERVED',
+          title: `Đơn thuê mới #${r.rentalId}`,
+          subtitle: `${r.customerId} đặt ${r.totalItems} đôi giày`,
+          amountVnd: r.totalAmount,
+          rating: null,
+          link: `/admin/rentals/${r.rentalId}`,
+          timestamp: createdIso,
+        });
+        if (r.status === 'ACTIVE') {
+          events.push({
+            id: `rental-active-${r.rentalId}`,
+            type: 'ACTIVE',
+            title: `Đã giao giày #${r.rentalId}`,
+            subtitle: `${r.customerId} đang thuê (${r.totalItems} đôi)`,
+            amountVnd: r.totalAmount,
+            rating: null,
+            link: `/admin/rentals/${r.rentalId}`,
+            timestamp: createdIso,
+          });
+        } else if (r.status === 'RETURNED') {
+          events.push({
+            id: `rental-returned-${r.rentalId}`,
+            type: 'RETURNED',
+            title: `Đã hoàn trả #${r.rentalId}`,
+            subtitle: `${r.customerId} hoàn tất trả giày`,
+            amountVnd: r.totalAmount,
+            rating: null,
+            link: `/admin/rentals/${r.rentalId}`,
+            timestamp: toIso(r.endDate, createdIso),
+          });
+        } else if (r.status === 'CANCELLED') {
+          events.push({
+            id: `rental-cancelled-${r.rentalId}`,
+            type: 'CANCELLED',
+            title: `Đã hủy đơn #${r.rentalId}`,
+            subtitle: `${r.customerId} — đơn đã hủy`,
+            amountVnd: r.totalAmount,
+            rating: null,
+            link: `/admin/rentals/${r.rentalId}`,
+            timestamp: toIso(r.startDate, createdIso),
+          });
+        }
+      }
+    }
+
+    const filtered = events.filter((e) => {
+      if (rawType === 'ALL') return true;
+      if (rawType === 'MOMO') return e.type === 'MOMO_PAID' || e.type === 'MOMO_EXPIRED';
+      return e.type === rawType;
+    });
+
+    filtered.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+    const sliced = filtered.slice(0, limit);
+
+    res.json({
+      type: rawType,
+      events: sliced,
+      total: filtered.length,
     });
   }
 }

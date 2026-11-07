@@ -42,6 +42,12 @@ export class ListShoesService implements ListShoesUseCase {
         unitsInStock: shoe.variants.reduce((sum, v) => sum + v.totalQuantity, 0),
         imagePublicId: shoe.imagePublicId,
         imageUrl: this.shoeImages.urlForCard(shoe.imagePublicId),
+        variants: shoe.variants.map((v) => ({
+          variantId: v.id,
+          size: v.size,
+          color: v.color,
+          totalQuantity: v.totalQuantity,
+        })),
       })),
       total,
       page: paginate ? page : 1,

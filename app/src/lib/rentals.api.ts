@@ -88,6 +88,7 @@ export type ListRentalsResponse = {
 }
 
 export type ListRentalsQuery = {
+  customerId?: string
   status?: RentalStatus
   startDateFrom?: string
   startDateTo?: string
@@ -221,6 +222,17 @@ export type RevenueSeriesPoint = {
   rentalCount: number
 }
 
+export type LowStockVariantDto = {
+  variantId: string
+  shoeId: string
+  shoeName: string
+  size: number
+  color: string
+  totalQuantity: number
+  reservedToday: number
+  availableToday: number
+}
+
 export type AdminStatsOverviewResponse = {
   period?: StatsPeriod
   totalRentals: number
@@ -245,6 +257,47 @@ export type AdminStatsOverviewResponse = {
     totalUnitsRented: number
     averageRating: number | null
   }>
+  lowStockVariants?: LowStockVariantDto[]
+}
+
+export type ActivityFeedFilterType =
+  | 'ALL'
+  | 'RESERVED'
+  | 'MOMO'
+  | 'ACTIVE'
+  | 'RETURNED'
+  | 'CANCELLED'
+  | 'REVIEW'
+
+export type ActivityFeedEventType =
+  | 'RESERVED'
+  | 'MOMO_PAID'
+  | 'MOMO_EXPIRED'
+  | 'ACTIVE'
+  | 'RETURNED'
+  | 'CANCELLED'
+  | 'REVIEW'
+
+export type ActivityFeedItem = {
+  id: string
+  type: ActivityFeedEventType
+  title: string
+  subtitle: string
+  amountVnd: number | null
+  rating: number | null
+  link: string
+  timestamp: string
+}
+
+export async function fetchActivityFeed(params?: {
+  type?: ActivityFeedFilterType
+  limit?: number
+}): Promise<{ type: string; events: ActivityFeedItem[]; total: number }> {
+  const { data } = await api.get<{ type: string; events: ActivityFeedItem[]; total: number }>(
+    '/rentals/activity-feed',
+    { ...(params ? { params } : {}) }
+  )
+  return data
 }
 
 export async function fetchAdminStatsOverview(

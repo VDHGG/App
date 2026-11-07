@@ -38,6 +38,7 @@ export const ExtendRentalSchema = z.object({
 export const ListRentalsQuerySchema = z
   .object({
     status: z.enum(['RESERVED', 'ACTIVE', 'RETURNED', 'CANCELLED']).optional(),
+    customerId: z.string().trim().min(1).max(32).optional(),
     startDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     startDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     amountBucket: z.enum(['all', 'lt50', '50to150', '150to300', 'gt300']).optional(),

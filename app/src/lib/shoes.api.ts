@@ -11,6 +11,12 @@ export type ShoeSummary = {
   unitsInStock: number
   imagePublicId: string | null
   imageUrl: string | null
+  variants?: Array<{
+    variantId: string
+    size: number
+    color: string
+    totalQuantity: number
+  }>
 }
 
 export type ShoeVariantDto = {

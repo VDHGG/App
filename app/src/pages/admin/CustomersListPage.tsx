@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   listCustomers,
   getCustomer,
@@ -242,7 +243,12 @@ export function CustomersListPage() {
                           <div className="size-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-xs">
                             {c.fullName.slice(0, 2).toUpperCase()}
                           </div>
-                          <span className="font-semibold">{c.fullName}</span>
+                          <Link
+                            to={`/admin/customers/${c.customerId}`}
+                            className="font-semibold hover:text-primary transition-colors"
+                          >
+                            {c.fullName}
+                          </Link>
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-600 dark:text-slate-400">
@@ -267,6 +273,12 @@ export function CustomersListPage() {
                       <td className="px-6 py-4 text-sm font-bold">{c.currentRentedItems}</td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-3">
+                          <Link
+                            to={`/admin/customers/${c.customerId}`}
+                            className="text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+                          >
+                            Hồ sơ 360°
+                          </Link>
                           <button
                             type="button"
                             onClick={() => openEdit(c.customerId)}
