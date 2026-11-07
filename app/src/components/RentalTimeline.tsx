@@ -38,13 +38,15 @@ export function RentalTimeline({ rental, paymentStatus }: RentalTimelineProps) {
   const momoLabel =
     paymentStatus === 'PAID'
       ? 'MoMo PAID'
-      : paymentStatus === 'PENDING'
-        ? 'MoMo PENDING'
-        : paymentStatus === 'EXPIRED'
-          ? 'MoMo EXPIRED'
-          : paymentStatus === 'FAILED'
-            ? 'MoMo FAILED'
-            : 'COD / Thanh toán tại quầy'
+      : rental.status === 'ACTIVE' || rental.status === 'RETURNED'
+        ? 'Đã thu tại quầy (COD)'
+        : paymentStatus === 'PENDING'
+          ? 'MoMo PENDING'
+          : paymentStatus === 'EXPIRED'
+            ? 'MoMo EXPIRED'
+            : paymentStatus === 'FAILED'
+              ? 'MoMo FAILED'
+              : 'COD / Thanh toán tại quầy'
 
   const depositText = `Cọc: ${formatCurrency(rental.depositAmount ?? rental.totalItems * 500000)}`
 

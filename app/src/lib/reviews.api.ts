@@ -15,6 +15,9 @@ export type ListAdminReviewsResponse = {
   reviews: AdminReviewItem[]
   total: number
   averageRating: number
+  overallTotal?: number
+  overallAverageRating?: number
+  lowRatingCount?: number
 }
 
 export async function listAdminReviews(params?: {

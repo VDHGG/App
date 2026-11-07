@@ -1701,5 +1701,128 @@ describe('New Features - Unit Tests', () => {
       expect((await customerRepo.findById('C_MOMO'))?.currentRentedItems).toBe(0);
       expect((await voucherRepo.findByCode('FLASH15'))?.usedCount).toBe(0);
     });
+
+    it('does NOT cancel a RESERVED rental when a newer PAID payment exists for the same rental', async () => {
+      const customerRepo = new InMemoryCustomerRepository();
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+      const checker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
+
+      await customerRepo.save(
+        new Customer({
+          id: 'C_MOMO2',
+          fullName: 'Paid Momo Customer',
+          email: 'paidmomo@example.com',
+          rank: CustomerRank.BRONZE,
+        })
+      );
+
+      const shoe = new Shoe({
+        id: 'S_MOMO2',
+        name: 'Nike Zoom Paid',
+        brand: 'Nike',
+        category: 'Running',
+        pricePerDay: 200000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V_MOMO2',
+          size: 42,
+          color: 'White',
+          totalQuantity: 5,
+          availableQuantity: 5,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      await voucherRepo.save({
+        code: 'PAID10',
+        discountPercent: 10,
+        description: 'Paid test voucher',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: '2099-12-31',
+      });
+
+      const createService = new CreateRentalService(
+        customerRepo,
+        shoeRepo,
+        rentalRepo,
+        checker,
+        new ShortIdGenerator('R'),
+        voucherRepo
+      );
+      const cancelService = new CancelRentalService(rentalRepo, customerRepo, voucherRepo);
+
+      const created = await createService.execute({
+        customerId: 'C_MOMO2',
+        items: [{ variantId: 'V_MOMO2', quantity: 1 }],
+        startDate: new Date('2099-10-01'),
+        endDate: new Date('2099-10-02'),
+        voucherCode: 'PAID10',
+      });
+
+      const paymentMap = new Map<number, RentalPaymentRecord>();
+      paymentMap.set(201, {
+        id: 201,
+        rentalId: created.rentalId,
+        customerId: 'C_MOMO2',
+        provider: 'momo',
+        gatewayOrderId: 'RS_OLD_201',
+        gatewayRequestId: 'RS_OLD_201',
+        amountVnd: created.totalAmount,
+        status: 'PENDING',
+        expiresAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const mockPaymentRepo: RentalPaymentRepository = {
+        insertPending: async () => 201,
+        cancelPendingForRental: async () => undefined,
+        findByGatewayOrderId: async () => null,
+        updateFromIpn: async () => undefined,
+        findLatestByRentalIds: async () => ({
+          [created.rentalId]: {
+            status: 'PAID',
+            amountVnd: created.totalAmount,
+            gatewayOrderId: 'RS_NEW_202',
+            paidAt: new Date('2026-01-01T00:01:00Z'),
+          },
+        }),
+        listPendingExpired: async (now: Date) =>
+          Array.from(paymentMap.values()).filter(
+            (p) => p.status === 'PENDING' && p.expiresAt.getTime() <= now.getTime()
+          ),
+        setStatus: async (id: number, status: RentalPaymentStatus) => {
+          const existing = paymentMap.get(id);
+          if (existing) {
+            paymentMap.set(id, { ...existing, status });
+          }
+        },
+        countMomoAttemptsSince: async () => 0,
+      };
+
+      const txManager: TransactionManager = {
+        runInTransaction: async <T>(work: () => Promise<T>): Promise<T> => work(),
+      };
+
+      const sweepService = new ExpirePendingOnlinePaymentsService(
+        txManager,
+        mockPaymentRepo,
+        rentalRepo,
+        cancelService
+      );
+
+      const sweepResult = await sweepService.execute(new Date('2026-01-01T00:05:00Z'));
+
+      expect(sweepResult.expired).toBe(1);
+      expect(sweepResult.cancelledRentalIds).toEqual([]);
+
+      const rentalAfterSweep = await rentalRepo.findById(created.rentalId);
+      expect(rentalAfterSweep?.status).toBe(RentalStatus.RESERVED);
+      expect(paymentMap.get(201)?.status).toBe('EXPIRED');
+      expect((await customerRepo.findById('C_MOMO2'))?.currentRentedItems).toBe(1);
+      expect((await voucherRepo.findByCode('PAID10'))?.usedCount).toBe(1);
+    });
   });
 });

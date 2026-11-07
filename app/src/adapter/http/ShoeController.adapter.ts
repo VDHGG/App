@@ -341,7 +341,14 @@ export class ShoeController {
 
   private async listAllReviewsAdmin(req: Request, res: Response): Promise<void> {
     if (!this.pool) {
-      res.json({ reviews: [], total: 0, averageRating: 5 });
+      res.json({
+        reviews: [],
+        total: 0,
+        averageRating: 5,
+        overallTotal: 0,
+        overallAverageRating: 5,
+        lowRatingCount: 0,
+      });
       return;
     }
 
@@ -362,7 +369,8 @@ export class ShoeController {
 
     const search = String(req.query['search'] ?? '').trim();
     if (search) {
-      const like = `%${search}%`;
+      const escaped = search.replace(/[\\%_]/g, '\\$&');
+      const like = `%${escaped}%`;
       conditions.push(
         '(sr.shoe_id LIKE ? OR s.name LIKE ? OR sr.customer_name LIKE ? OR sr.customer_id LIKE ? OR sr.comment LIKE ?)'
       );
@@ -398,7 +406,35 @@ export class ShoeController {
         ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / total) * 10) / 10
         : 5;
 
-    res.json({ reviews, total, averageRating });
+    let overallTotal = total;
+    let overallAverageRating = averageRating;
+    let lowRatingCount = reviews.filter((r) => r.rating <= 2).length;
+
+    try {
+      const [summaryRows] = await this.pool.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS cnt,
+                ROUND(AVG(rating), 1) AS avg_rating,
+                COALESCE(SUM(CASE WHEN rating <= 2 THEN 1 ELSE 0 END), 0) AS low_cnt
+         FROM shoe_reviews`
+      );
+      if (summaryRows.length > 0) {
+        overallTotal = Number(summaryRows[0]['cnt'] ?? 0);
+        overallAverageRating =
+          summaryRows[0]['avg_rating'] !== null ? Number(summaryRows[0]['avg_rating']) : 5;
+        lowRatingCount = Number(summaryRows[0]['low_cnt'] ?? 0);
+      }
+    } catch {
+      // ignore summary query error
+    }
+
+    res.json({
+      reviews,
+      total,
+      averageRating,
+      overallTotal,
+      overallAverageRating,
+      lowRatingCount,
+    });
   }
 
   private async deleteReviewAdmin(req: Request, res: Response): Promise<void> {

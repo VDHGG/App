@@ -13,6 +13,7 @@ export function AdminReviewsPage() {
   const [reviews, setReviews] = useState<AdminReviewItem[]>([])
   const [total, setTotal] = useState(0)
   const [averageRating, setAverageRating] = useState(0)
+  const [lowRatingCount, setLowRatingCount] = useState(0)
   const [ratingFilter, setRatingFilter] = useState<number | undefined>(undefined)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -34,8 +35,9 @@ export function AdminReviewsPage() {
         ...(search ? { search } : {}),
       })
       setReviews(res.reviews)
-      setTotal(res.total)
-      setAverageRating(res.averageRating)
+      setTotal(res.overallTotal ?? res.total)
+      setAverageRating(res.overallAverageRating ?? res.averageRating)
+      setLowRatingCount(res.lowRatingCount ?? res.reviews.filter((r) => r.rating <= 2).length)
     } catch (err: unknown) {
       setError(getApiErrorMessage(err))
     } finally {
@@ -66,8 +68,6 @@ export function AdminReviewsPage() {
       setDeletingId(null)
     }
   }
-
-  const lowRatingCount = reviews.filter((r) => r.rating <= 2).length
 
   return (
     <>

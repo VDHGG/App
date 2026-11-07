@@ -41,13 +41,22 @@ export class ExpirePendingOnlinePaymentsService {
           }
 
           if (rental.status === RentalStatus.RESERVED) {
-            await this.cancelRental.execute({
-              rentalId: p.rentalId,
-              cancelledAt: now,
-              note: 'Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).',
-              requestingCustomerId: undefined,
-            });
-            wasCancelled = true;
+            const latestMap = await this.rentalPayments.findLatestByRentalIds([p.rentalId]);
+            const latest = latestMap[p.rentalId];
+            const hasPaidOrNewerActiveAttempt =
+              latest !== undefined &&
+              (latest.status === 'PAID' ||
+                (latest.status === 'PENDING' && latest.gatewayOrderId !== p.gatewayOrderId));
+
+            if (!hasPaidOrNewerActiveAttempt) {
+              await this.cancelRental.execute({
+                rentalId: p.rentalId,
+                cancelledAt: now,
+                note: 'Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).',
+                requestingCustomerId: undefined,
+              });
+              wasCancelled = true;
+            }
           }
 
           await this.rentalPayments.setStatus(p.id, 'EXPIRED');

@@ -3576,13 +3576,18 @@ class ExpirePendingOnlinePaymentsService {
             return;
           }
           if (rental.status === RentalStatus.RESERVED) {
-            await this.cancelRental.execute({
-              rentalId: p.rentalId,
-              cancelledAt: now,
-              note: "Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).",
-              requestingCustomerId: void 0
-            });
-            wasCancelled = true;
+            const latestMap = await this.rentalPayments.findLatestByRentalIds([p.rentalId]);
+            const latest = latestMap[p.rentalId];
+            const hasPaidOrNewerActiveAttempt = latest !== void 0 && (latest.status === "PAID" || latest.status === "PENDING" && latest.gatewayOrderId !== p.gatewayOrderId);
+            if (!hasPaidOrNewerActiveAttempt) {
+              await this.cancelRental.execute({
+                rentalId: p.rentalId,
+                cancelledAt: now,
+                note: "Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).",
+                requestingCustomerId: void 0
+              });
+              wasCancelled = true;
+            }
           }
           await this.rentalPayments.setStatus(p.id, "EXPIRED");
         });
@@ -4309,7 +4314,14 @@ class ShoeController {
   }
   async listAllReviewsAdmin(req, res) {
     if (!this.pool) {
-      res.json({ reviews: [], total: 0, averageRating: 5 });
+      res.json({
+        reviews: [],
+        total: 0,
+        averageRating: 5,
+        overallTotal: 0,
+        overallAverageRating: 5,
+        lowRatingCount: 0
+      });
       return;
     }
     const conditions = [];
@@ -4321,7 +4333,8 @@ class ShoeController {
     }
     const search = String(req.query["search"] ?? "").trim();
     if (search) {
-      const like = `%${search}%`;
+      const escaped = search.replace(/[\\%_]/g, "\\$&");
+      const like = `%${escaped}%`;
       conditions.push(
         "(sr.shoe_id LIKE ? OR s.name LIKE ? OR sr.customer_name LIKE ? OR sr.customer_id LIKE ? OR sr.comment LIKE ?)"
       );
@@ -4350,7 +4363,31 @@ class ShoeController {
     }));
     const total = reviews.length;
     const averageRating = total > 0 ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / total * 10) / 10 : 5;
-    res.json({ reviews, total, averageRating });
+    let overallTotal = total;
+    let overallAverageRating = averageRating;
+    let lowRatingCount = reviews.filter((r) => r.rating <= 2).length;
+    try {
+      const [summaryRows] = await this.pool.query(
+        `SELECT COUNT(*) AS cnt,
+                ROUND(AVG(rating), 1) AS avg_rating,
+                COALESCE(SUM(CASE WHEN rating <= 2 THEN 1 ELSE 0 END), 0) AS low_cnt
+         FROM shoe_reviews`
+      );
+      if (summaryRows.length > 0) {
+        overallTotal = Number(summaryRows[0]["cnt"] ?? 0);
+        overallAverageRating = summaryRows[0]["avg_rating"] !== null ? Number(summaryRows[0]["avg_rating"]) : 5;
+        lowRatingCount = Number(summaryRows[0]["low_cnt"] ?? 0);
+      }
+    } catch {
+    }
+    res.json({
+      reviews,
+      total,
+      averageRating,
+      overallTotal,
+      overallAverageRating,
+      lowRatingCount
+    });
   }
   async deleteReviewAdmin(req, res) {
     const reviewId = Number(req.params["reviewId"]);
@@ -4580,6 +4617,11 @@ class RentalController {
     router.delete("/:id", ...admin, asyncRoute(this.deleteAdmin.bind(this)));
     return router;
   }
+  async lazySweepExpiredMomo() {
+    if (this.expirePendingOnlinePayments) {
+      await this.expirePendingOnlinePayments.execute().catch(() => void 0);
+    }
+  }
   async listMine(req, res) {
     const auth = req.auth;
     if (!auth?.customerId) {
@@ -4589,6 +4631,7 @@ class RentalController {
       });
       return;
     }
+    await this.lazySweepExpiredMomo();
     const query = ListMyRentalsQuerySchema.parse(req.query);
     const result = await this.listRentals.execute({
       customerId: auth.customerId,
@@ -4606,6 +4649,7 @@ class RentalController {
       });
       return;
     }
+    await this.lazySweepExpiredMomo();
     const result = await this.getRental.execute({
       rentalId: req.params["id"],
       requestingCustomerId: auth.customerId
@@ -4631,6 +4675,7 @@ class RentalController {
     res.json(result);
   }
   async list(req, res) {
+    await this.lazySweepExpiredMomo();
     const query = ListRentalsQuerySchema.parse(req.query);
     const amountBucket = query.amountBucket === void 0 || query.amountBucket === "all" ? void 0 : query.amountBucket;
     const result = await this.listRentals.execute({
@@ -4645,6 +4690,7 @@ class RentalController {
     res.json(result);
   }
   async getById(req, res) {
+    await this.lazySweepExpiredMomo();
     const result = await this.getRental.execute({ rentalId: req.params["id"] });
     res.json(result);
   }
@@ -4860,6 +4906,7 @@ class RentalController {
     });
   }
   async getStatsOverview(req, res) {
+    await this.lazySweepExpiredMomo();
     const rawPeriod = String(req.query["period"] ?? "all").trim();
     const period = rawPeriod === "7d" || rawPeriod === "30d" || rawPeriod === "6m" ? rawPeriod : "all";
     const todayStr = getVietnamTodayYmd$1();
@@ -4950,8 +4997,15 @@ class RentalController {
     let topShoes = [];
     if (this.pool) {
       try {
-        const [paymentRows] = await this.pool.query(
-          `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_vnd), 0) AS total_vnd FROM rental_payments WHERE status = 'PAID'`
+        const [paymentRows] = cutoffYmd !== null ? await this.pool.query(
+          `SELECT COUNT(*) AS cnt, COALESCE(SUM(rp.amount_vnd), 0) AS total_vnd
+                 FROM rental_payments rp
+                 INNER JOIN rentals r ON r.rental_id = rp.rental_id
+                 WHERE rp.status = 'PAID' AND r.start_date >= ?`,
+          [cutoffYmd]
+        ) : await this.pool.query(
+          `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_vnd), 0) AS total_vnd
+                 FROM rental_payments WHERE status = 'PAID'`
         );
         if (paymentRows.length > 0) {
           momoPaidCount = Number(paymentRows[0]["cnt"] || 0);
@@ -4969,19 +5023,33 @@ class RentalController {
       } catch {
       }
       try {
-        const [shoeRows] = await this.pool.query(
+        const [shoeRows] = cutoffYmd !== null ? await this.pool.query(
           `SELECT
-             ri.shoe_id AS shoeId,
-             MAX(ri.shoe_name) AS shoeName,
-             COUNT(DISTINCT ri.rental_id) AS totalRentalsCount,
-             COALESCE(SUM(ri.quantity), 0) AS totalUnitsRented,
-             (SELECT ROUND(AVG(sr.rating), 1) FROM shoe_reviews sr WHERE sr.shoe_id = ri.shoe_id) AS averageRating
-           FROM rental_items ri
-           INNER JOIN rentals r ON r.rental_id = ri.rental_id
-           WHERE r.status IN ('RESERVED', 'ACTIVE', 'RETURNED')
-           GROUP BY ri.shoe_id
-           ORDER BY totalUnitsRented DESC, totalRentalsCount DESC
-           LIMIT 5`
+                   ri.shoe_id AS shoeId,
+                   MAX(ri.shoe_name) AS shoeName,
+                   COUNT(DISTINCT ri.rental_id) AS totalRentalsCount,
+                   COALESCE(SUM(ri.quantity), 0) AS totalUnitsRented,
+                   (SELECT ROUND(AVG(sr.rating), 1) FROM shoe_reviews sr WHERE sr.shoe_id = ri.shoe_id) AS averageRating
+                 FROM rental_items ri
+                 INNER JOIN rentals r ON r.rental_id = ri.rental_id
+                 WHERE r.status IN ('RESERVED', 'ACTIVE', 'RETURNED') AND r.start_date >= ?
+                 GROUP BY ri.shoe_id
+                 ORDER BY totalUnitsRented DESC, totalRentalsCount DESC
+                 LIMIT 5`,
+          [cutoffYmd]
+        ) : await this.pool.query(
+          `SELECT
+                   ri.shoe_id AS shoeId,
+                   MAX(ri.shoe_name) AS shoeName,
+                   COUNT(DISTINCT ri.rental_id) AS totalRentalsCount,
+                   COALESCE(SUM(ri.quantity), 0) AS totalUnitsRented,
+                   (SELECT ROUND(AVG(sr.rating), 1) FROM shoe_reviews sr WHERE sr.shoe_id = ri.shoe_id) AS averageRating
+                 FROM rental_items ri
+                 INNER JOIN rentals r ON r.rental_id = ri.rental_id
+                 WHERE r.status IN ('RESERVED', 'ACTIVE', 'RETURNED')
+                 GROUP BY ri.shoe_id
+                 ORDER BY totalUnitsRented DESC, totalRentalsCount DESC
+                 LIMIT 5`
         );
         topShoes = shoeRows.map((row) => ({
           shoeId: String(row["shoeId"]),
