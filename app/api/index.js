@@ -1413,6 +1413,9 @@ class Rental {
   get totalItems() {
     return this.itemsValue.reduce((sum, item) => sum + item.quantity, 0);
   }
+  get depositAmount() {
+    return this.totalItems * 5e5;
+  }
   get basePrice() {
     return this.itemsValue.reduce(
       (sum, item) => sum + item.subtotalFor(this.periodValue.durationInDays),
@@ -1440,7 +1443,7 @@ class Rental {
     this.statusValue = RentalStatus.ACTIVE;
     this.activatedAtValue = new Date(at.getTime());
   }
-  completeReturn(returnedAt = /* @__PURE__ */ new Date(), note) {
+  completeReturn(returnedAt = /* @__PURE__ */ new Date(), note, damageFee = 0) {
     if (this.statusValue !== RentalStatus.RESERVED && this.statusValue !== RentalStatus.ACTIVE) {
       throw new BusinessRuleError(
         "INVALID_RENTAL_STATE",
@@ -1449,6 +1452,10 @@ class Rental {
     }
     ensureValidDate(returnedAt, "returnedAt");
     ensureValidRentalNote(note ?? null);
+    if (!Number.isFinite(damageFee) || damageFee < 0) {
+      throw new ValidationError("Damage fee cannot be negative.");
+    }
+    const cleanDamageFee = Math.round(damageFee);
     const lateFee = this.calculateLateFeeForReturn(
       this.basePrice,
       this.periodValue.durationInDays,
@@ -1457,8 +1464,18 @@ class Rental {
     );
     this.statusValue = RentalStatus.RETURNED;
     this.returnedAtValue = new Date(returnedAt.getTime());
-    this.lateFeeValue = lateFee;
-    if (note !== void 0) {
+    this.lateFeeValue = lateFee + cleanDamageFee;
+    if (cleanDamageFee > 0) {
+      const tag = `[Phụ phí kiểm định/vệ sinh: +${cleanDamageFee}₫]`;
+      const baseNote = note !== void 0 ? note ? note.trim() : "" : this.noteValue ?? "";
+      if (baseNote.length > 0) {
+        const maxPrefix = Math.max(0, 255 - tag.length - 1);
+        const trimmedPrefix = baseNote.length > maxPrefix ? baseNote.slice(0, maxPrefix).trimEnd() : baseNote;
+        this.noteValue = trimmedPrefix.length > 0 ? `${trimmedPrefix} ${tag}` : tag;
+      } else {
+        this.noteValue = tag;
+      }
+    } else if (note !== void 0) {
       this.noteValue = note ? note.trim() : null;
     }
   }
@@ -2454,6 +2471,7 @@ class GetRentalService {
       status: rental.status,
       totalItems: rental.totalItems,
       basePrice: rental.basePrice,
+      depositAmount: rental.depositAmount,
       lateFee: rental.lateFee,
       totalAmount: rental.totalAmount,
       startDate: rental.period.startDate,
@@ -2599,6 +2617,7 @@ class ListRentalsService {
           status: r.status,
           totalItems: r.totalItems,
           basePrice: r.basePrice,
+          depositAmount: r.depositAmount,
           totalAmount: r.totalAmount,
           startDate: r.period.startDate,
           endDate: r.period.endDate,
@@ -2729,7 +2748,7 @@ function resolveVoucher(rawCode) {
   }
   return found;
 }
-function getVietnamTodayYmd$1(now = /* @__PURE__ */ new Date()) {
+function getVietnamTodayYmd$2(now = /* @__PURE__ */ new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
     year: "numeric",
@@ -2769,7 +2788,7 @@ class CreateRentalService {
       if (this.voucherRepository) {
         const normalized = trimmedCode.toUpperCase();
         const v = await this.voucherRepository.findByCode(normalized);
-        const todayStr = getVietnamTodayYmd$1();
+        const todayStr = getVietnamTodayYmd$2();
         const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
         if (!isValid) {
           throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
@@ -2925,7 +2944,8 @@ class ReturnRentalService {
     const totalItems = rental.totalItems;
     const returnedAt = request.returnedAt ?? /* @__PURE__ */ new Date();
     const customer = await this.customerRepository.findById(rental.customerId);
-    rental.completeReturn(returnedAt, request.note);
+    const cleanDamageFee = Math.round(request.damageFee ?? 0);
+    rental.completeReturn(returnedAt, request.note, request.damageFee ?? 0);
     if (customer) {
       customer.completeRental(totalItems);
     }
@@ -2949,6 +2969,8 @@ class ReturnRentalService {
       totalItems,
       basePrice: rental.basePrice,
       lateFee: rental.lateFee,
+      damageFee: cleanDamageFee,
+      depositAmount: rental.depositAmount,
       totalAmount: rental.totalAmount,
       returnedAt: rental.returnedAt
     };
@@ -4326,7 +4348,8 @@ const CreateRentalSchema = z.object({
 });
 const ReturnRentalSchema = z.object({
   returnedAt: z.coerce.date().optional(),
-  note: z.string().max(255).optional()
+  note: z.string().max(255).optional(),
+  damageFee: z.coerce.number().int().min(0).max(5e7).optional()
 });
 const CancelRentalSchema = z.object({
   cancelledAt: z.coerce.date().optional(),
@@ -4352,7 +4375,7 @@ const ListMyRentalsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional()
 });
-function getVietnamTodayYmd(now = /* @__PURE__ */ new Date()) {
+function getVietnamTodayYmd$1(now = /* @__PURE__ */ new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Ho_Chi_Minh",
     year: "numeric",
@@ -4394,6 +4417,7 @@ class RentalController {
     const customer = guards?.customer ?? [];
     router.get("/vouchers/validate", ...createRental, asyncRoute(this.validateVoucher.bind(this)));
     router.get("/vouchers/active", ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
+    router.get("/notifications", ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get("/stats/overview", ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get("/me", ...customer, asyncRoute(this.listMine.bind(this)));
     router.get("/me/:id", ...customer, asyncRoute(this.getMine.bind(this)));
@@ -4581,7 +4605,7 @@ class RentalController {
     if (this.voucherRepository) {
       const normalized = code.toUpperCase();
       const v = await this.voucherRepository.findByCode(normalized);
-      const todayStr = getVietnamTodayYmd();
+      const todayStr = getVietnamTodayYmd$1();
       const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
       if (!isValid) {
         throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
@@ -4606,9 +4630,103 @@ class RentalController {
     });
   }
   async listActiveVouchers(_req, res) {
-    const todayStr = getVietnamTodayYmd();
+    const todayStr = getVietnamTodayYmd$1();
     const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
     res.json({ vouchers });
+  }
+  async getNotifications(req, res) {
+    const auth = req.auth;
+    const todayStr = getVietnamTodayYmd$1();
+    const todayMs = (/* @__PURE__ */ new Date(`${todayStr}T00:00:00Z`)).getTime();
+    const nowIso = (/* @__PURE__ */ new Date()).toISOString();
+    const notifications = [];
+    if (auth?.role === "customer" && auth.customerId) {
+      const myRentals = await this.listRentals.execute({
+        customerId: auth.customerId,
+        page: 1,
+        pageSize: 30
+      });
+      for (const r of myRentals.rentals) {
+        if (r.isOverdue) {
+          notifications.push({
+            id: `overdue-${r.rentalId}`,
+            type: "OVERDUE",
+            severity: "danger",
+            title: "Đơn thuê quá hạn",
+            message: `Đơn #${r.rentalId} đang quá hạn ${r.overdueDays} ngày (phí phạt dự kiến +${r.estimatedLateFee.toLocaleString("vi-VN")}₫).`,
+            link: "/account",
+            createdAt: nowIso
+          });
+        } else if (r.status === "ACTIVE" || r.status === "RESERVED") {
+          const endYmd = getVietnamTodayYmd$1(new Date(r.endDate));
+          const endMs = (/* @__PURE__ */ new Date(`${endYmd}T00:00:00Z`)).getTime();
+          const diffDays = Math.round((endMs - todayMs) / 864e5);
+          if (diffDays >= 0 && diffDays <= 2) {
+            notifications.push({
+              id: `due-soon-${r.rentalId}`,
+              type: "DUE_SOON",
+              severity: "warning",
+              title: "Sắp đến hạn trả giày",
+              message: `Đơn #${r.rentalId} sắp đến hạn trả vào ngày ${endYmd}.`,
+              link: "/account",
+              createdAt: nowIso
+            });
+          }
+        }
+      }
+      const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
+      if (vouchers.length > 0) {
+        notifications.push({
+          id: `vouchers-${todayStr}`,
+          type: "VOUCHER",
+          severity: "success",
+          title: "Mã giảm giá đang mở",
+          message: `Ưu đãi đang mở: ${vouchers.slice(0, 3).map((v) => `${v.code} (-${v.discountPercent}%)`).join(", ")}.`,
+          link: "/shoes",
+          createdAt: nowIso
+        });
+      }
+    } else if (auth?.role === "admin") {
+      const all = await this.listRentals.execute();
+      const overdueCount = all.rentals.filter((r) => r.isOverdue).length;
+      const reservedCount = all.rentals.filter((r) => r.status === "RESERVED").length;
+      const activeCount = all.rentals.filter((r) => r.status === "ACTIVE").length;
+      if (overdueCount > 0) {
+        notifications.push({
+          id: "admin-overdue",
+          type: "OVERDUE",
+          severity: "danger",
+          title: "Cảnh báo đơn quá hạn",
+          message: `Có ${overdueCount} đơn thuê đang quá hạn chưa trả cần xử lý.`,
+          link: "/admin/rentals",
+          createdAt: nowIso
+        });
+      }
+      if (reservedCount > 0) {
+        notifications.push({
+          id: "admin-reserved",
+          type: "ADMIN_ALERT",
+          severity: "warning",
+          title: "Đơn chờ giao giày",
+          message: `Có ${reservedCount} đơn RESERVED đang chờ kích hoạt giao giày.`,
+          link: "/admin/rentals",
+          createdAt: nowIso
+        });
+      }
+      notifications.push({
+        id: "admin-active",
+        type: "ADMIN_ALERT",
+        severity: "info",
+        title: "Tình trạng vận hành",
+        message: `Hệ thống đang có ${activeCount} đơn ACTIVE đang thuê.`,
+        link: "/admin",
+        createdAt: nowIso
+      });
+    }
+    res.json({
+      notifications,
+      unreadCount: notifications.length
+    });
   }
   async getStatsOverview(_req, res) {
     const all = await this.listRentals.execute();
@@ -5442,11 +5560,11 @@ class VoucherController {
 const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
   {
     name: "list_my_rentals",
-    description: "List rental order IDs and basic info for the currently logged-in customer. Requires customer login."
+    description: "List rental order IDs, overdue status, and basic info for the currently logged-in customer. Requires customer login."
   },
   {
     name: "get_rental_detail",
-    description: "Get status and dates for one rental by rental id. Requires customer login.",
+    description: "Get status, dates, deposit, and items for one rental by rental id. Requires customer login.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -5459,17 +5577,50 @@ const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
     }
   },
   {
+    name: "get_my_membership_rank",
+    description: "Get current membership rank (BRONZE, SILVER, GOLD, DIAMOND) and automatic discount percent for the logged-in customer. Requires customer login."
+  },
+  {
+    name: "list_active_vouchers",
+    description: "List currently active promotional vouchers (code, discountPercent, description, expiresAt). Does not require login."
+  },
+  {
     name: "search_shoes",
     description: "Search shoes by maximum price per day in VND (storefront catalog, typically 180,000 to 550,000 VND/day). Does not require login.",
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        max_price_vnd: {
+          type: SchemaType.NUMBER,
+          description: "Maximum price per day in VND (e.g. pass 300000 for 300,000 VND/day)"
+        },
         max_price_usd: {
           type: SchemaType.NUMBER,
-          description: "Maximum price per day in VND (catalog prices are in VND/day, e.g. pass 300000 for 300,000 VND/day)"
+          description: "Maximum price per day in VND (legacy alias, e.g. pass 300000 for 300,000 VND/day)"
+        }
+      }
+    }
+  },
+  {
+    name: "check_shoe_availability",
+    description: "Check variant availability for a shoe_id between start_date (YYYY-MM-DD) and end_date (YYYY-MM-DD). Does not require login.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        shoe_id: {
+          type: SchemaType.STRING,
+          description: "Shoe id, e.g. SHOE001"
+        },
+        start_date: {
+          type: SchemaType.STRING,
+          description: "Rental start date in YYYY-MM-DD format"
+        },
+        end_date: {
+          type: SchemaType.STRING,
+          description: "Rental end date in YYYY-MM-DD format"
         }
       },
-      required: ["max_price_usd"]
+      required: ["shoe_id", "start_date", "end_date"]
     }
   }
 ];
@@ -5545,6 +5696,31 @@ async function geminiChatWithTools(opts) {
   const fallback = safeResponseText(response);
   return fallback || "Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.";
 }
+function getVietnamTodayYmd(now = /* @__PURE__ */ new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === "year")?.value ?? String(now.getFullYear());
+  const m = parts.find((p) => p.type === "month")?.value ?? String(now.getMonth() + 1).padStart(2, "0");
+  const d = parts.find((p) => p.type === "day")?.value ?? String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+function detectSecurityViolation(text, customerId) {
+  const normalized = text.trim();
+  if (/ignore previous|ignore all instructions|system prompt|select\s+\*\s+from|drop\s+table|delete\s+from|doanh thu admin|báo cáo doanh thu|đơn của khách khác|thông tin khách khác|danh sách khách hàng/i.test(
+    normalized
+  )) {
+    return "🔒 Vì lý do bảo mật (Zero-Trust Read-Only Policy), trợ lý AI chỉ được phép tra cứu thông tin công khai và dữ liệu đơn thuê/hạng thành viên của chính tài khoản bạn đang đăng nhập. Mình không thể truy cập dữ liệu của khách hàng khác, doanh thu Admin, hoặc can thiệp trực tiếp vào cơ sở dữ liệu.";
+  }
+  const custMatch = normalized.match(/\b(CUST\d{3,})\b/i);
+  if (custMatch && custMatch[1].toUpperCase() !== (customerId ?? "").toUpperCase()) {
+    return "🔒 Vì lý do bảo mật, bạn chỉ có thể tra cứu dữ liệu thuộc tài khoản của chính mình, không thể xem thông tin của mã khách hàng khác.";
+  }
+  return null;
+}
 const BodySchema = z.object({
   messages: z.array(
     z.object({
@@ -5578,10 +5754,18 @@ class ChatController {
   listRentals;
   getRental;
   listShoes;
-  constructor(listRentals, getRental, listShoes) {
+  getShoe;
+  availabilityChecker;
+  voucherRepository;
+  customerRepository;
+  constructor(listRentals, getRental, listShoes, getShoe, availabilityChecker, voucherRepository, customerRepository) {
     this.listRentals = listRentals;
     this.getRental = getRental;
     this.listShoes = listShoes;
+    this.getShoe = getShoe;
+    this.availabilityChecker = availabilityChecker;
+    this.voucherRepository = voucherRepository;
+    this.customerRepository = customerRepository;
   }
   routes(optionalAuth) {
     const router = Router();
@@ -5589,26 +5773,32 @@ class ChatController {
     return router;
   }
   async postChat(req, res) {
-    const apiKey = process.env.GEMINI_API_KEY?.trim();
-    if (!apiKey) {
-      res.status(503).json({
-        error: "CHAT_DISABLED",
-        message: "Chat is not configured (missing GEMINI_API_KEY)."
-      });
+    const body = BodySchema.parse(req.body);
+    const auth = req.auth;
+    const customerId = auth?.role === "customer" ? auth.customerId ?? void 0 : void 0;
+    const lastUserMsg = [...body.messages].reverse().find((m) => m.role === "user");
+    const lastUserText = lastUserMsg?.content ?? "";
+    const violation = detectSecurityViolation(lastUserText, customerId);
+    if (violation) {
+      res.json({ reply: violation, mode: "security_guard" });
       return;
     }
-    const body = BodySchema.parse(req.body);
+    const apiKey = process.env.GEMINI_API_KEY?.trim();
+    if (!apiKey) {
+      const reply = await this.buildFallbackReply(lastUserText, customerId);
+      res.json({ reply, mode: "fallback" });
+      return;
+    }
     const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
     const pendingMin = process.env.PAYMENT_PENDING_MINUTES?.trim() || "15";
     const systemText = [
       "You are the storefront assistant for a shoe rental web app.",
       "Follow GuildChatBot rules: no hallucinated data; use tool results for real data.",
+      "Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.",
       `Static policy: unpaid MoMo checkout window is typically ~${pendingMin} minutes (then order may auto-cancel).`,
       "--- Allowed knowledge (markdown) ---",
       loadKnowledgeText()
     ].join("\n\n");
-    const auth = req.auth;
-    const customerId = auth?.role === "customer" ? auth.customerId ?? void 0 : void 0;
     try {
       const lastAssistant = await geminiChatWithTools({
         apiKey,
@@ -5622,12 +5812,84 @@ class ChatController {
       if (e instanceof DomainError) {
         throw e;
       }
-      const msg = e instanceof Error ? e.message : "Không gọi được dịch vụ Gemini. Kiểm tra GEMINI_API_KEY và mạng.";
-      res.status(502).json({
-        error: "CHAT_UPSTREAM_ERROR",
-        message: msg
-      });
+      const reply = await this.buildFallbackReply(lastUserText, customerId);
+      res.json({ reply, mode: "fallback" });
     }
+  }
+  async buildFallbackReply(lastUserText, customerId) {
+    const violation = detectSecurityViolation(lastUserText, customerId);
+    if (violation) {
+      return violation;
+    }
+    const q = lastUserText.toLowerCase();
+    if (/voucher|mã giảm|khuyến mãi|ưu đãi/.test(q)) {
+      const vRes = await this.runTool("list_active_vouchers", {}, customerId);
+      const vouchers = vRes.vouchers ?? [];
+      if (vouchers.length === 0) {
+        return "Hiện tại chưa có mã voucher khuyến mãi nào đang mở. Tuy nhiên bạn vẫn được giảm tự động theo hạng thành viên (SILVER -5%, GOLD -10%, DIAMOND -15%) khi thuê giày nhé!";
+      }
+      const lines = vouchers.map(
+        (v) => `• **${v.code}** (-${v.discountPercent}%): ${v.description}${v.expiresAt ? ` (HSD: ${v.expiresAt})` : ""}`
+      );
+      return [
+        "🎁 **Các mã giảm giá (Voucher) đang hoạt động:**",
+        ...lines,
+        "💡 *Lưu ý: Mã giảm giá được cộng dồn với ưu đãi hạng thành viên (tối đa 50%) tại trang `/checkout`.*"
+      ].join("\n");
+    }
+    if (/hạng|rank|thành viên|đơn thuê|đơn của tôi|đơn hàng|quá hạn|trễ hạn/.test(q)) {
+      if (!customerId) {
+        return "🔑 Bạn cần **đăng nhập tài khoản khách hàng** để mình tra cứu hạng thành viên, mức ưu đãi và danh sách đơn thuê của bạn nhé!";
+      }
+      const rankRes = await this.runTool("get_my_membership_rank", {}, customerId);
+      const rentalsRes = await this.runTool("list_my_rentals", {}, customerId);
+      const parts = [];
+      if (rankRes.ok && rankRes.rank) {
+        parts.push(
+          `🏅 **Hạng thành viên của bạn:** **${rankRes.rank}** (Ưu đãi tự động **-${rankRes.rankDiscountPercent ?? 0}%** trên mọi đơn thuê).`
+        );
+      }
+      const list = rentalsRes.rentals ?? [];
+      if (list.length === 0) {
+        parts.push("📦 Bạn hiện chưa có đơn thuê nào. Hãy ghé `/shoes` để chọn mẫu giày yêu thích nhé!");
+      } else {
+        const top = list.slice(0, 5).map((r) => {
+          const overdueTag = r.isOverdue ? ` ⚠️ Quá hạn ${r.overdueDays} ngày (phí phạt dự kiến +${r.estimatedLateFee.toLocaleString("vi-VN")}₫)` : "";
+          return `• Đơn **#${r.rentalId}** [${r.status}] — Tiền thuê: ${r.totalAmount.toLocaleString("vi-VN")}₫ | Cọc: ${r.depositAmount.toLocaleString("vi-VN")}₫${overdueTag}`;
+        });
+        parts.push(`📦 **Đơn thuê gần đây (${list.length} đơn):**
+${top.join("\n")}`);
+        parts.push(
+          "👉 Bạn có thể xem hóa đơn, tự gia hạn hoặc hủy đơn `RESERVED` trực tiếp tại trang `/account`."
+        );
+      }
+      return parts.join("\n\n");
+    }
+    if (/giày|shoe|giá|tìm|mẫu|size|nike|adidas/.test(q)) {
+      const shoesRes = await this.runTool(
+        "search_shoes",
+        { max_price_vnd: 55e4 },
+        customerId
+      );
+      const shoes = (shoesRes.shoes ?? []).slice(0, 5);
+      if (shoes.length > 0) {
+        const lines = shoes.map(
+          (s) => `• **${s.name}** (${s.brand}) — **${s.pricePerDay.toLocaleString("vi-VN")}₫/ngày** ${s.inStock ? "✅ Còn hàng" : "❌ Hết hàng"}`
+        );
+        return [
+          "👟 **Gợi ý các mẫu giày nổi bật tại cửa hàng:**",
+          ...lines,
+          "💡 *Tiền đặt cọc bảo đảm: **500.000₫/đôi** (hoàn trả 100% khi trả giày nguyên vẹn).*"
+        ].join("\n");
+      }
+    }
+    return [
+      "👋 **Chào bạn! Mình là trợ lý Rental Shoes (Zero-Trust Read-Only Assistant).**",
+      "• **Giá thuê giày:** 180.000₫ – 550.000₫/ngày (Tiền cọc bảo đảm: **500.000₫/đôi**, hoàn lại khi trả giày nguyên vẹn).",
+      "• **Ưu đãi hạng thành viên:** SILVER (-5%), GOLD (-10%), DIAMOND (-15%) cộng dồn cùng Voucher tối đa **50%**.",
+      "• **Gia hạn & Quản lý đơn:** Bạn có thể tự gia hạn đơn `RESERVED`/`ACTIVE` hoặc in biên lai tại trang `/account`.",
+      "Hãy hỏi mình về **mã giảm giá**, **tìm giày**, hoặc **đơn thuê của tôi** nhé!"
+    ].join("\n");
   }
   async runTool(name, args, customerId) {
     if (name === "list_my_rentals") {
@@ -5649,7 +5911,13 @@ class ChatController {
           status: r.status,
           startDate: r.startDate,
           endDate: r.endDate,
-          totalAmount: r.totalAmount
+          totalItems: r.totalItems,
+          basePrice: r.basePrice,
+          depositAmount: r.depositAmount,
+          totalAmount: r.totalAmount,
+          isOverdue: r.isOverdue,
+          overdueDays: r.overdueDays,
+          estimatedLateFee: r.estimatedLateFee
         })),
         total: result.total
       };
@@ -5673,7 +5941,15 @@ class ChatController {
           status: r.status,
           startDate: r.startDate,
           endDate: r.endDate,
+          totalItems: r.totalItems,
+          basePrice: r.basePrice,
+          depositAmount: r.depositAmount,
+          lateFee: r.lateFee,
           totalAmount: r.totalAmount,
+          isOverdue: r.isOverdue,
+          overdueDays: r.overdueDays,
+          estimatedLateFee: r.estimatedLateFee,
+          items: r.items,
           note: r.note
         };
       } catch (e) {
@@ -5681,8 +5957,42 @@ class ChatController {
         return { ok: false, error: msg };
       }
     }
+    if (name === "get_my_membership_rank") {
+      if (!customerId) {
+        return {
+          ok: false,
+          hint: "Bạn cần đăng nhập tài khoản khách hàng để xem hạng thành viên."
+        };
+      }
+      if (!this.customerRepository) {
+        return { ok: false, error: "Customer repository is not configured." };
+      }
+      const c = await this.customerRepository.findById(customerId);
+      if (!c) {
+        return { ok: false, error: "Customer profile not found." };
+      }
+      return {
+        ok: true,
+        rank: c.rank,
+        rankDiscountPercent: getDiscountPercentByRank(c.rank)
+      };
+    }
+    if (name === "list_active_vouchers") {
+      const todayStr = getVietnamTodayYmd();
+      const list = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
+      return {
+        ok: true,
+        vouchers: list.map((v) => ({
+          code: v.code,
+          discountPercent: v.discountPercent,
+          description: v.description,
+          expiresAt: v.expiresAt
+        })),
+        count: list.length
+      };
+    }
     if (name === "search_shoes") {
-      const maxInput = Number(args["max_price_vnd"] ?? args["max_price_usd"]);
+      const maxInput = Number(args["max_price_vnd"] ?? args["max_price_usd"] ?? 55e4);
       if (!Number.isFinite(maxInput) || maxInput <= 0) {
         return { ok: false, error: "Invalid max_price_usd" };
       }
@@ -5699,6 +6009,46 @@ class ChatController {
         })),
         count: shoes.length
       };
+    }
+    if (name === "check_shoe_availability") {
+      const shoeId = String(args["shoe_id"] ?? "").trim();
+      const startDateStr = String(args["start_date"] ?? "").trim();
+      const endDateStr = String(args["end_date"] ?? "").trim();
+      if (!shoeId || !startDateStr || !endDateStr) {
+        return { ok: false, error: "Missing shoe_id, start_date, or end_date" };
+      }
+      if (!this.getShoe) {
+        return { ok: false, error: "Shoe service unavailable" };
+      }
+      try {
+        const shoe = await this.getShoe.execute({ shoeId });
+        const period = new RentalPeriod(new Date(startDateStr), new Date(endDateStr));
+        const variants = await Promise.all(
+          shoe.variants.map(async (v) => {
+            const booked = this.availabilityChecker ? await this.availabilityChecker.getReservedQuantityForVariant(v.variantId, period) : v.totalQuantity - v.availableQuantity;
+            const availableQuantity = Math.max(0, v.totalQuantity - booked);
+            return {
+              variantId: v.variantId,
+              size: v.size,
+              color: v.color,
+              availableQuantity,
+              inStockForDates: availableQuantity > 0
+            };
+          })
+        );
+        return {
+          ok: true,
+          shoeId: shoe.shoeId,
+          name: shoe.name,
+          pricePerDay: shoe.pricePerDay,
+          startDate: startDateStr,
+          endDate: endDateStr,
+          variants
+        };
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unable to check availability";
+        return { ok: false, error: msg };
+      }
     }
     return { ok: false, error: "Unknown tool" };
   }
@@ -5910,7 +6260,11 @@ function createRouter(container2) {
   const chatCtrl = new ChatController(
     container2.getListRentalsUseCase(),
     container2.getGetRentalUseCase(),
-    container2.getListShoesUseCase()
+    container2.getListShoesUseCase(),
+    container2.getGetShoeUseCase(),
+    container2.getRentalAvailabilityChecker(),
+    container2.getVoucherRepository(),
+    container2.getCustomerRepository()
   );
   router.use(
     "/",

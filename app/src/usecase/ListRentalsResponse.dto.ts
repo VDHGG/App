@@ -6,6 +6,7 @@ export type RentalSummary = {
   status: RentalStatus;
   totalItems: number;
   basePrice: number;
+  depositAmount: number;
   totalAmount: number;
   startDate: Date;
   endDate: Date;

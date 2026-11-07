@@ -19,6 +19,7 @@ export type RentalSummary = {
   totalItems: number
   basePrice: number
   totalAmount: number
+  depositAmount?: number
   startDate: string
   endDate: string
   isOverdue?: boolean
@@ -34,6 +35,7 @@ export type GetRentalResponse = {
   basePrice: number
   lateFee: number
   totalAmount: number
+  depositAmount?: number
   startDate: string
   endDate: string
   items: RentalItemDto[]
@@ -67,6 +69,7 @@ export type CreateRentalResponse = {
   totalItems: number
   basePrice: number
   totalAmount: number
+  depositAmount?: number
   startDate: string
   endDate: string
   originalBasePrice?: number
@@ -154,7 +157,7 @@ export async function activateRental(rentalId: string): Promise<GetRentalRespons
 
 export async function returnRental(
   rentalId: string,
-  body?: { returnedAt?: string; note?: string }
+  body?: { returnedAt?: string; note?: string; damageFee?: number }
 ): Promise<GetRentalResponse> {
   const { data } = await api.patch<GetRentalResponse>(`/rentals/${rentalId}/return`, body ?? {})
   return data
@@ -236,3 +239,24 @@ export async function fetchAdminStatsOverview(): Promise<AdminStatsOverviewRespo
   const { data } = await api.get<AdminStatsOverviewResponse>('/rentals/stats/overview')
   return data
 }
+
+export type NotificationItem = {
+  id: string
+  type: 'OVERDUE' | 'DUE_SOON' | 'RANK_INFO' | 'VOUCHER' | 'ADMIN_ALERT'
+  severity: 'danger' | 'warning' | 'success' | 'info'
+  title: string
+  message: string
+  link: string
+  createdAt: string
+}
+
+export async function fetchNotifications(): Promise<{
+  notifications: NotificationItem[]
+  unreadCount: number
+}> {
+  const { data } = await api.get<{ notifications: NotificationItem[]; unreadCount: number }>(
+    '/rentals/notifications'
+  )
+  return data
+}
+

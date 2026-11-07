@@ -203,6 +203,18 @@ export function CheckoutPage() {
   const totalDiscountAmount = Math.round(estimatedTotal * (totalDiscountPercent / 100))
   const finalEstimatedTotal = Math.max(0, estimatedTotal - totalDiscountAmount)
 
+  const totalCheckoutItems = useMemo(() => {
+    if (useCartMode) {
+      return cartLines.reduce((sum, l) => sum + l.quantity, 0)
+    }
+    if (useQuickMode && quickVariant) {
+      return Math.min(quickQty, quickVariant.availableQuantity)
+    }
+    return 0
+  }, [useCartMode, useQuickMode, cartLines, quickVariant, quickQty])
+
+  const securityDeposit = totalCheckoutItems * 500000
+
   const handleApplyVoucher = async (codeToApply?: string) => {
     const code = (codeToApply ?? voucherInput).trim().toUpperCase()
     if (!code) return
@@ -711,16 +723,27 @@ export function CheckoutPage() {
                 )}
               </div>
 
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-3">
                 <div className="flex justify-between items-baseline gap-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    Tổng thanh toán
+                    Tổng tiền thuê
                   </span>
                   <span className="text-2xl font-black text-primary">
                     {formatCurrency(finalEstimatedTotal)}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">
+
+                <div className="p-3 rounded-xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/60 space-y-1">
+                  <div className="flex justify-between items-center text-xs font-bold text-amber-800 dark:text-amber-300">
+                    <span>Tiền đặt cọc bảo đảm (500.000₫/đôi)</span>
+                    <span>{formatCurrency(securityDeposit)}</span>
+                  </div>
+                  <p className="text-[11px] text-amber-700/90 dark:text-amber-400/80 leading-relaxed">
+                    Thu khi nhận giày và hoàn trả 100% khi trả giày đúng hạn, nguyên vẹn.
+                  </p>
+                </div>
+
+                <p className="text-xs text-slate-500">
                   Final amount is set on the server when you confirm.
                 </p>
               </div>

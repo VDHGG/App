@@ -7,6 +7,8 @@ export type ReturnRentalResponse = {
   totalItems: number;
   basePrice: number;
   lateFee: number;
+  damageFee: number;
+  depositAmount: number;
   totalAmount: number;
   returnedAt: Date;
 };

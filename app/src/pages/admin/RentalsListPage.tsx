@@ -99,6 +99,8 @@ export function RentalsListPage() {
   const [returnRentalTarget, setReturnRentalTarget] = useState<RentalSummary | null>(null)
   const [returnDate, setReturnDate] = useState('')
   const [returnNote, setReturnNote] = useState('')
+  const [inspectionPreset, setInspectionPreset] = useState<'0' | '50000' | '150000' | 'custom'>('0')
+  const [customDamageFee, setCustomDamageFee] = useState('0')
   const [returnLoading, setReturnLoading] = useState(false)
   const [returnError, setReturnError] = useState<string | null>(null)
 
@@ -184,6 +186,8 @@ export function RentalsListPage() {
     setReturnRentalTarget(r)
     setReturnDate(toDateString(new Date()))
     setReturnNote('')
+    setInspectionPreset('0')
+    setCustomDamageFee('0')
     setReturnError(null)
   }
 
@@ -192,9 +196,24 @@ export function RentalsListPage() {
     setReturnError(null)
   }
 
+  const damageFee = useMemo(() => {
+    if (inspectionPreset === 'custom') {
+      return Math.max(0, Math.round(Number(customDamageFee) || 0))
+    }
+    return Number(inspectionPreset)
+  }, [inspectionPreset, customDamageFee])
+
   const returnCalculation = useMemo(() => {
     if (!returnRentalTarget || !returnDate) {
-      return { overdueDays: 0, lateFee: 0, totalPayable: 0 }
+      return {
+        overdueDays: 0,
+        lateFee: 0,
+        depositAmount: 0,
+        totalExtraFees: 0,
+        totalPayable: 0,
+        refundToCustomer: 0,
+        collectExtraFromCustomer: 0,
+      }
     }
     const startD = new Date(returnRentalTarget.startDate)
     const endD = new Date(returnRentalTarget.endDate)
@@ -208,10 +227,22 @@ export function RentalsListPage() {
     const rentalDays = Math.max(1, Math.round((endNorm - startNorm) / 86400000) + 1)
     const dailyRate = returnRentalTarget.basePrice / rentalDays
     const lateFee = Math.round(overdueDays * dailyRate * 0.5)
-    const totalPayable = returnRentalTarget.basePrice + lateFee
+    const depositAmount = returnRentalTarget.depositAmount ?? returnRentalTarget.totalItems * 500000
+    const totalExtraFees = lateFee + damageFee
+    const totalPayable = returnRentalTarget.basePrice + totalExtraFees
+    const refundToCustomer = Math.max(0, depositAmount - totalExtraFees)
+    const collectExtraFromCustomer = Math.max(0, totalExtraFees - depositAmount)
 
-    return { overdueDays, lateFee, totalPayable }
-  }, [returnRentalTarget, returnDate])
+    return {
+      overdueDays,
+      lateFee,
+      depositAmount,
+      totalExtraFees,
+      totalPayable,
+      refundToCustomer,
+      collectExtraFromCustomer,
+    }
+  }, [returnRentalTarget, returnDate, damageFee])
 
   const confirmReturn = async () => {
     if (!returnRentalTarget || !returnDate) return
@@ -221,6 +252,7 @@ export function RentalsListPage() {
       await returnRental(returnRentalTarget.rentalId, {
         returnedAt: returnDate,
         note: returnNote.trim() || undefined,
+        damageFee,
       })
       closeReturn()
       const res = await listRentals(rentalQuery)
@@ -235,6 +267,53 @@ export function RentalsListPage() {
     } finally {
       setReturnLoading(false)
     }
+  }
+
+  const handleExportCsv = () => {
+    const headers = [
+      'Mã đơn',
+      'Mã khách',
+      'Tên khách',
+      'Số đôi',
+      'Ngày bắt đầu',
+      'Ngày hẹn trả',
+      'Trạng thái',
+      'Quá hạn (ngày)',
+      'Giá thuê gốc (VND)',
+      'Tổng tiền (VND)',
+      'Tiền cọc (VND)',
+    ]
+    const escapeCell = (v: string | number) => {
+      const s = String(v ?? '')
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const rows = rentals.map((r) => [
+      r.rentalId,
+      r.customerId,
+      customerMap[r.customerId]?.fullName ?? r.customerId,
+      r.totalItems,
+      r.startDate.slice(0, 10),
+      r.endDate.slice(0, 10),
+      r.status,
+      r.overdueDays ?? 0,
+      r.basePrice,
+      r.totalAmount,
+      r.depositAmount ?? r.totalItems * 500000,
+    ])
+    const csvContent =
+      '\uFEFF' + [headers.map(escapeCell).join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `rentals-report-${toDateString(new Date())}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
   }
 
   const handleAction = async (
@@ -391,9 +470,19 @@ export function RentalsListPage() {
                 </select>
               </div>
             </div>
-            <p className="text-sm text-slate-500 lg:text-right shrink-0">
-              {listMeta.total} rental(s) total
-            </p>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                className="px-3.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 inline-flex items-center gap-1.5 transition-colors"
+              >
+                <span className="material-symbols-outlined text-base">download</span>
+                Xuất CSV
+              </button>
+              <p className="text-sm text-slate-500 lg:text-right">
+                {listMeta.total} rental(s) total
+              </p>
+            </div>
           </div>
         </div>
 
@@ -508,7 +597,10 @@ export function RentalsListPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm font-bold">
-                        {formatCurrency(r.totalAmount)}
+                        <div>{formatCurrency(r.totalAmount)}</div>
+                        <div className="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                          Cọc: {formatCurrency(r.depositAmount ?? r.totalItems * 500000)}
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2">
@@ -698,26 +790,71 @@ export function RentalsListPage() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Tình trạng giày khi nhận lại (Kiểm định)
+                </label>
+                <select
+                  value={inspectionPreset}
+                  onChange={(e) =>
+                    setInspectionPreset(e.target.value as '0' | '50000' | '150000' | 'custom')
+                  }
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                >
+                  <option value="0">Tốt / Nguyên vẹn (Không phụ phí — 0₫)</option>
+                  <option value="50000">Bẩn nhiều — Phụ phí vệ sinh chuyên sâu (+50.000₫)</option>
+                  <option value="150000">Trầy xước / Hư hỏng nhẹ (+150.000₫)</option>
+                  <option value="custom">Hư hỏng nặng / Nhập mức phụ phí khác...</option>
+                </select>
+                {inspectionPreset === 'custom' && (
+                  <input
+                    type="number"
+                    min={0}
+                    step={10000}
+                    value={customDamageFee}
+                    onChange={(e) => setCustomDamageFee(e.target.value)}
+                    placeholder="Nhập số tiền phụ phí (VND)…"
+                    className="mt-2 w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sm"
+                  />
+                )}
+              </div>
+
               <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-200 dark:border-slate-700 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Giá thuê gốc (Base price)</span>
+                  <span className="text-slate-500">Giá thuê gốc</span>
                   <span className="font-semibold">{formatCurrency(returnRentalTarget.basePrice)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Số ngày quá hạn (Overdue days)</span>
-                  <span className={`font-semibold ${returnCalculation.overdueDays > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : ''}`}>
-                    {returnCalculation.overdueDays} ngày
-                  </span>
+                <div className="flex justify-between text-amber-700 dark:text-amber-400">
+                  <span>Tiền cọc giữ của khách (500.000₫/đôi)</span>
+                  <span className="font-semibold">{formatCurrency(returnCalculation.depositAmount)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500">Phí phạt trễ hạn (50%/ngày)</span>
+                  <span className="text-slate-500">Số ngày quá hạn ({returnCalculation.overdueDays} ngày) · Phí phạt trễ hạn (50%/ngày)</span>
                   <span className={`font-semibold ${returnCalculation.lateFee > 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
                     +{formatCurrency(returnCalculation.lateFee)}
                   </span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phụ phí kiểm định / vệ sinh</span>
+                  <span className={`font-semibold ${damageFee > 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                    +{formatCurrency(damageFee)}
+                  </span>
+                </div>
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-base">
-                  <span>Tổng cộng thanh toán</span>
+                  <span>Tổng cộng tiền thuê & phụ phí</span>
                   <span className="text-primary">{formatCurrency(returnCalculation.totalPayable)}</span>
+                </div>
+                <div className="pt-2 border-t border-dashed border-slate-200 dark:border-slate-700 flex justify-between text-xs font-bold">
+                  <span>Đối soát tiền cọc:</span>
+                  {returnCalculation.collectExtraFromCustomer > 0 ? (
+                    <span className="text-rose-600 dark:text-rose-400">
+                      Cần thu thêm sau khi cấn trừ cọc: +{formatCurrency(returnCalculation.collectExtraFromCustomer)}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-600 dark:text-emerald-400">
+                      Hoàn trả lại tiền cọc cho khách: {formatCurrency(returnCalculation.refundToCustomer)}
+                    </span>
+                  )}
                 </div>
               </div>
 

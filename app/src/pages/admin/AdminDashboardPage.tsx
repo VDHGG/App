@@ -28,6 +28,13 @@ function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean 
   return window.confirm(msg)
 }
 
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 export function AdminDashboardPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
@@ -60,6 +67,53 @@ export function AdminDashboardPage() {
     .filter((r) => r.status === 'RETURNED')
     .reduce((sum, r) => sum + r.totalAmount, 0)
   const recentRentals = rentals.slice(0, RECENT_LIMIT)
+
+  const handleExportCsv = () => {
+    const headers = [
+      'Mã đơn',
+      'Mã khách',
+      'Tên khách',
+      'Số đôi',
+      'Ngày bắt đầu',
+      'Ngày hẹn trả',
+      'Trạng thái',
+      'Quá hạn (ngày)',
+      'Giá thuê gốc (VND)',
+      'Tổng tiền (VND)',
+      'Tiền cọc (VND)',
+    ]
+    const escapeCell = (v: string | number) => {
+      const s = String(v ?? '')
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+        return `"${s.replace(/"/g, '""')}"`
+      }
+      return s
+    }
+    const rows = rentals.map((r) => [
+      r.rentalId,
+      r.customerId,
+      customerMap[r.customerId]?.fullName ?? r.customerId,
+      r.totalItems,
+      r.startDate.slice(0, 10),
+      r.endDate.slice(0, 10),
+      r.status,
+      r.overdueDays ?? 0,
+      r.basePrice,
+      r.totalAmount,
+      r.depositAmount ?? r.totalItems * 500000,
+    ])
+    const csvContent =
+      '\uFEFF' + [headers.map(escapeCell).join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `rentals-report-${toDateString(new Date())}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   const handleAction = async (
     rentalId: string,
@@ -215,6 +269,14 @@ export function AdminDashboardPage() {
             <span className="material-symbols-outlined">local_activity</span>
             Manage Vouchers
           </Link>
+          <button
+            type="button"
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 px-4 py-3 text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100/60 dark:hover:bg-emerald-900/40"
+          >
+            <span className="material-symbols-outlined">download</span>
+            Xuất CSV báo cáo
+          </button>
         </div>
 
         {stats?.topShoes && stats.topShoes.length > 0 && (

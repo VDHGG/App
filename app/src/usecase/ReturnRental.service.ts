@@ -32,8 +32,9 @@ export class ReturnRentalService implements ReturnRentalUseCase {
     const returnedAt = request.returnedAt ?? new Date();
 
     const customer = await this.customerRepository.findById(rental.customerId);
+    const cleanDamageFee = Math.round(request.damageFee ?? 0);
 
-    rental.completeReturn(returnedAt, request.note);
+    rental.completeReturn(returnedAt, request.note, request.damageFee ?? 0);
 
     if (customer) {
       customer.completeRental(totalItems);
@@ -62,6 +63,8 @@ export class ReturnRentalService implements ReturnRentalUseCase {
       totalItems,
       basePrice: rental.basePrice,
       lateFee: rental.lateFee,
+      damageFee: cleanDamageFee,
+      depositAmount: rental.depositAmount,
       totalAmount: rental.totalAmount,
       returnedAt: rental.returnedAt as Date,
     };

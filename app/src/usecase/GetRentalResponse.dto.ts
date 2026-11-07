@@ -16,6 +16,7 @@ export type GetRentalResponse = {
   status: RentalStatus;
   totalItems: number;
   basePrice: number;
+  depositAmount: number;
   lateFee: number;
   totalAmount: number;
   startDate: Date;

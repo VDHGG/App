@@ -57,6 +57,7 @@ export function AccountPage() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [detail, setDetail] = useState<GetRentalResponse | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const [invoiceOpen, setInvoiceOpen] = useState(false)
 
   const [cancelId, setCancelId] = useState<string | null>(null)
   const [cancelNote, setCancelNote] = useState('')
@@ -627,6 +628,26 @@ export function AccountPage() {
                     ))}
                   </ul>
                 </div>
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-1.5">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-slate-500">Giá thuê gốc</span>
+                    <span>{formatCurrency(detail.basePrice)}</span>
+                  </div>
+                  {detail.lateFee > 0 && (
+                    <div className="flex justify-between gap-4 text-rose-600 dark:text-rose-400">
+                      <span>Phụ phí / Trễ hạn</span>
+                      <span>+{formatCurrency(detail.lateFee)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-4 font-bold text-slate-900 dark:text-white">
+                    <span>Tổng tiền thuê</span>
+                    <span className="text-primary">{formatCurrency(detail.totalAmount)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4 text-amber-700 dark:text-amber-400 font-semibold text-xs pt-1">
+                    <span>Tiền đặt cọc bảo đảm (500.000₫/đôi)</span>
+                    <span>{formatCurrency(detail.depositAmount ?? detail.totalItems * 500000)}</span>
+                  </div>
+                </div>
                 {detail.note && (
                   <div>
                     <p className="text-slate-500 mb-1">Note</p>
@@ -635,13 +656,135 @@ export function AccountPage() {
                 )}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={closeDetail}
-              className="mt-6 w-full py-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-sm"
-            >
-              Close
-            </button>
+            <div className="mt-6 flex flex-col sm:flex-row gap-2.5">
+              {detail && (
+                <button
+                  type="button"
+                  onClick={() => setInvoiceOpen(true)}
+                  className="flex-1 py-2.5 px-4 rounded-lg bg-primary text-white font-semibold text-sm inline-flex items-center justify-center gap-1.5 hover:opacity-90"
+                >
+                  <span className="material-symbols-outlined text-lg">print</span>
+                  In hóa đơn / Biên nhận
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={closeDetail}
+                className="flex-1 py-2.5 px-4 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {invoiceOpen && detail && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white text-slate-900 rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl border border-slate-200 p-6 sm:p-8">
+            <div className="flex items-start justify-between border-b-2 border-slate-900 pb-4 mb-6">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500">
+                  RENTAL SHOES VIETNAM
+                </p>
+                <h2 className="text-xl font-black uppercase tracking-tight mt-0.5">
+                  PHIẾU GIAO NHẬN & HÓA ĐƠN THUÊ GIÀY
+                </h2>
+                <p className="text-xs text-slate-500 mt-1">
+                  Mã đơn: <span className="font-mono font-bold text-slate-900">{detail.rentalId}</span> · Ngày tạo: {formatDate(detail.createdAt)}
+                </p>
+              </div>
+              <RentalStatusBadge status={detail.status} />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+              <div>
+                <p className="text-slate-500 uppercase font-bold mb-1">Khách hàng</p>
+                <p className="font-bold text-sm">{user?.fullName}</p>
+                <p className="text-slate-600">{user?.phone ?? ''} · {user?.email}</p>
+              </div>
+              <div>
+                <p className="text-slate-500 uppercase font-bold mb-1">Thời hạn thuê</p>
+                <p className="font-semibold">Nhận giày: {formatDate(detail.startDate)}</p>
+                <p className="font-semibold">Hẹn trả: {formatDate(detail.endDate)}</p>
+              </div>
+            </div>
+
+            <table className="w-full text-xs border-collapse mb-6">
+              <thead>
+                <tr className="border-b-2 border-slate-300 text-left uppercase text-slate-500">
+                  <th className="py-2">Sản phẩm</th>
+                  <th className="py-2">Size / Màu</th>
+                  <th className="py-2 text-center">SL</th>
+                  <th className="py-2 text-right">Đơn giá/ngày</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200">
+                {detail.items.map((item) => (
+                  <tr key={item.variantId}>
+                    <td className="py-2.5 font-semibold">{item.shoeName}</td>
+                    <td className="py-2.5">EU {item.size} · {item.color}</td>
+                    <td className="py-2.5 text-center">{item.quantity}</td>
+                    <td className="py-2.5 text-right">{formatCurrency(item.pricePerDay)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div className="border-t-2 border-slate-300 pt-4 space-y-1.5 text-sm mb-6">
+              <div className="flex justify-between">
+                <span className="text-slate-600">Giá thuê gốc:</span>
+                <span className="font-semibold">{formatCurrency(detail.basePrice)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-600">Phụ phí / Phí trễ hạn:</span>
+                <span className="font-semibold">{formatCurrency(detail.lateFee)}</span>
+              </div>
+              <div className="flex justify-between text-base font-black pt-1 border-t border-slate-200">
+                <span>Tổng tiền thuê:</span>
+                <span className="text-primary">{formatCurrency(detail.totalAmount)}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold text-amber-800 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200 mt-2">
+                <span>Tiền đặt cọc bảo đảm (500.000₫ × {detail.totalItems} đôi):</span>
+                <span>{formatCurrency(detail.depositAmount ?? detail.totalItems * 500000)}</span>
+              </div>
+              {detail.note && (
+                <p className="text-xs text-slate-500 pt-1 italic">Ghi chú: {detail.note}</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 text-center text-xs pt-4 border-t border-dashed border-slate-300 mb-6">
+              <div>
+                <p className="font-bold uppercase">Đại diện Cửa hàng</p>
+                <p className="text-slate-400 mt-10">(Ký & ghi rõ họ tên)</p>
+              </div>
+              <div>
+                <p className="font-bold uppercase">Khách hàng</p>
+                <p className="text-slate-400 mt-10">{user?.fullName}</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 print:hidden">
+              <button
+                type="button"
+                onClick={() => setInvoiceOpen(false)}
+                className="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700"
+              >
+                Đóng
+              </button>
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-5 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 inline-flex items-center gap-1.5"
+              >
+                <span className="material-symbols-outlined text-lg">print</span>
+                In ngay
+              </button>
+            </div>
           </div>
         </div>
       )}

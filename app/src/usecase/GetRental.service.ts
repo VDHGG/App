@@ -61,6 +61,7 @@ export class GetRentalService implements GetRentalUseCase {
       status: rental.status,
       totalItems: rental.totalItems,
       basePrice: rental.basePrice,
+      depositAmount: rental.depositAmount,
       lateFee: rental.lateFee,
       totalAmount: rental.totalAmount,
       startDate: rental.period.startDate,

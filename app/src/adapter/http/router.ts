@@ -131,7 +131,11 @@ export function createRouter(container: MysqlContainer): Router {
   const chatCtrl = new ChatController(
     container.getListRentalsUseCase(),
     container.getGetRentalUseCase(),
-    container.getListShoesUseCase()
+    container.getListShoesUseCase(),
+    container.getGetShoeUseCase(),
+    container.getRentalAvailabilityChecker(),
+    container.getVoucherRepository(),
+    container.getCustomerRepository()
   );
 
   router.use(

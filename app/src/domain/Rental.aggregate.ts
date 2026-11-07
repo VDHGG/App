@@ -149,6 +149,10 @@ export class Rental {
     return this.itemsValue.reduce((sum, item) => sum + item.quantity, 0);
   }
 
+  get depositAmount(): number {
+    return this.totalItems * 500000;
+  }
+
   get basePrice(): number {
     return this.itemsValue.reduce(
       (sum, item) => sum + item.subtotalFor(this.periodValue.durationInDays),
@@ -189,7 +193,7 @@ export class Rental {
     this.activatedAtValue = new Date(at.getTime());
   }
 
-  completeReturn(returnedAt: Date = new Date(), note?: string): void {
+  completeReturn(returnedAt: Date = new Date(), note?: string, damageFee: number = 0): void {
     if (
       this.statusValue !== RentalStatus.RESERVED &&
       this.statusValue !== RentalStatus.ACTIVE
@@ -203,6 +207,12 @@ export class Rental {
     ensureValidDate(returnedAt, 'returnedAt');
     ensureValidRentalNote(note ?? null);
 
+    if (!Number.isFinite(damageFee) || damageFee < 0) {
+      throw new ValidationError('Damage fee cannot be negative.');
+    }
+
+    const cleanDamageFee = Math.round(damageFee);
+
     const lateFee = this.calculateLateFeeForReturn(
       this.basePrice,
       this.periodValue.durationInDays,
@@ -212,9 +222,20 @@ export class Rental {
 
     this.statusValue = RentalStatus.RETURNED;
     this.returnedAtValue = new Date(returnedAt.getTime());
-    this.lateFeeValue = lateFee;
+    this.lateFeeValue = lateFee + cleanDamageFee;
 
-    if (note !== undefined) {
+    if (cleanDamageFee > 0) {
+      const tag = `[Phụ phí kiểm định/vệ sinh: +${cleanDamageFee}₫]`;
+      const baseNote = note !== undefined ? (note ? note.trim() : '') : (this.noteValue ?? '');
+      if (baseNote.length > 0) {
+        const maxPrefix = Math.max(0, 255 - tag.length - 1);
+        const trimmedPrefix =
+          baseNote.length > maxPrefix ? baseNote.slice(0, maxPrefix).trimEnd() : baseNote;
+        this.noteValue = trimmedPrefix.length > 0 ? `${trimmedPrefix} ${tag}` : tag;
+      } else {
+        this.noteValue = tag;
+      }
+    } else if (note !== undefined) {
       this.noteValue = note ? note.trim() : null;
     }
   }

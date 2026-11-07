@@ -3,13 +3,20 @@ import { sendChatMessage, type ChatTurn } from '../lib/chat.api'
 import { getApiErrorMessage } from '../lib/api'
 import { humanizeGeminiUpstreamError } from '../lib/geminiUserErrors'
 
+const QUICK_PROMPTS = [
+  'Shop đang có mã giảm giá nào?',
+  'Hạng thành viên & đơn thuê của tôi',
+  'Tìm giày dưới 300.000₫/ngày',
+  'Quy định đặt cọc & phí trễ hạn',
+]
+
 export function ChatbotWidget() {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatTurn[]>([
     {
       role: 'assistant',
       content:
-        'Chào bạn! Mình là trợ lý thuê giày — hỏi về cách thuê, MoMo/COD, hoặc gợi ý giày theo giá nhé. Nếu cần xem đơn của bạn, hãy đăng nhập trước.',
+        'Chào bạn! Mình là trợ lý thuê giày — hỏi về cách thuê, MoMo/COD, mã giảm giá, kiểm tra lịch trống của giày, hoặc tra cứu đơn thuê & hạng thành viên của bạn nhé.',
     },
   ])
   const [input, setInput] = useState('')
@@ -21,9 +28,8 @@ export function ChatbotWidget() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, open])
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault()
-    const text = input.trim()
+  async function sendPrompt(rawText: string) {
+    const text = rawText.trim()
     if (!text || loading) return
 
     const nextUser: ChatTurn = { role: 'user', content: text }
@@ -50,6 +56,11 @@ export function ChatbotWidget() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault()
+    await sendPrompt(input)
   }
 
   return (
@@ -93,6 +104,19 @@ export function ChatbotWidget() {
               <p className="text-xs text-red-600 dark:text-red-400 px-1">{error}</p>
             )}
             <div ref={bottomRef} />
+          </div>
+          <div className="px-3 pt-2 pb-1 border-t border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 flex flex-wrap gap-1.5">
+            {QUICK_PROMPTS.map((q) => (
+              <button
+                key={q}
+                type="button"
+                disabled={loading}
+                onClick={() => void sendPrompt(q)}
+                className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-primary hover:text-primary transition-colors disabled:opacity-50"
+              >
+                {q}
+              </button>
+            ))}
           </div>
           <form onSubmit={handleSend} className="p-3 border-t border-slate-100 dark:border-slate-800 flex gap-2">
             <input

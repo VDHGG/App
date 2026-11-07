@@ -11,11 +11,11 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'list_my_rentals',
     description:
-      'List rental order IDs and basic info for the currently logged-in customer. Requires customer login.',
+      'List rental order IDs, overdue status, and basic info for the currently logged-in customer. Requires customer login.',
   },
   {
     name: 'get_rental_detail',
-    description: 'Get status and dates for one rental by rental id. Requires customer login.',
+    description: 'Get status, dates, deposit, and items for one rental by rental id. Requires customer login.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
@@ -28,19 +28,56 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: 'get_my_membership_rank',
+    description:
+      'Get current membership rank (BRONZE, SILVER, GOLD, DIAMOND) and automatic discount percent for the logged-in customer. Requires customer login.',
+  },
+  {
+    name: 'list_active_vouchers',
+    description:
+      'List currently active promotional vouchers (code, discountPercent, description, expiresAt). Does not require login.',
+  },
+  {
     name: 'search_shoes',
     description:
       'Search shoes by maximum price per day in VND (storefront catalog, typically 180,000 to 550,000 VND/day). Does not require login.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        max_price_vnd: {
+          type: SchemaType.NUMBER,
+          description:
+            'Maximum price per day in VND (e.g. pass 300000 for 300,000 VND/day)',
+        },
         max_price_usd: {
           type: SchemaType.NUMBER,
           description:
-            'Maximum price per day in VND (catalog prices are in VND/day, e.g. pass 300000 for 300,000 VND/day)',
+            'Maximum price per day in VND (legacy alias, e.g. pass 300000 for 300,000 VND/day)',
         },
       },
-      required: ['max_price_usd'],
+    },
+  },
+  {
+    name: 'check_shoe_availability',
+    description:
+      'Check variant availability for a shoe_id between start_date (YYYY-MM-DD) and end_date (YYYY-MM-DD). Does not require login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        shoe_id: {
+          type: SchemaType.STRING,
+          description: 'Shoe id, e.g. SHOE001',
+        },
+        start_date: {
+          type: SchemaType.STRING,
+          description: 'Rental start date in YYYY-MM-DD format',
+        },
+        end_date: {
+          type: SchemaType.STRING,
+          description: 'Rental end date in YYYY-MM-DD format',
+        },
+      },
+      required: ['shoe_id', 'start_date', 'end_date'],
     },
   },
 ];

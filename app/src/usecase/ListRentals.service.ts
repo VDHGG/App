@@ -64,6 +64,7 @@ export class ListRentalsService implements ListRentalsUseCase {
           status: r.status,
           totalItems: r.totalItems,
           basePrice: r.basePrice,
+          depositAmount: r.depositAmount,
           totalAmount: r.totalAmount,
           startDate: r.period.startDate,
           endDate: r.period.endDate,

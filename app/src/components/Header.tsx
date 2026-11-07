@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useRentalCart } from '../cart/RentalCartContext'
+import { NotificationBell } from './NotificationBell'
 
 export function Header() {
   const navigate = useNavigate()
@@ -109,6 +110,7 @@ export function Header() {
               </div>
             </form>
             <div className="flex items-center gap-2 shrink-0">
+              <NotificationBell />
               {user?.role === 'customer' && user.customerId && (
                 <>
                   <Link

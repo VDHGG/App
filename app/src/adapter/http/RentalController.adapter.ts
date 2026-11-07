@@ -85,6 +85,7 @@ export class RentalController {
     const customer = guards?.customer ?? [];
     router.get('/vouchers/validate', ...createRental, asyncRoute(this.validateVoucher.bind(this)));
     router.get('/vouchers/active', ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
+    router.get('/notifications', ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get('/stats/overview', ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
@@ -325,6 +326,122 @@ export class RentalController {
     const todayStr = getVietnamTodayYmd();
     const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
     res.json({ vouchers });
+  }
+
+  private async getNotifications(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    const todayStr = getVietnamTodayYmd();
+    const todayMs = new Date(`${todayStr}T00:00:00Z`).getTime();
+    const nowIso = new Date().toISOString();
+
+    type NotificationItem = {
+      id: string;
+      type: 'OVERDUE' | 'DUE_SOON' | 'RANK_INFO' | 'VOUCHER' | 'ADMIN_ALERT';
+      severity: 'danger' | 'warning' | 'success' | 'info';
+      title: string;
+      message: string;
+      link: string;
+      createdAt: string;
+    };
+
+    const notifications: NotificationItem[] = [];
+
+    if (auth?.role === 'customer' && auth.customerId) {
+      const myRentals = await this.listRentals.execute({
+        customerId: auth.customerId,
+        page: 1,
+        pageSize: 30,
+      });
+
+      for (const r of myRentals.rentals) {
+        if (r.isOverdue) {
+          notifications.push({
+            id: `overdue-${r.rentalId}`,
+            type: 'OVERDUE',
+            severity: 'danger',
+            title: 'Đơn thuê quá hạn',
+            message: `Đơn #${r.rentalId} đang quá hạn ${r.overdueDays} ngày (phí phạt dự kiến +${r.estimatedLateFee.toLocaleString('vi-VN')}₫).`,
+            link: '/account',
+            createdAt: nowIso,
+          });
+        } else if (r.status === 'ACTIVE' || r.status === 'RESERVED') {
+          const endYmd = getVietnamTodayYmd(new Date(r.endDate));
+          const endMs = new Date(`${endYmd}T00:00:00Z`).getTime();
+          const diffDays = Math.round((endMs - todayMs) / 86400000);
+          if (diffDays >= 0 && diffDays <= 2) {
+            notifications.push({
+              id: `due-soon-${r.rentalId}`,
+              type: 'DUE_SOON',
+              severity: 'warning',
+              title: 'Sắp đến hạn trả giày',
+              message: `Đơn #${r.rentalId} sắp đến hạn trả vào ngày ${endYmd}.`,
+              link: '/account',
+              createdAt: nowIso,
+            });
+          }
+        }
+      }
+
+      const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
+      if (vouchers.length > 0) {
+        notifications.push({
+          id: `vouchers-${todayStr}`,
+          type: 'VOUCHER',
+          severity: 'success',
+          title: 'Mã giảm giá đang mở',
+          message: `Ưu đãi đang mở: ${vouchers
+            .slice(0, 3)
+            .map((v) => `${v.code} (-${v.discountPercent}%)`)
+            .join(', ')}.`,
+          link: '/shoes',
+          createdAt: nowIso,
+        });
+      }
+    } else if (auth?.role === 'admin') {
+      const all = await this.listRentals.execute();
+      const overdueCount = all.rentals.filter((r) => r.isOverdue).length;
+      const reservedCount = all.rentals.filter((r) => r.status === 'RESERVED').length;
+      const activeCount = all.rentals.filter((r) => r.status === 'ACTIVE').length;
+
+      if (overdueCount > 0) {
+        notifications.push({
+          id: 'admin-overdue',
+          type: 'OVERDUE',
+          severity: 'danger',
+          title: 'Cảnh báo đơn quá hạn',
+          message: `Có ${overdueCount} đơn thuê đang quá hạn chưa trả cần xử lý.`,
+          link: '/admin/rentals',
+          createdAt: nowIso,
+        });
+      }
+
+      if (reservedCount > 0) {
+        notifications.push({
+          id: 'admin-reserved',
+          type: 'ADMIN_ALERT',
+          severity: 'warning',
+          title: 'Đơn chờ giao giày',
+          message: `Có ${reservedCount} đơn RESERVED đang chờ kích hoạt giao giày.`,
+          link: '/admin/rentals',
+          createdAt: nowIso,
+        });
+      }
+
+      notifications.push({
+        id: 'admin-active',
+        type: 'ADMIN_ALERT',
+        severity: 'info',
+        title: 'Tình trạng vận hành',
+        message: `Hệ thống đang có ${activeCount} đơn ACTIVE đang thuê.`,
+        link: '/admin',
+        createdAt: nowIso,
+      });
+    }
+
+    res.json({
+      notifications,
+      unreadCount: notifications.length,
+    });
   }
 
   private async getStatsOverview(_req: Request, res: Response): Promise<void> {
