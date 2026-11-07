@@ -260,3 +260,64 @@ export async function fetchNotifications(): Promise<{
   return data
 }
 
+export function sanitizeCsvCell(v: string | number | null | undefined): string {
+  let s = String(v ?? '')
+  if (/^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`
+  }
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
+
+export function exportRentalsToCsv(
+  rentals: RentalSummary[],
+  customerNameById: Record<string, string>,
+  dateStr: string
+): void {
+  const headers = [
+    'Mã đơn',
+    'Mã khách',
+    'Tên khách',
+    'Số đôi',
+    'Ngày bắt đầu',
+    'Ngày hẹn trả',
+    'Trạng thái',
+    'Quá hạn (ngày)',
+    'Giá thuê gốc (VND)',
+    'Phụ phí / Trễ hạn (VND)',
+    'Tổng tiền (VND)',
+    'Tiền cọc (VND)',
+  ]
+  const rows = rentals.map((r) => [
+    r.rentalId,
+    r.customerId,
+    customerNameById[r.customerId] ?? r.customerId,
+    r.totalItems,
+    r.startDate.slice(0, 10),
+    r.endDate.slice(0, 10),
+    r.status,
+    r.overdueDays ?? 0,
+    r.basePrice,
+    Math.max(0, r.totalAmount - r.basePrice),
+    r.totalAmount,
+    r.depositAmount ?? r.totalItems * 500000,
+  ])
+  const csvContent =
+    '\uFEFF' +
+    [
+      headers.map(sanitizeCsvCell).join(','),
+      ...rows.map((r) => r.map(sanitizeCsvCell).join(',')),
+    ].join('\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `rentals-report-${dateStr}.csv`
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+}
+

@@ -33,16 +33,18 @@ function getVietnamTodayYmd(now: Date = new Date()): string {
 function detectSecurityViolation(text: string, customerId: string | undefined): string | null {
   const normalized = text.trim();
   if (
-    /ignore previous|ignore all instructions|system prompt|select\s+\*\s+from|drop\s+table|delete\s+from|doanh thu admin|báo cáo doanh thu|đơn của khách khác|thông tin khách khác|danh sách khách hàng/i.test(
+    /ignore previous|ignore all instructions|bỏ qua hướng dẫn|system prompt|reveal prompt|select\s+\*\s+from|union\s+select|information_schema|password_hash|jwt_secret|system_users|drop\s+table|delete\s+from|doanh thu admin|báo cáo doanh thu|đơn của khách khác|thông tin khách khác|danh sách khách hàng/i.test(
       normalized
     )
   ) {
     return '🔒 Vì lý do bảo mật (Zero-Trust Read-Only Policy), trợ lý AI chỉ được phép tra cứu thông tin công khai và dữ liệu đơn thuê/hạng thành viên của chính tài khoản bạn đang đăng nhập. Mình không thể truy cập dữ liệu của khách hàng khác, doanh thu Admin, hoặc can thiệp trực tiếp vào cơ sở dữ liệu.';
   }
 
-  const custMatch = normalized.match(/\b(CUST\d{3,})\b/i);
-  if (custMatch && custMatch[1].toUpperCase() !== (customerId ?? '').toUpperCase()) {
-    return '🔒 Vì lý do bảo mật, bạn chỉ có thể tra cứu dữ liệu thuộc tài khoản của chính mình, không thể xem thông tin của mã khách hàng khác.';
+  const custMatches = normalized.matchAll(/\b(CUST\d{3,})\b/gi);
+  for (const m of custMatches) {
+    if (m[1].toUpperCase() !== (customerId ?? '').toUpperCase()) {
+      return '🔒 Vì lý do bảo mật, bạn chỉ có thể tra cứu dữ liệu thuộc tài khoản của chính mình, không thể xem thông tin của mã khách hàng khác.';
+    }
   }
 
   return null;
@@ -125,10 +127,14 @@ export class ChatController {
     const lastUserMsg = [...body.messages].reverse().find((m) => m.role === 'user');
     const lastUserText = lastUserMsg?.content ?? '';
 
-    const violation = detectSecurityViolation(lastUserText, customerId);
-    if (violation) {
-      res.json({ reply: violation, mode: 'security_guard' });
-      return;
+    for (const msg of body.messages) {
+      if (msg.role === 'user') {
+        const violation = detectSecurityViolation(msg.content, customerId);
+        if (violation) {
+          res.json({ reply: violation, mode: 'security_guard' });
+          return;
+        }
+      }
     }
 
     const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -179,6 +185,37 @@ export class ChatController {
     }
 
     const q = lastUserText.toLowerCase();
+
+    if (/hủy đơn giúp|xóa đơn giúp|tạo đơn giúp|đặt thuê giúp|tự động hủy|tự động tạo|cancel order for me/i.test(q)) {
+      return '🛡️ Trợ lý AI hoạt động ở chế độ **100% Read-Only (Chỉ đọc)** để bảo vệ an toàn tài khoản của bạn. Mình không trực tiếp tạo, sửa, gia hạn hoặc hủy đơn qua khung chat. Bạn vui lòng thao tác trực tiếp tại trang `/checkout` (đặt đơn) hoặc `/account` (gia hạn / hủy đơn `RESERVED`) nhé!';
+    }
+
+    const availMatch = lastUserText.match(/\b(SHOE\d{3,})\b.*?\b(\d{4}-\d{2}-\d{2})\b.*?\b(\d{4}-\d{2}-\d{2})\b/i);
+    if (availMatch) {
+      const availRes = (await this.runTool(
+        'check_shoe_availability',
+        {
+          shoe_id: availMatch[1].toUpperCase(),
+          start_date: availMatch[2],
+          end_date: availMatch[3],
+        },
+        customerId
+      )) as {
+        ok: boolean;
+        name?: string;
+        variants?: Array<{ size: number; color: string; availableQuantity: number }>;
+        error?: string;
+      };
+      if (availRes.ok && availRes.variants) {
+        const lines = availRes.variants.map(
+          (v) => `• Size EU ${v.size} (${v.color}): còn **${v.availableQuantity}** đôi trống`
+        );
+        return [
+          `📅 **Tồn kho khả dụng cho ${availRes.name} (${availMatch[2]} → ${availMatch[3]}):**`,
+          ...lines,
+        ].join('\n');
+      }
+    }
 
     if (/voucher|mã giảm|khuyến mãi|ưu đãi/.test(q)) {
       const vRes = (await this.runTool('list_active_vouchers', {}, customerId)) as {

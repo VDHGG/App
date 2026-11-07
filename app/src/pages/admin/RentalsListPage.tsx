@@ -7,6 +7,7 @@ import {
   cancelRental,
   extendRentalAdmin,
   deleteRentalAdmin,
+  exportRentalsToCsv,
   type ListRentalsQuery,
 } from '../../lib/rentals.api'
 import type { RentalSummary, RentalStatus } from '../../lib/rentals.api'
@@ -270,62 +271,19 @@ export function RentalsListPage() {
   }
 
   const handleExportCsv = () => {
-    const headers = [
-      'Mã đơn',
-      'Mã khách',
-      'Tên khách',
-      'Số đôi',
-      'Ngày bắt đầu',
-      'Ngày hẹn trả',
-      'Trạng thái',
-      'Quá hạn (ngày)',
-      'Giá thuê gốc (VND)',
-      'Tổng tiền (VND)',
-      'Tiền cọc (VND)',
-    ]
-    const escapeCell = (v: string | number) => {
-      const s = String(v ?? '')
-      if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-        return `"${s.replace(/"/g, '""')}"`
-      }
-      return s
-    }
-    const rows = rentals.map((r) => [
-      r.rentalId,
-      r.customerId,
-      customerMap[r.customerId]?.fullName ?? r.customerId,
-      r.totalItems,
-      r.startDate.slice(0, 10),
-      r.endDate.slice(0, 10),
-      r.status,
-      r.overdueDays ?? 0,
-      r.basePrice,
-      r.totalAmount,
-      r.depositAmount ?? r.totalItems * 500000,
-    ])
-    const csvContent =
-      '\uFEFF' + [headers.map(escapeCell).join(','), ...rows.map((r) => r.map(escapeCell).join(','))].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `rentals-report-${toDateString(new Date())}.csv`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(url)
+    const nameMap = Object.fromEntries(customers.map((c) => [c.customerId, c.fullName]))
+    exportRentalsToCsv(rentals, nameMap, toDateString(new Date()))
   }
 
   const handleAction = async (
     rentalId: string,
-    action: 'activate' | 'return' | 'cancel'
+    action: 'activate' | 'cancel'
   ) => {
     if (!confirmRentalAction(action)) return
     setActionLoading(rentalId)
     setActionError(null)
     try {
       if (action === 'activate') await activateRental(rentalId)
-      else if (action === 'return') await returnRental(rentalId)
       else await cancelRental(rentalId)
       const res = await listRentals(rentalQuery)
       setRentals(res.rentals)

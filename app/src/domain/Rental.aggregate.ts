@@ -13,6 +13,40 @@ import {
 
 const MS_PER_CALENDAR_DAY = 24 * 60 * 60 * 1000;
 
+function mergeNotePreservingDiscountTag(
+  existingNote: string | null,
+  incomingNote: string | undefined,
+  suffixTag?: string
+): string | null {
+  const discountMatch = existingNote?.match(/\[Ưu đãi:[^\]]+\]/);
+  const discountTag = discountMatch ? discountMatch[0] : '';
+
+  let base =
+    incomingNote !== undefined
+      ? incomingNote
+        ? incomingNote.trim()
+        : ''
+      : (existingNote ?? '');
+
+  if (discountTag && !base.includes(discountTag)) {
+    base = base.length > 0 ? `${base} ${discountTag}` : discountTag;
+  }
+
+  if (suffixTag) {
+    if (base.length > 0) {
+      const maxPrefix = Math.max(0, 255 - suffixTag.length - 1);
+      const trimmedPrefix = base.length > maxPrefix ? base.slice(0, maxPrefix).trimEnd() : base;
+      return trimmedPrefix.length > 0 ? `${trimmedPrefix} ${suffixTag}` : suffixTag;
+    }
+    return suffixTag.slice(0, 255);
+  }
+
+  if (base.length === 0) {
+    return null;
+  }
+  return base.slice(0, 255);
+}
+
 export type RentalProps = {
   id: string;
   customerId: string;
@@ -226,17 +260,9 @@ export class Rental {
 
     if (cleanDamageFee > 0) {
       const tag = `[Phụ phí kiểm định/vệ sinh: +${cleanDamageFee}₫]`;
-      const baseNote = note !== undefined ? (note ? note.trim() : '') : (this.noteValue ?? '');
-      if (baseNote.length > 0) {
-        const maxPrefix = Math.max(0, 255 - tag.length - 1);
-        const trimmedPrefix =
-          baseNote.length > maxPrefix ? baseNote.slice(0, maxPrefix).trimEnd() : baseNote;
-        this.noteValue = trimmedPrefix.length > 0 ? `${trimmedPrefix} ${tag}` : tag;
-      } else {
-        this.noteValue = tag;
-      }
+      this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note, tag);
     } else if (note !== undefined) {
-      this.noteValue = note ? note.trim() : null;
+      this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note);
     }
   }
 
@@ -261,7 +287,7 @@ export class Rental {
 
     this.periodValue = new RentalPeriod(this.periodValue.startDate, newEndDate);
     if (note !== undefined && note.trim().length > 0) {
-      this.noteValue = note.trim().slice(0, 255);
+      this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note);
     }
   }
   
@@ -300,7 +326,7 @@ export class Rental {
     this.cancelledAtValue = new Date(at.getTime());
 
     if (note !== undefined) {
-      this.noteValue = note ? note.trim() : null;
+      this.noteValue = mergeNotePreservingDiscountTag(this.noteValue, note);
     }
   }
 

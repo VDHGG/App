@@ -8,14 +8,13 @@ export function NotificationBell() {
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [markedRead, setMarkedRead] = useState(false)
+  const [readIds, setReadIds] = useState<string[]>([])
   const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!user) {
       setNotifications([])
-      setUnreadCount(0)
+      setReadIds([])
       return
     }
     let cancelled = false
@@ -23,8 +22,6 @@ export function NotificationBell() {
       .then((res) => {
         if (cancelled) return
         setNotifications(res.notifications ?? [])
-        setUnreadCount(res.unreadCount ?? 0)
-        setMarkedRead(false)
       })
       .catch(() => {
         // Ignore silent fetch error in header
@@ -32,7 +29,7 @@ export function NotificationBell() {
     return () => {
       cancelled = true
     }
-  }, [user?.email, user?.role, user?.customerId])
+  }, [user?.email, user?.role, user?.customerId, open])
 
   useEffect(() => {
     if (!open) return
@@ -47,7 +44,7 @@ export function NotificationBell() {
 
   if (!user) return null
 
-  const badgeCount = markedRead ? 0 : unreadCount
+  const badgeCount = notifications.filter((n) => !readIds.includes(n.id)).length
 
   function getSeverityStyle(severity: NotificationItem['severity']) {
     switch (severity) {
@@ -106,10 +103,10 @@ export function NotificationBell() {
                 </span>
               )}
             </div>
-            {notifications.length > 0 && !markedRead && (
+            {badgeCount > 0 && (
               <button
                 type="button"
-                onClick={() => setMarkedRead(true)}
+                onClick={() => setReadIds(notifications.map((n) => n.id))}
                 className="text-xs font-semibold text-primary hover:underline"
               >
                 Đánh dấu đã đọc

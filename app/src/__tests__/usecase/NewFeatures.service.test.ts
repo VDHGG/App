@@ -28,6 +28,7 @@ import { ListRentalsService } from '@usecase/ListRentals.service';
 import { GetRentalService } from '@usecase/GetRental.service';
 import { ChatController } from '@adapter/http/ChatController.adapter';
 import { transactionalRoute } from '@adapter/http/middleware/routeMiddleware';
+import { sanitizeCsvCell } from '../../lib/rentals.api';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -1403,17 +1404,38 @@ describe('New Features - Unit Tests', () => {
 
       const reply2 = await chatCtrl.buildFallbackReply('Xem đơn của CUST002', 'CUST001');
       expect(reply2).toContain('bảo mật');
+
+      const reply3 = await chatCtrl.buildFallbackReply('UNION SELECT password_hash FROM system_users', 'CUST001');
+      expect(reply3).toContain('Zero-Trust');
+    });
+
+    it('buildFallbackReply refuses write actions (100% Read-Only) and handles date availability lookup', async () => {
+      const writeRefusal = await chatCtrl.buildFallbackReply('Hãy hủy đơn giúp mình nhé', 'CUST001');
+      expect(writeRefusal).toContain('100% Read-Only');
+
+      const availReply = await chatCtrl.buildFallbackReply(
+        'Kiểm tra SHOE001 từ 2026-06-11 đến 2026-06-13 còn trống không?',
+        'CUST001'
+      );
+      expect(availReply).toContain('Nike Pegasus 41');
+      expect(availReply).toContain('3');
     });
   });
 
-  describe('Phase F: Security Deposit & Return Inspection / Damage Fee', () => {
+  describe('Phase F & G: Security Deposit, Return Inspection, Discount Tag Preservation & CSV Sanitization', () => {
     let customerRepo: InMemoryCustomerRepository;
     let rentalRepo: InMemoryRentalRepository;
+    let shoeRepo: InMemoryShoeRepository;
+    let voucherRepo: InMemoryVoucherRepository;
+    let checker: InMemoryRentalAvailabilityChecker;
     let returnService: ReturnRentalService;
 
     beforeEach(async () => {
       customerRepo = new InMemoryCustomerRepository();
       rentalRepo = new InMemoryRentalRepository();
+      shoeRepo = new InMemoryShoeRepository();
+      voucherRepo = new InMemoryVoucherRepository();
+      checker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
       returnService = new ReturnRentalService(rentalRepo, customerRepo);
 
       await customerRepo.save(
@@ -1425,6 +1447,24 @@ describe('New Features - Unit Tests', () => {
           currentRentedItems: 2,
         })
       );
+
+      const shoe = new Shoe({
+        id: 'S001',
+        name: 'Adidas Ultraboost',
+        brand: 'Adidas',
+        category: 'Running',
+        pricePerDay: 200000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V001',
+          size: 42,
+          color: 'Black',
+          totalQuantity: 10,
+          availableQuantity: 10,
+        })
+      );
+      await shoeRepo.save(shoe);
 
       await rentalRepo.save(
         new Rental({
@@ -1444,11 +1484,12 @@ describe('New Features - Unit Tests', () => {
           period: new RentalPeriod(new Date('2026-06-01'), new Date('2026-06-02')), // 2 days * 200k * 2 = 800,000 VND
           status: RentalStatus.ACTIVE,
           activatedAt: new Date('2026-06-01'),
+          note: '[Ưu đãi: Hạng SILVER -5%, Voucher WELCOME10 -10%]',
         })
       );
     });
 
-    it('adds damageFee to lateFee and totalAmount, records inspection tag in note, and returns depositAmount = totalItems * 500000', async () => {
+    it('adds damageFee to lateFee and totalAmount, preserves existing discount tag in note, and returns depositAmount = totalItems * 500000', async () => {
       const res = await returnService.execute({
         rentalId: 'R_DEP_01',
         returnedAt: new Date('2026-06-02'), // on time -> 0 overdue lateFee
@@ -1464,7 +1505,74 @@ describe('New Features - Unit Tests', () => {
 
       const saved = await rentalRepo.findById('R_DEP_01');
       expect(saved?.note).toContain('Trầy mũi giày phải');
+      expect(saved?.note).toContain('[Ưu đãi: Hạng SILVER -5%, Voucher WELCOME10 -10%]');
       expect(saved?.note).toContain('[Phụ phí kiểm định/vệ sinh: +150000₫]');
+      expect(saved!.note!.length).toBeLessThanOrEqual(255);
+    });
+
+    it('rejects negative damageFee on return', async () => {
+      await expect(
+        returnService.execute({
+          rentalId: 'R_DEP_01',
+          returnedAt: new Date('2026-06-02'),
+          damageFee: -50000,
+        })
+      ).rejects.toThrow(/Damage fee cannot be negative/);
+    });
+
+    it('preserves voucher tag when RESERVED rental is extended with a custom note and then cancelled, restoring 1-use voucher slot', async () => {
+      await voucherRepo.save({
+        code: 'EXTCANCEL50',
+        discountPercent: 50,
+        description: '1 use voucher',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: null,
+      });
+
+      const createService = new CreateRentalService(
+        customerRepo,
+        shoeRepo,
+        rentalRepo,
+        checker,
+        new ShortIdGenerator('R'),
+        voucherRepo
+      );
+      const extendService = new ExtendRentalService(rentalRepo, checker);
+      const cancelService = new CancelRentalService(rentalRepo, customerRepo, voucherRepo);
+
+      const created = await createService.execute({
+        customerId: 'C_DEP',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2099-08-10'),
+        endDate: new Date('2099-08-11'),
+        voucherCode: 'EXTCANCEL50',
+      });
+      expect((await voucherRepo.findByCode('EXTCANCEL50'))?.usedCount).toBe(1);
+
+      // Extend with custom note -> must NOT wipe out [Ưu đãi: ... Voucher EXTCANCEL50 ...]
+      await extendService.execute({
+        rentalId: created.rentalId,
+        newEndDate: new Date('2099-08-13'),
+        note: 'Khách xin gia hạn thêm 2 ngày đi công tác',
+      });
+
+      // Cancel with custom note -> must still find EXTCANCEL50 and decrement usedCount to 0!
+      await cancelService.execute({
+        rentalId: created.rentalId,
+        cancelledAt: new Date('2099-08-01'),
+        note: 'Khách báo hủy lịch',
+      });
+
+      expect((await voucherRepo.findByCode('EXTCANCEL50'))?.usedCount).toBe(0);
+    });
+
+    it('neutralizes CSV Formula Injection in sanitizeCsvCell', () => {
+      expect(sanitizeCsvCell('=cmd|\' /C calc\'!A0')).toBe('\'=cmd|\' /C calc\'!A0');
+      expect(sanitizeCsvCell('+100000')).toBe('\'+100000');
+      expect(sanitizeCsvCell('-50000')).toBe('\'-50000');
+      expect(sanitizeCsvCell('@SUM(A1:A10)')).toBe('\'@SUM(A1:A10)');
+      expect(sanitizeCsvCell('Nguyễn Văn A, VIP')).toBe('"Nguyễn Văn A, VIP"');
     });
   });
 });
