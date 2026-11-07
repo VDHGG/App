@@ -336,13 +336,13 @@ export function ShoeEditorPage() {
             </div>
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-                Price / day (USD)
+                Price / day (VND)
               </label>
               <input
                 required
                 type="number"
-                min={0.01}
-                step="0.01"
+                min={1000}
+                step="1000"
                 value={pricePerDay}
                 onChange={(e) => setPricePerDay(e.target.value)}
                 className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm"

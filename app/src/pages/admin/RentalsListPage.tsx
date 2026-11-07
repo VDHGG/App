@@ -5,10 +5,15 @@ import {
   activateRental,
   returnRental,
   cancelRental,
+  extendRentalAdmin,
   deleteRentalAdmin,
   type ListRentalsQuery,
 } from '../../lib/rentals.api'
 import type { RentalSummary, RentalStatus } from '../../lib/rentals.api'
+import {
+  fetchMomoPaymentStatuses,
+  type MomoPaymentStatusRecord,
+} from '../../lib/payments.api'
 import { listCustomers } from '../../lib/customers.api'
 import type { CustomerSummary } from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
@@ -29,10 +34,10 @@ const STATUS_OPTIONS: { value: '' | RentalStatus; label: string }[] = [
 
 const AMOUNT_OPTIONS: { value: ListRentalsQuery['amountBucket']; label: string }[] = [
   { value: 'all', label: 'All amounts' },
-  { value: 'lt50', label: 'Under $50' },
-  { value: '50to150', label: '$50 – $150' },
-  { value: '150to300', label: '$150 – $300' },
-  { value: 'gt300', label: 'Over $300' },
+  { value: 'lt50', label: 'Under 1.000.000₫' },
+  { value: '50to150', label: '1.000.000₫ – 2.000.000₫' },
+  { value: '150to300', label: '2.000.000₫ – 3.500.000₫' },
+  { value: 'gt300', label: 'Over 3.500.000₫' },
 ]
 
 function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean {
@@ -43,6 +48,19 @@ function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean 
         ? 'Mark this rental as returned?'
         : 'Cancel this reservation? This cannot be undone.'
   return window.confirm(msg)
+}
+
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function nextDayDateString(isoDate: string): string {
+  const d = new Date(isoDate)
+  d.setDate(d.getDate() + 1)
+  return toDateString(d)
 }
 
 export function RentalsListPage() {
@@ -69,6 +87,14 @@ export function RentalsListPage() {
     pageSize: DEFAULT_PAGE_SIZE,
   })
 
+  // MoMo payment statuses & extend rental state
+  const [paymentMap, setPaymentMap] = useState<Record<string, MomoPaymentStatusRecord>>({})
+  const [extendRentalTarget, setExtendRentalTarget] = useState<RentalSummary | null>(null)
+  const [extendNewEndDate, setExtendNewEndDate] = useState('')
+  const [extendNote, setExtendNote] = useState('')
+  const [extendLoading, setExtendLoading] = useState(false)
+  const [extendError, setExtendError] = useState<string | null>(null)
+
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
   useEffect(() => {
@@ -92,7 +118,7 @@ export function RentalsListPage() {
 
   useEffect(() => {
     Promise.all([listRentals(rentalQuery), listCustomers()])
-      .then(([rentalsRes, customersRes]) => {
+      .then(async ([rentalsRes, customersRes]) => {
         setRentals(rentalsRes.rentals)
         setListMeta({
           total: rentalsRes.total,
@@ -100,10 +126,52 @@ export function RentalsListPage() {
           pageSize: rentalsRes.pageSize,
         })
         setCustomers(customersRes.customers)
+
+        if (rentalsRes.rentals.length > 0) {
+          try {
+            const payStatuses = await fetchMomoPaymentStatuses(
+              rentalsRes.rentals.map((r) => r.rentalId)
+            )
+            setPaymentMap(payStatuses.payments)
+          } catch {
+            // ignore payment status error
+          }
+        }
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
   }, [rentalQuery])
+
+  const openExtend = (r: RentalSummary) => {
+    setExtendRentalTarget(r)
+    setExtendNewEndDate(nextDayDateString(r.endDate))
+    setExtendNote('')
+    setExtendError(null)
+  }
+
+  const closeExtend = () => {
+    setExtendRentalTarget(null)
+    setExtendError(null)
+  }
+
+  const confirmExtend = async () => {
+    if (!extendRentalTarget || !extendNewEndDate) return
+    setExtendLoading(true)
+    setExtendError(null)
+    try {
+      await extendRentalAdmin(extendRentalTarget.rentalId, {
+        newEndDate: extendNewEndDate,
+        note: extendNote.trim() || undefined,
+      })
+      closeExtend()
+      const res = await listRentals(rentalQuery)
+      setRentals(res.rentals)
+    } catch (err: unknown) {
+      setExtendError(getApiErrorMessage(err))
+    } finally {
+      setExtendLoading(false)
+    }
+  }
 
   const handleAction = async (
     rentalId: string,
@@ -295,6 +363,9 @@ export function RentalsListPage() {
                     Status
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Payment
+                  </th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Amount
                   </th>
                   <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">
@@ -305,7 +376,7 @@ export function RentalsListPage() {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rentals.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={9} className="px-6 py-12 text-center text-slate-500">
                       No rentals found
                     </td>
                   </tr>
@@ -345,6 +416,28 @@ export function RentalsListPage() {
                       <td className="px-6 py-4">
                         <RentalStatusBadge status={r.status} />
                       </td>
+                      <td className="px-6 py-4">
+                        {paymentMap[r.rentalId]?.status === 'PAID' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                            MoMo PAID
+                          </span>
+                        ) : paymentMap[r.rentalId]?.status === 'PENDING' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            MoMo PENDING
+                          </span>
+                        ) : paymentMap[r.rentalId]?.status === 'EXPIRED' || paymentMap[r.rentalId]?.status === 'FAILED' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                            <span className="size-1.5 rounded-full bg-rose-500" />
+                            MoMo {paymentMap[r.rentalId]?.status}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            COD / Unpaid
+                          </span>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-sm font-bold">
                         {formatCurrency(r.totalAmount)}
                       </td>
@@ -373,6 +466,18 @@ export function RentalsListPage() {
                             >
                               <span className="material-symbols-outlined text-lg">
                                 assignment_return
+                              </span>
+                            </button>
+                          )}
+                          {(r.status === 'RESERVED' || r.status === 'ACTIVE') && (
+                            <button
+                              type="button"
+                              onClick={() => openExtend(r)}
+                              className="p-1 hover:text-indigo-600 transition-colors"
+                              title="Gia hạn thời gian thuê"
+                            >
+                              <span className="material-symbols-outlined text-lg">
+                                edit_calendar
                               </span>
                             </button>
                           )}
@@ -422,6 +527,74 @@ export function RentalsListPage() {
           </div>
         </div>
       </div>
+
+      {extendRentalTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              Gia hạn đơn thuê {extendRentalTarget.rentalId}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Ngày trả hiện tại: <strong>{formatDate(extendRentalTarget.endDate)}</strong>. Chọn ngày trả mới sau ngày này.
+            </p>
+            {extendError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm px-3 py-2">
+                {extendError}
+              </div>
+            )}
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ngày trả mới
+                </label>
+                <input
+                  type="date"
+                  value={extendNewEndDate}
+                  min={nextDayDateString(extendRentalTarget.endDate)}
+                  onChange={(e) => setExtendNewEndDate(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="admin-extend-note" className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ghi chú (tùy chọn)
+                </label>
+                <textarea
+                  id="admin-extend-note"
+                  value={extendNote}
+                  onChange={(e) => setExtendNote(e.target.value)}
+                  maxLength={255}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  placeholder="Lý do gia hạn…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeExtend}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={extendLoading || !extendNewEndDate}
+                onClick={() => void confirmExtend()}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {extendLoading ? 'Đang gia hạn…' : 'Xác nhận gia hạn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={confirmDeleteRental !== null}

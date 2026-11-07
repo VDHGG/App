@@ -9,6 +9,8 @@ export type AuthSession = {
   customerId: string | null
 }
 
+export type CustomerRank = 'BRONZE' | 'SILVER' | 'GOLD' | 'DIAMOND'
+
 export type MeResponse = {
   sub: string
   role: AuthRole
@@ -16,6 +18,8 @@ export type MeResponse = {
   fullName: string
   email: string
   phone: string | null
+  rank?: CustomerRank
+  rankDiscountPercent?: number
 }
 
 export async function login(email: string, password: string): Promise<AuthSession> {

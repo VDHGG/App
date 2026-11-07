@@ -142,3 +142,64 @@ export async function deactivateShoe(shoeId: string): Promise<DeactivateShoeResp
   const { data } = await api.delete<DeactivateShoeResponse>(`/shoes/${shoeId}`)
   return data
 }
+
+export type ShoeAvailabilityVariantDto = {
+  variantId: string
+  size: number
+  color: string
+  totalQuantity: number
+  reservedQuantity: number
+  availableQuantity: number
+}
+
+export type ShoeAvailabilityResponse = {
+  shoeId: string
+  startDate: string
+  endDate: string
+  durationDays: number
+  variants: ShoeAvailabilityVariantDto[]
+}
+
+export type ShoeReviewDto = {
+  reviewId: number | string
+  shoeId: string
+  customerId: string
+  customerName: string
+  rating: number
+  comment: string
+  createdAt: string
+}
+
+export type ShoeReviewsResponse = {
+  shoeId: string
+  averageRating: number
+  totalReviews: number
+  reviews: ShoeReviewDto[]
+}
+
+export async function fetchShoeAvailability(
+  shoeId: string,
+  startDate: string,
+  endDate: string
+): Promise<ShoeAvailabilityResponse> {
+  const { data } = await api.get<ShoeAvailabilityResponse>(
+    `/shoes/${encodeURIComponent(shoeId)}/availability?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+  )
+  return data
+}
+
+export async function fetchShoeReviews(shoeId: string): Promise<ShoeReviewsResponse> {
+  const { data } = await api.get<ShoeReviewsResponse>(`/shoes/${encodeURIComponent(shoeId)}/reviews`)
+  return data
+}
+
+export async function submitShoeReview(
+  shoeId: string,
+  body: { rating: number; comment: string }
+): Promise<{ review?: ShoeReviewDto }> {
+  const { data } = await api.post<{ review?: ShoeReviewDto }>(
+    `/shoes/${encodeURIComponent(shoeId)}/reviews`,
+    body
+  )
+  return data
+}

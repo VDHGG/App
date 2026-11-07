@@ -30,13 +30,14 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'search_shoes',
     description:
-      'Search shoes by maximum price per day in USD (storefront catalog). Does not require login.',
+      'Search shoes by maximum price per day in VND (storefront catalog, typically 180,000 to 550,000 VND/day). Does not require login.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         max_price_usd: {
           type: SchemaType.NUMBER,
-          description: 'Maximum price per day in USD (e.g. 20 for under $20/day)',
+          description:
+            'Maximum price per day in VND (catalog prices are in VND/day, e.g. pass 300000 for 300,000 VND/day)',
         },
       },
       required: ['max_price_usd'],

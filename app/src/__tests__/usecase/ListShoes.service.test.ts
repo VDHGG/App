@@ -65,4 +65,72 @@ describe('ListShoesService', () => {
       unitsInStock: 5,
     });
   });
+
+  describe('VND priceBucket filters', () => {
+    beforeEach(async () => {
+      const addShoe = new AddShoeService(shoeRepo, new ShortIdGenerator('S'));
+      await addShoe.execute({
+        name: 'Shoe-249k',
+        brand: 'BrandA',
+        category: 'Running',
+        pricePerDay: 249999,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+      await addShoe.execute({
+        name: 'Shoe-250k',
+        brand: 'BrandB',
+        category: 'Running',
+        pricePerDay: 250000,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+      await addShoe.execute({
+        name: 'Shoe-349k',
+        brand: 'BrandC',
+        category: 'Sport',
+        pricePerDay: 349999,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+      await addShoe.execute({
+        name: 'Shoe-350k',
+        brand: 'BrandD',
+        category: 'Sport',
+        pricePerDay: 350000,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+      await addShoe.execute({
+        name: 'Shoe-450k',
+        brand: 'BrandE',
+        category: 'Casual',
+        pricePerDay: 450000,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+      await addShoe.execute({
+        name: 'Shoe-450k-plus',
+        brand: 'BrandF',
+        category: 'Casual',
+        pricePerDay: 450001,
+        variants: [{ size: 42, color: 'Black', totalQuantity: 1 }],
+      });
+    });
+
+    it('filters lt10 (< 250,000 VND)', async () => {
+      const result = await listShoes.execute({ priceBucket: 'lt10' });
+      expect(result.shoes.map((s) => s.name)).toEqual(['Shoe-249k']);
+    });
+
+    it('filters 10to20 (250,000 to < 350,000 VND)', async () => {
+      const result = await listShoes.execute({ priceBucket: '10to20' });
+      expect(result.shoes.map((s) => s.name)).toEqual(['Shoe-250k', 'Shoe-349k']);
+    });
+
+    it('filters 20to50 (350,000 to 450,000 VND)', async () => {
+      const result = await listShoes.execute({ priceBucket: '20to50' });
+      expect(result.shoes.map((s) => s.name)).toEqual(['Shoe-350k', 'Shoe-450k']);
+    });
+
+    it('filters gt50 (> 450,000 VND)', async () => {
+      const result = await listShoes.execute({ priceBucket: 'gt50' });
+      expect(result.shoes.map((s) => s.name)).toEqual(['Shoe-450k-plus']);
+    });
+  });
 });

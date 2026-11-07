@@ -1,10 +1,34 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { getShoe, type GetShoeResponse, type ShoeVariantDto } from '../lib/shoes.api'
+import {
+  getShoe,
+  fetchShoeAvailability,
+  fetchShoeReviews,
+  submitShoeReview,
+  type GetShoeResponse,
+  type ShoeVariantDto,
+  type ShoeAvailabilityResponse,
+  type ShoeReviewDto,
+} from '../lib/shoes.api'
+import { formatCurrency } from '../lib/format'
+import { getApiErrorMessage } from '../lib/api'
 import { ShoeImage } from '../components/ShoeImage'
 import { useWishlist } from '../wishlist/WishlistContext'
 import { useRentalCart } from '../cart/RentalCartContext'
 import { useAuth } from '../auth/AuthContext'
+
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d)
+  out.setDate(out.getDate() + days)
+  return out
+}
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -19,6 +43,24 @@ export function ProductDetailPage() {
 
   const [variantId, setVariantId] = useState('')
   const [quantity, setQuantity] = useState(1)
+
+  // Availability Date Range Checker
+  const today = toDateString(new Date())
+  const [checkStartDate, setCheckStartDate] = useState(today)
+  const [checkEndDate, setCheckEndDate] = useState(toDateString(addDays(new Date(), 2)))
+  const [availability, setAvailability] = useState<ShoeAvailabilityResponse | null>(null)
+  const [availLoading, setAvailLoading] = useState(false)
+
+  // Reviews State
+  const [reviews, setReviews] = useState<ShoeReviewDto[]>([])
+  const [avgRating, setAvgRating] = useState(0)
+  const [totalReviews, setTotalReviews] = useState(0)
+  const [reviewsLoading, setReviewsLoading] = useState(true)
+  const [newRating, setNewRating] = useState(5)
+  const [newComment, setNewComment] = useState('')
+  const [submittingReview, setSubmittingReview] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [reviewSuccess, setReviewSuccess] = useState<string | null>(null)
 
   const canRentOnline = user?.role === 'customer' && Boolean(user.customerId)
 
@@ -37,6 +79,67 @@ export function ProductDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
+  useEffect(() => {
+    if (!id || !checkStartDate || !checkEndDate || checkEndDate < checkStartDate) {
+      setAvailability(null)
+      return
+    }
+    let cancelled = false
+    setAvailLoading(true)
+    fetchShoeAvailability(id, checkStartDate, checkEndDate)
+      .then((res) => {
+        if (!cancelled) setAvailability(res)
+      })
+      .catch(() => {
+        if (!cancelled) setAvailability(null)
+      })
+      .finally(() => {
+        if (!cancelled) setAvailLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id, checkStartDate, checkEndDate])
+
+  const loadReviews = useCallback(async (shoeId: string) => {
+    setReviewsLoading(true)
+    try {
+      const res = await fetchShoeReviews(shoeId)
+      setReviews(res.reviews)
+      setAvgRating(res.averageRating)
+      setTotalReviews(res.totalReviews)
+    } catch {
+      // ignore
+    } finally {
+      setReviewsLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (id) {
+      void loadReviews(id)
+    }
+  }, [id, loadReviews])
+
+  const variantAvailMap = useMemo(() => {
+    const m = new Map<string, number>()
+    if (availability?.variants) {
+      for (const v of availability.variants) {
+        m.set(v.variantId, v.availableQuantity)
+      }
+    }
+    return m
+  }, [availability])
+
+  const effectiveAvailable = useCallback(
+    (v: ShoeVariantDto): number => {
+      return variantAvailMap.has(v.variantId)
+        ? variantAvailMap.get(v.variantId)!
+        : v.availableQuantity
+    },
+    [variantAvailMap]
+  )
+
   const selectedVariant: ShoeVariantDto | undefined = useMemo(
     () => shoe?.variants.find((v) => v.variantId === variantId),
     [shoe, variantId]
@@ -44,8 +147,9 @@ export function ProductDetailPage() {
 
   useEffect(() => {
     if (!selectedVariant) return
-    setQuantity((q) => Math.min(Math.max(1, q), selectedVariant.availableQuantity))
-  }, [variantId, selectedVariant])
+    const maxAvail = effectiveAvailable(selectedVariant)
+    setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, maxAvail)))
+  }, [variantId, selectedVariant, effectiveAvailable])
 
   const variantInCart = variantId ? hasVariantInCart(variantId) : false
 
@@ -60,7 +164,7 @@ export function ProductDetailPage() {
       color: selectedVariant.color,
       pricePerDay: shoe.pricePerDay,
       quantity: qty,
-      availableQuantity: selectedVariant.availableQuantity,
+      availableQuantity: effectiveAvailable(selectedVariant),
       imageUrlCard: shoe.imageUrlCard,
     }
   }
@@ -75,7 +179,27 @@ export function ProductDetailPage() {
     const payload = linePayload(quantity)
     if (!payload || !cartEnabled) return
     addOrMergeLine(payload)
-    navigate('/checkout')
+    navigate(
+      `/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`
+    )
+  }
+
+  async function handleSubmitReview(e: React.FormEvent) {
+    e.preventDefault()
+    if (!id || !newComment.trim()) return
+    setSubmittingReview(true)
+    setReviewError(null)
+    setReviewSuccess(null)
+    try {
+      await submitShoeReview(id, { rating: newRating, comment: newComment.trim() })
+      setNewComment('')
+      setReviewSuccess('Đánh giá của bạn đã được ghi nhận!')
+      await loadReviews(id)
+    } catch (err: unknown) {
+      setReviewError(getApiErrorMessage(err))
+    } finally {
+      setSubmittingReview(false)
+    }
   }
 
   if (loading) {
@@ -100,9 +224,9 @@ export function ProductDetailPage() {
   const canAdd =
     canRentOnline &&
     selectedVariant &&
-    selectedVariant.availableQuantity > 0 &&
+    effectiveAvailable(selectedVariant) > 0 &&
     quantity >= 1 &&
-    quantity <= selectedVariant.availableQuantity
+    quantity <= effectiveAvailable(selectedVariant)
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -150,45 +274,89 @@ export function ProductDetailPage() {
           </h1>
           <p className="text-slate-600 dark:text-slate-400 mt-1">{shoe.brand}</p>
           <p className="text-2xl font-bold text-primary mt-6">
-            ${shoe.pricePerDay}
+            {formatCurrency(shoe.pricePerDay)}
             <span className="text-sm font-normal text-slate-500">/day</span>
           </p>
           {shoe.description && (
             <p className="mt-6 text-slate-600 dark:text-slate-400">{shoe.description}</p>
           )}
 
-          {canRentOnline && shoe.variants.length > 0 && (
-            <div className="mt-8 space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                  Variant
-                </label>
-                <select
-                  value={variantId}
-                  onChange={(e) => setVariantId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
-                >
-                  {shoe.variants.map((v) => (
-                    <option key={v.variantId} value={v.variantId}>
-                      EU {v.size} · {v.color} · {v.availableQuantity} available
-                    </option>
-                  ))}
-                </select>
+          {shoe.variants.length > 0 && (
+            <>
+              <div className="mt-6 p-4 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-base text-primary">calendar_month</span>
+                    Kiểm tra lịch còn giày
+                  </label>
+                  {availLoading && (
+                    <span className="text-xs text-slate-400">Đang kiểm tra...</span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <span className="block text-[11px] text-slate-500 mb-1">Ngày nhận (bắt đầu)</span>
+                    <input
+                      type="date"
+                      value={checkStartDate}
+                      min={today}
+                      onChange={(e) => {
+                        setCheckStartDate(e.target.value)
+                        if (e.target.value > checkEndDate) {
+                          setCheckEndDate(e.target.value)
+                        }
+                      }}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <span className="block text-[11px] text-slate-500 mb-1">Ngày trả (dự kiến)</span>
+                    <input
+                      type="date"
+                      value={checkEndDate}
+                      min={checkStartDate}
+                      onChange={(e) => setCheckEndDate(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  min={1}
-                  max={selectedVariant?.availableQuantity ?? 1}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Number(e.target.value) || 1)}
-                  className="w-full max-w-[200px] px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
-                />
+
+              <div className="mt-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Variant
+                  </label>
+                  <select
+                    value={variantId}
+                    onChange={(e) => setVariantId(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary"
+                  >
+                    {shoe.variants.map((v) => {
+                      const avail = effectiveAvailable(v)
+                      return (
+                        <option key={v.variantId} value={v.variantId} disabled={avail <= 0}>
+                          EU {v.size} · {v.color} · {avail > 0 ? `${avail} trống (theo ngày chọn)` : 'Hết hàng'} / tổng {v.totalQuantity}
+                        </option>
+                      )
+                    })}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={selectedVariant ? Math.max(1, effectiveAvailable(selectedVariant)) : 1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Number(e.target.value) || 1)}
+                    className="w-full max-w-[200px] px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
+                  />
+                </div>
               </div>
-            </div>
+            </>
           )}
 
           <div className="mt-8 flex flex-col gap-3">
@@ -279,6 +447,161 @@ export function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Customer Reviews Section */}
+      <section className="mt-16 pt-10 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+              Đánh giá từ khách hàng
+            </h2>
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex text-amber-400 text-lg">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <span
+                    key={star}
+                    className="material-symbols-outlined text-lg leading-none"
+                    style={
+                      star <= Math.round(avgRating)
+                        ? { fontVariationSettings: "'FILL' 1" }
+                        : undefined
+                    }
+                  >
+                    star
+                  </span>
+                ))}
+              </div>
+              <span className="font-bold text-slate-900 dark:text-white text-sm">
+                {avgRating > 0 ? avgRating.toFixed(1) : 'Chưa có đánh giá'}
+              </span>
+              <span className="text-xs text-slate-500">
+                ({totalReviews} lượt đánh giá)
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Review Submission Form */}
+        {canRentOnline ? (
+          <form
+            onSubmit={handleSubmitReview}
+            className="mb-10 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/60 space-y-4"
+          >
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+              Viết đánh giá của bạn
+            </h3>
+            {reviewError && (
+              <div className="p-3 text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg">
+                {reviewError}
+              </div>
+            )}
+            {reviewSuccess && (
+              <div className="p-3 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg">
+                {reviewSuccess}
+              </div>
+            )}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                Số sao
+              </label>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setNewRating(star)}
+                    className="p-1 text-amber-400 hover:scale-110 transition-transform"
+                  >
+                    <span
+                      className="material-symbols-outlined text-2xl"
+                      style={
+                        star <= newRating ? { fontVariationSettings: "'FILL' 1" } : undefined
+                      }
+                    >
+                      star
+                    </span>
+                  </button>
+                ))}
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 ml-2">
+                  {newRating} sao
+                </span>
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                Nhận xét của bạn
+              </label>
+              <textarea
+                required
+                rows={3}
+                maxLength={500}
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Chia sẻ trải nghiệm về chất lượng giày, độ êm, đúng kích cỡ..."
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={submittingReview || !newComment.trim()}
+              className="px-5 py-2.5 rounded-xl bg-primary text-white text-xs font-bold uppercase tracking-wider hover:bg-primary/90 disabled:opacity-50 transition-opacity"
+            >
+              {submittingReview ? 'Đang gửi…' : 'Gửi đánh giá'}
+            </button>
+          </form>
+        ) : (
+          <div className="mb-8 p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center text-sm text-slate-500">
+            Đăng nhập tài khoản khách hàng để gửi đánh giá về đôi giày này.
+          </div>
+        )}
+
+        {/* Review List */}
+        {reviewsLoading ? (
+          <p className="text-sm text-slate-400">Đang tải đánh giá…</p>
+        ) : reviews.length === 0 ? (
+          <p className="text-sm text-slate-400 py-6 text-center border rounded-xl border-dashed border-slate-200 dark:border-slate-800">
+            Chưa có đánh giá nào cho sản phẩm này. Hãy là người đầu tiên trải nghiệm!
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {reviews.map((r) => (
+              <div
+                key={r.reviewId}
+                className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50"
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white">
+                      {r.customerName}
+                    </span>
+                    <div className="flex text-amber-400 text-xs">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <span
+                          key={star}
+                          className="material-symbols-outlined text-sm leading-none"
+                          style={
+                            star <= r.rating
+                              ? { fontVariationSettings: "'FILL' 1" }
+                              : undefined
+                          }
+                        >
+                          star
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <span className="text-xs text-slate-400">
+                    {new Date(r.createdAt).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {r.comment}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

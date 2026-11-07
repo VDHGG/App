@@ -107,13 +107,13 @@ export class MysqlShoeRepository implements ShoeRepository {
 
     const priceBucket = filters?.priceBucket ?? 'all';
     if (priceBucket === 'lt10') {
-      conditions.push('s.price_per_day < 10');
+      conditions.push('s.price_per_day < 250000');
     } else if (priceBucket === '10to20') {
-      conditions.push('s.price_per_day >= 10 AND s.price_per_day < 20');
+      conditions.push('s.price_per_day >= 250000 AND s.price_per_day < 350000');
     } else if (priceBucket === '20to50') {
-      conditions.push('s.price_per_day >= 20 AND s.price_per_day <= 50');
+      conditions.push('s.price_per_day >= 350000 AND s.price_per_day <= 450000');
     } else if (priceBucket === 'gt50') {
-      conditions.push('s.price_per_day > 50');
+      conditions.push('s.price_per_day > 450000');
     }
 
     const stockBucket = filters?.stockBucket ?? 'all';

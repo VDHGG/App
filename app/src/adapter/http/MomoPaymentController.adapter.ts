@@ -12,20 +12,28 @@ const CreateBodySchema = z.object({
   rentalId: z.string().min(1),
 });
 
+function resolveRequestOrigin(req: Request): string | null {
+  const rawHost = req.headers['x-forwarded-host'] ?? req.headers.host;
+  const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
+  if (!host) return null;
+  const rawProto = req.headers['x-forwarded-proto'];
+  const proto = (Array.isArray(rawProto) ? rawProto[0] : rawProto) || (host.includes('localhost') ? 'http' : 'https');
+  return `${proto.split(',')[0].trim()}://${host.split(',')[0].trim()}`;
+}
+
 function isMomoConfigured(): boolean {
   return (
     process.env.MOMO_ENABLED === 'true' &&
     Boolean(process.env.MOMO_ACCESS_KEY?.trim()) &&
     Boolean(process.env.MOMO_SECRET_KEY?.trim()) &&
-    Boolean(process.env.MOMO_PARTNER_CODE?.trim()) &&
-    Boolean(process.env.FRONTEND_ORIGIN?.trim())
+    Boolean(process.env.MOMO_PARTNER_CODE?.trim())
   );
 }
 
 function usdToVnd(usd: number): number {
   const raw = process.env.PAYMENT_USD_TO_VND_RATE?.trim();
-  const rate = raw ? Number(raw) : 25000;
-  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 25000;
+  const rate = raw ? Number(raw) : 1;
+  const safeRate = Number.isFinite(rate) && rate > 0 ? rate : 1;
   const vnd = Math.round(usd * safeRate);
   return Math.max(1000, vnd);
 }
@@ -51,11 +59,37 @@ export class MomoPaymentController {
     this.rentalPayments = rentalPayments;
   }
 
-  routes(createGuards: RequestHandler[]): Router {
+  routes(createGuards: RequestHandler[], statusGuards: RequestHandler[] = createGuards): Router {
     const router = Router();
     router.post('/payments/momo/create', ...createGuards, asyncRoute(this.create.bind(this)));
+    router.get('/payments/momo/status', ...statusGuards, asyncRoute(this.getStatus.bind(this)));
     router.post('/payments/momo/ipn', asyncRoute(this.ipn.bind(this)));
     return router;
+  }
+
+  private async getStatus(req: Request, res: Response): Promise<void> {
+    const rawIds = String(req.query.rentalIds ?? '').trim();
+    if (!rawIds) {
+      res.json({ payments: {} });
+      return;
+    }
+    const ids = rawIds
+      .split(',')
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+      .slice(0, 50);
+
+    const auth = req.auth;
+    let customerId: string | undefined;
+    if (auth?.role === 'customer') {
+      if (!auth.customerId) {
+        throw new ValidationError('Account is not linked to a customer profile.');
+      }
+      customerId = auth.customerId;
+    }
+
+    const payments = await this.rentalPayments.findLatestByRentalIds(ids, customerId);
+    res.json({ payments });
   }
 
   private async create(req: Request, res: Response): Promise<void> {
@@ -106,13 +140,19 @@ export class MomoPaymentController {
     const apiPath = process.env.MOMO_API_PATH?.trim() || '/v2/gateway/api/create';
     const apiUrl = `${apiHost.replace(/\/$/, '')}${apiPath.startsWith('/') ? '' : '/'}${apiPath}`;
 
-    const frontend = process.env.FRONTEND_ORIGIN!.replace(/\/$/, '');
+    const reqOrigin = resolveRequestOrigin(req);
+    const frontendEnv = process.env.FRONTEND_ORIGIN?.trim();
+    const useFrontendEnv =
+      frontendEnv && !(process.env.VERCEL && frontendEnv.includes('localhost'));
+    const frontend = (useFrontendEnv ? frontendEnv : (reqOrigin || 'http://localhost:5173')).replace(/\/$/, '');
     const redirectUrl = `${frontend}/payment/momo/return`;
 
     const port = process.env.PORT ?? '3000';
-    const apiPublic =
-      process.env.API_PUBLIC_BASE_URL?.trim() || `http://localhost:${port}`;
-    const ipnUrl = `${apiPublic.replace(/\/$/, '')}/api/v1/payments/momo/ipn`;
+    const apiPublicEnv = process.env.API_PUBLIC_BASE_URL?.trim();
+    const useApiPublicEnv =
+      apiPublicEnv && !(process.env.VERCEL && apiPublicEnv.includes('localhost'));
+    const apiPublic = (useApiPublicEnv ? apiPublicEnv : (reqOrigin || `http://localhost:${port}`)).replace(/\/$/, '');
+    const ipnUrl = `${apiPublic}/api/v1/payments/momo/ipn`;
 
     const orderId = `RS${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
     const requestId = orderId;

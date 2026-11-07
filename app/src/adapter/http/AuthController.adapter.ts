@@ -3,9 +3,11 @@ import type { Request, Response, RequestHandler } from 'express';
 import type { LoginUserUseCase } from '@usecase/LoginUserUseCase.port';
 import type { RegisterUserUseCase } from '@usecase/RegisterUserUseCase.port';
 import type { SystemUserRepository } from '@port/SystemUserRepository.port';
+import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { UpdateProfileUseCase } from '@usecase/UpdateProfileUseCase.port';
 import type { ChangePasswordUseCase } from '@usecase/ChangePasswordUseCase.port';
+import { getDiscountPercentByRank } from '@domain/CustomerRank.enum';
 import {
   ChangePasswordSchema,
   LoginBodySchema,
@@ -33,6 +35,7 @@ export class AuthController {
   private readonly updateProfile: UpdateProfileUseCase;
   private readonly changePassword: ChangePasswordUseCase;
   private readonly bearerAuth: RequestHandler;
+  private readonly customerRepository?: CustomerRepository;
 
   constructor(
     loginUser: LoginUserUseCase,
@@ -41,7 +44,8 @@ export class AuthController {
     transactionManager: TransactionManager,
     updateProfile: UpdateProfileUseCase,
     changePassword: ChangePasswordUseCase,
-    bearerAuth: RequestHandler
+    bearerAuth: RequestHandler,
+    customerRepository?: CustomerRepository
   ) {
     this.loginUser = loginUser;
     this.registerUser = registerUser;
@@ -50,6 +54,7 @@ export class AuthController {
     this.updateProfile = updateProfile;
     this.changePassword = changePassword;
     this.bearerAuth = bearerAuth;
+    this.customerRepository = customerRepository;
   }
 
   routes(authLimiter: RequestHandler): Router {
@@ -94,13 +99,25 @@ export class AuthController {
       res.status(401).json({ error: 'UNAUTHORIZED', message: 'User not found.' });
       return;
     }
+    const customerId = auth.customerId ?? row.customerId;
+    let rank = undefined;
+    let rankDiscountPercent = undefined;
+    if (customerId && this.customerRepository) {
+      const c = await this.customerRepository.findById(customerId);
+      if (c) {
+        rank = c.rank;
+        rankDiscountPercent = getDiscountPercentByRank(c.rank);
+      }
+    }
+
     res.json({
       sub: auth.sub,
       role: auth.role,
-      customerId: auth.customerId ?? row.customerId,
+      customerId,
       fullName: row.fullName,
       email: row.email,
       phone: row.phone,
+      ...(rank !== undefined ? { rank, rankDiscountPercent } : {}),
     });
   }
 

@@ -3,6 +3,7 @@ import type {
   RentalPaymentRecord,
   RentalPaymentRepository,
   RentalPaymentStatus,
+  RentalPaymentSummary,
 } from '@port/RentalPaymentRepository.port';
 import { transactionContext } from '@infra/db/transactionContext';
 
@@ -41,6 +42,41 @@ export class MysqlRentalPaymentRepository implements RentalPaymentRepository {
 
   private conn(): Pool | PoolConnection {
     return transactionContext.getStore() ?? this.pool;
+  }
+
+  async findLatestByRentalIds(
+    rentalIds: string[],
+    customerId?: string
+  ): Promise<Record<string, RentalPaymentSummary>> {
+    if (rentalIds.length === 0) return {};
+
+    const query = customerId
+      ? `SELECT rental_id, status, amount_vnd, gateway_order_id, paid_at
+         FROM rental_payments
+         WHERE rental_id IN (?) AND customer_id = ?
+         ORDER BY id ASC`
+      : `SELECT rental_id, status, amount_vnd, gateway_order_id, paid_at
+         FROM rental_payments
+         WHERE rental_id IN (?)
+         ORDER BY id ASC`;
+    const params = customerId ? [rentalIds, customerId] : [rentalIds];
+
+    const [rows] = await this.conn().query<RowDataPacket[]>(query, params);
+
+    const result: Record<string, RentalPaymentSummary> = {};
+    for (const r of rows) {
+      const rid = String(r['rental_id']);
+      const current = result[rid];
+      if (current && current.status === 'PAID') continue;
+
+      result[rid] = {
+        status: r['status'] as RentalPaymentStatus,
+        amountVnd: Number(r['amount_vnd']),
+        gatewayOrderId: String(r['gateway_order_id']),
+        paidAt: r['paid_at'] ? new Date(r['paid_at']) : null,
+      };
+    }
+    return result;
   }
 
   async countMomoAttemptsSince(customerId: string, since: Date): Promise<number> {

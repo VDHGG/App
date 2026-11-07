@@ -1,5 +1,6 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { confirmMomoReturnParams } from '../lib/payments.api'
 
 function parseResultCode(raw: string | null): number | null {
   if (raw === null || raw === '') return null
@@ -9,6 +10,12 @@ function parseResultCode(raw: string | null): number | null {
 
 export function MomoReturnPage() {
   const [searchParams] = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('orderId') && searchParams.get('signature')) {
+      void confirmMomoReturnParams(Object.fromEntries(searchParams.entries())).catch(() => {})
+    }
+  }, [searchParams])
 
   const resultCode = useMemo(() => {
     return parseResultCode(searchParams.get('resultCode'))

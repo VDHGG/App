@@ -1,5 +1,8 @@
 import { Rental } from '@domain/Rental.aggregate';
+import { RentalItem } from '@domain/RentalItem.vo';
 import { RentalPeriod } from '@domain/RentalPeriod.vo';
+import { getDiscountPercentByRank } from '@domain/CustomerRank.enum';
+import { resolveVoucher } from '@domain/Voucher.vo';
 import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { IdGenerator } from '@port/IdGenerator.port';
 import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
@@ -38,8 +41,12 @@ export class CreateRentalService implements CreateRentalUseCase {
     const customer = await this.customerRepository.findById(request.customerId);
     if (!customer) throw new NotFoundError('Customer', request.customerId);
 
+    const rankDiscount = getDiscountPercentByRank(customer.rank);
+    const voucher = resolveVoucher(request.voucherCode);
+    const totalDiscountPercent = Math.min(50, rankDiscount + (voucher?.discountPercent ?? 0));
+
     const loadedShoes = new Map<string, Awaited<ReturnType<ShoeRepository['findByVariantId']>>>();
-    const rentalItems = [];
+    const originalRentalItems: RentalItem[] = [];
 
     for (const requestedItem of request.items) {
       const shoe = await this.loadShoeForVariant(requestedItem.variantId, loadedShoes);
@@ -51,21 +58,58 @@ export class CreateRentalService implements CreateRentalUseCase {
         rentalPeriod
       );
 
-      // Check xem có thể active không + tạo snapshot tại thời điểm đó
-      rentalItems.push(shoe.createRentalItem(requestedItem.variantId, requestedItem.quantity));
+      originalRentalItems.push(shoe.createRentalItem(requestedItem.variantId, requestedItem.quantity));
+    }
+
+    let finalRentalItems: RentalItem[];
+    if (totalDiscountPercent > 0) {
+      finalRentalItems = originalRentalItems.map(
+        (item) =>
+          new RentalItem({
+            shoeId: item.shoeId,
+            variantId: item.variantId,
+            shoeName: item.shoeName,
+            size: item.size,
+            color: item.color,
+            pricePerDay: Math.max(1, Math.round((item.pricePerDay * (100 - totalDiscountPercent)) / 100)),
+            quantity: item.quantity,
+          })
+      );
+    } else {
+      finalRentalItems = originalRentalItems;
+    }
+
+    const originalBasePrice =
+      originalRentalItems.reduce((sum, item) => sum + item.pricePerDay * item.quantity, 0) *
+      rentalPeriod.durationInDays;
+
+    let noteText = request.note?.trim() || '';
+    if (totalDiscountPercent > 0) {
+      const tagParts: string[] = [];
+      if (rankDiscount > 0) {
+        tagParts.push(`Hạng ${customer.rank} -${rankDiscount}%`);
+      }
+      if (voucher) {
+        tagParts.push(`Voucher ${voucher.code} -${voucher.discountPercent}%`);
+      }
+      const tag = `[Ưu đãi: ${tagParts.join(', ')}]`;
+      noteText = noteText ? `${noteText} ${tag}` : tag;
     }
 
     const rental = new Rental({
       id: this.idGenerator.next(),
       customerId: customer.id,
-      items: rentalItems,
+      items: finalRentalItems,
       period: rentalPeriod,
+      note: noteText || null,
     });
 
     customer.registerRental(totalRequestedQuantity);
 
     await this.customerRepository.save(customer);
     await this.rentalRepository.save(rental);
+
+    const discountAmount = Math.max(0, originalBasePrice - rental.basePrice);
 
     return {
       rentalId: rental.id,
@@ -76,6 +120,11 @@ export class CreateRentalService implements CreateRentalUseCase {
       totalAmount: rental.totalAmount,
       startDate: rental.period.startDate,
       endDate: rental.period.endDate,
+      originalBasePrice,
+      discountPercent: totalDiscountPercent,
+      discountAmount,
+      customerRank: customer.rank,
+      appliedVoucher: voucher?.code ?? null,
     };
   }
 

@@ -7,6 +7,7 @@ import {
   type WishlistItemDto,
 } from '../lib/wishlist.api'
 import { getApiErrorMessage } from '../lib/api'
+import { formatCurrency } from '../lib/format'
 import { useAuth } from '../auth/AuthContext'
 import { useWishlist } from '../wishlist/WishlistContext'
 import { ShoeImage } from '../components/ShoeImage'
@@ -160,7 +161,7 @@ export function WishlistPage() {
                     {item.name}
                   </h3>
                   <span className="text-primary font-bold shrink-0">
-                    ${item.pricePerDay} / day
+                    {formatCurrency(item.pricePerDay)} / day
                   </span>
                 </div>
                 <p className="text-slate-500 text-sm mb-6 line-clamp-2">

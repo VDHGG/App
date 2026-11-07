@@ -71,7 +71,8 @@ export function createRouter(container: MysqlContainer): Router {
     container.getTransactionManager(),
     container.getUpdateProfileUseCase(),
     container.getChangePasswordUseCase(),
-    bearerAuth
+    bearerAuth,
+    container.getCustomerRepository()
   );
   router.use('/auth', authCtrl.routes(authLimiter));
 
@@ -95,7 +96,9 @@ export function createRouter(container: MysqlContainer): Router {
     container.getDeactivateShoeUseCase(),
     container.getListShoesUseCase(),
     container.getGetShoeUseCase(),
-    catalogLookup
+    catalogLookup,
+    container.getRentalAvailabilityChecker(),
+    container.getPool()
   );
   const shoeImageCtrl = new ShoeImageController(container.getUploadShoeImageUseCase());
   const rentalCtrl = new RentalController(
@@ -105,7 +108,8 @@ export function createRouter(container: MysqlContainer): Router {
     container.getCancelRentalUseCase(),
     container.getListRentalsUseCase(),
     container.getGetRentalUseCase(),
-    container.getDeleteRentalAdminUseCase()
+    container.getDeleteRentalAdminUseCase(),
+    container.getExtendRentalUseCase()
   );
   const catalogAdminCtrl = new CatalogAdminController(container.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container.getWishlistUseCase());
@@ -126,7 +130,14 @@ export function createRouter(container: MysqlContainer): Router {
     container.getListShoesUseCase()
   );
 
-  router.use('/', shoeCtrl.routes(tx, { admin: adminGuard, authenticated: storefrontAuth }));
+  router.use(
+    '/',
+    shoeCtrl.routes(tx, {
+      admin: adminGuard,
+      authenticated: storefrontAuth,
+      customer: customerOnlyAuth,
+    })
+  );
   router.use('/', catalogAdminCtrl.routes({ admin: adminGuard }));
   router.use('/customers', customerCtrl.routes(tx, { admin: adminGuard }));
   router.use('/system-users', adminSystemUserCtrl.routes(tx, { admin: adminGuard }));
@@ -140,7 +151,7 @@ export function createRouter(container: MysqlContainer): Router {
     })
   );
   router.use('/wishlist', wishlistCtrl.routes({ customer: customerOnlyAuth }));
-  router.use('/', momoPaymentCtrl.routes(customerOnlyAuth));
+  router.use('/', momoPaymentCtrl.routes(customerOnlyAuth, storefrontAuth));
   router.use('/', chatCtrl.routes([chatRateLimit, optionalBearer]));
 
   return router;

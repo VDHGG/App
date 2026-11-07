@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { listShoes, type ShoeSummary } from '../lib/shoes.api'
+import { formatCurrency } from '../lib/format'
 import { ProductCard } from '../components/ProductCard'
 
 const PAGE_SIZE = 9
@@ -334,10 +335,10 @@ export function StorefrontPage() {
 
           <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-2">
             <h4 className="font-semibold text-xs uppercase tracking-wider text-slate-500">
-              Price / day ($)
+              Price / day (₫)
             </h4>
             <p className="text-[11px] text-slate-400">
-              Range in catalog: ${priceBounds.min.toFixed(0)} – ${priceBounds.max.toFixed(0)}
+              Range in catalog: {formatCurrency(priceBounds.min)} – {formatCurrency(priceBounds.max)}
             </p>
             <div className="flex gap-2">
               <input

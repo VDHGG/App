@@ -175,14 +175,14 @@ export class ChatController {
     }
 
     if (name === 'search_shoes') {
-      const maxUsd = Number(args['max_price_usd']);
-      if (!Number.isFinite(maxUsd) || maxUsd <= 0) {
+      const maxInput = Number(args['max_price_vnd'] ?? args['max_price_usd']);
+      if (!Number.isFinite(maxInput) || maxInput <= 0) {
         return { ok: false, error: 'Invalid max_price_usd' };
       }
-      const shoes = await this.searchShoesByMaxPriceUsd(maxUsd);
+      const shoes = await this.searchShoesByMaxPriceUsd(maxInput);
       return {
         ok: true,
-        max_price_usd: maxUsd,
+        max_price_usd: maxInput,
         shoes: shoes.map((s) => ({
           shoeId: s.shoeId,
           name: s.name,
@@ -197,28 +197,39 @@ export class ChatController {
     return { ok: false, error: 'Unknown tool' };
   }
 
-  private async searchShoesByMaxPriceUsd(maxUsd: number) {
+  private async searchShoesByMaxPriceUsd(maxInput: number) {
+    const normalizedMaxVnd = maxInput > 0 && maxInput < 1000 ? maxInput * 1000 : maxInput;
     const cap = 25;
-    if (maxUsd <= 10) {
+    let shoes: Array<{
+      shoeId: string;
+      name: string;
+      brand: string;
+      category: string;
+      pricePerDay: number;
+      unitsInStock: number;
+    }>;
+
+    if (normalizedMaxVnd <= 250000) {
       const r = await this.listShoes.execute({
         priceBucket: 'lt10',
         page: 1,
         pageSize: cap,
       });
-      return r.shoes;
-    }
-    if (maxUsd <= 20) {
+      shoes = r.shoes;
+    } else if (normalizedMaxVnd <= 350000) {
       const a = await this.listShoes.execute({ priceBucket: 'lt10', page: 1, pageSize: cap });
       const b = await this.listShoes.execute({ priceBucket: '10to20', page: 1, pageSize: cap });
-      return mergeShoeLists([a.shoes, b.shoes]).slice(0, cap);
-    }
-    if (maxUsd <= 50) {
+      shoes = mergeShoeLists([a.shoes, b.shoes]).slice(0, cap);
+    } else if (normalizedMaxVnd <= 450000) {
       const a = await this.listShoes.execute({ priceBucket: 'lt10', page: 1, pageSize: 20 });
       const b = await this.listShoes.execute({ priceBucket: '10to20', page: 1, pageSize: 20 });
       const c = await this.listShoes.execute({ priceBucket: '20to50', page: 1, pageSize: 20 });
-      return mergeShoeLists([a.shoes, b.shoes, c.shoes]).slice(0, cap);
+      shoes = mergeShoeLists([a.shoes, b.shoes, c.shoes]).slice(0, cap);
+    } else {
+      const r = await this.listShoes.execute({ priceBucket: 'all', page: 1, pageSize: cap });
+      shoes = r.shoes;
     }
-    const r = await this.listShoes.execute({ priceBucket: 'gt50', page: 1, pageSize: cap });
-    return r.shoes;
+
+    return shoes.filter((s) => s.pricePerDay <= normalizedMaxVnd);
   }
 }

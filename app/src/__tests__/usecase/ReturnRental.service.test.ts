@@ -63,7 +63,7 @@ describe('ReturnRentalService - happy path', () => {
   it('returns a RESERVED rental successfully', async () => {
     await rentalRepo.save(seedRentalReserved());
 
-    const result = await service.execute({ rentalId: 'R001' });
+    const result = await service.execute({ rentalId: 'R001', returnedAt: new Date('2026-05-05') });
 
     expect(result.status).toBe(RentalStatus.RETURNED);
     expect(result.rentalId).toBe('R001');

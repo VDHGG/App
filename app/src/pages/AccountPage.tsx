@@ -6,12 +6,32 @@ import { changePassword, updateProfile } from '../lib/auth.api'
 import { getApiErrorMessage } from '../lib/api'
 import {
   cancelMyRental,
+  extendMyRental,
   getMyRental,
   listMyRentals,
   type GetRentalResponse,
   type RentalSummary,
 } from '../lib/rentals.api'
+import {
+  fetchMomoPaymentStatuses,
+  createMomoPayment,
+  type MomoPaymentStatusRecord,
+} from '../lib/payments.api'
 import { customerMayCancelReserved } from '../lib/rentalCustomerUi'
+import { formatCurrency } from '../lib/format'
+
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function nextDayDateString(isoDate: string): string {
+  const d = new Date(isoDate)
+  d.setDate(d.getDate() + 1)
+  return toDateString(d)
+}
 
 export function AccountPage() {
   const { user, refreshUser } = useAuth()
@@ -43,6 +63,16 @@ export function AccountPage() {
   const [cancelSubmitting, setCancelSubmitting] = useState(false)
   const [cancelError, setCancelError] = useState<string | null>(null)
 
+  // MoMo Payment & Extend State
+  const [paymentMap, setPaymentMap] = useState<Record<string, MomoPaymentStatusRecord>>({})
+  const [momoLoadingId, setMomoLoadingId] = useState<string | null>(null)
+
+  const [extendRentalTarget, setExtendRentalTarget] = useState<RentalSummary | null>(null)
+  const [extendNewEndDate, setExtendNewEndDate] = useState('')
+  const [extendNote, setExtendNote] = useState('')
+  const [extendSubmitting, setExtendSubmitting] = useState(false)
+  const [extendError, setExtendError] = useState<string | null>(null)
+
   const loadRentals = useCallback(async () => {
     if (!showRentals) return
     setRentalsLoading(true)
@@ -50,12 +80,65 @@ export function AccountPage() {
     try {
       const res = await listMyRentals({ page: 1, pageSize: 50 })
       setRentals(res.rentals)
+      if (res.rentals.length > 0) {
+        try {
+          const statuses = await fetchMomoPaymentStatuses(res.rentals.map((r) => r.rentalId))
+          setPaymentMap(statuses.payments)
+        } catch {
+          // ignore payment status error
+        }
+      }
     } catch (e) {
       setRentalsError(getApiErrorMessage(e))
     } finally {
       setRentalsLoading(false)
     }
   }, [showRentals])
+
+  async function handlePayMomo(rentalId: string) {
+    setMomoLoadingId(rentalId)
+    try {
+      const pay = await createMomoPayment({ rentalId })
+      if (pay.payUrl) {
+        window.location.assign(pay.payUrl)
+      }
+    } catch (err: unknown) {
+      alert(getApiErrorMessage(err))
+    } finally {
+      setMomoLoadingId(null)
+    }
+  }
+
+  function openExtend(r: RentalSummary) {
+    setExtendRentalTarget(r)
+    setExtendNewEndDate(nextDayDateString(r.endDate))
+    setExtendNote('')
+    setExtendError(null)
+  }
+
+  function closeExtend() {
+    setExtendRentalTarget(null)
+    setExtendError(null)
+  }
+
+  async function confirmExtend() {
+    if (!extendRentalTarget || !extendNewEndDate) return
+    setExtendSubmitting(true)
+    setExtendError(null)
+    try {
+      await extendMyRental(extendRentalTarget.rentalId, {
+        newEndDate: extendNewEndDate,
+        note: extendNote.trim() || undefined,
+      })
+      closeExtend()
+      await loadRentals()
+      setSuccess('Gia hạn thời gian thuê thành công!')
+    } catch (err: unknown) {
+      setExtendError(getApiErrorMessage(err))
+    } finally {
+      setExtendSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     void loadRentals()
@@ -182,6 +265,42 @@ export function AccountPage() {
       intro="Update your profile, manage password, and view your rental history."
       maxWidthClassName="max-w-5xl"
     >
+      {user?.role === 'customer' && (
+        <div className="mb-8 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="size-12 rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+              <span className="material-symbols-outlined text-2xl">workspace_premium</span>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-slate-900 dark:text-white uppercase tracking-wider text-sm">
+                  Hạng thành viên:
+                </h3>
+                <span className="px-3 py-0.5 rounded-full text-xs font-black uppercase tracking-wider bg-amber-500 text-white shadow-sm">
+                  {user?.rank ?? 'BRONZE'}
+                </span>
+                {user?.rankDiscountPercent ? (
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    (Ưu đãi tự động -{user.rankDiscountPercent}%)
+                  </span>
+                ) : null}
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Tự động tích lũy chi tiêu khi hoàn tất trả giày để nâng hạng vĩnh viễn.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 bg-white/80 dark:bg-slate-900/80 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800">
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Cột mốc:</span>
+            <span>Bạc (2M -5%)</span>
+            <span>•</span>
+            <span>Vàng (5M -10%)</span>
+            <span>•</span>
+            <span>Kim cương (10M -15%)</span>
+          </div>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="space-y-5 max-w-lg pb-10 border-b border-slate-200 dark:border-slate-800"
@@ -288,6 +407,7 @@ export function AccountPage() {
                     <th className="px-3 py-2 font-semibold">Start</th>
                     <th className="px-3 py-2 font-semibold">Return</th>
                     <th className="px-3 py-2 font-semibold">Status</th>
+                    <th className="px-3 py-2 font-semibold">Payment</th>
                     <th className="px-3 py-2 font-semibold text-right">Total</th>
                     <th className="px-3 py-2 font-semibold text-right">Actions</th>
                   </tr>
@@ -304,7 +424,29 @@ export function AccountPage() {
                       <td className="px-3 py-2">
                         <RentalStatusBadge status={r.status} />
                       </td>
-                      <td className="px-3 py-2 text-right">${r.totalAmount.toFixed(2)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {paymentMap[r.rentalId]?.status === 'PAID' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                            MoMo PAID
+                          </span>
+                        ) : paymentMap[r.rentalId]?.status === 'PENDING' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            MoMo PENDING
+                          </span>
+                        ) : paymentMap[r.rentalId]?.status === 'EXPIRED' || paymentMap[r.rentalId]?.status === 'FAILED' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300">
+                            <span className="size-1.5 rounded-full bg-rose-500" />
+                            MoMo {paymentMap[r.rentalId]?.status}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                            COD / Unpaid
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatCurrency(r.totalAmount)}</td>
                       <td className="px-3 py-2 text-right space-x-2 whitespace-nowrap">
                         <button
                           type="button"
@@ -313,6 +455,25 @@ export function AccountPage() {
                         >
                           Details
                         </button>
+                        {r.status === 'RESERVED' && paymentMap[r.rentalId]?.status !== 'PAID' && (
+                          <button
+                            type="button"
+                            disabled={momoLoadingId === r.rentalId}
+                            onClick={() => void handlePayMomo(r.rentalId)}
+                            className="text-amber-600 dark:text-amber-400 font-semibold hover:underline disabled:opacity-50"
+                          >
+                            {momoLoadingId === r.rentalId ? 'Processing…' : 'Pay MoMo'}
+                          </button>
+                        )}
+                        {(r.status === 'RESERVED' || r.status === 'ACTIVE') && (
+                          <button
+                            type="button"
+                            onClick={() => openExtend(r)}
+                            className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline"
+                          >
+                            Extend
+                          </button>
+                        )}
                         {customerMayCancelReserved(r.startDate, r.status) && (
                           <button
                             type="button"
@@ -514,6 +675,74 @@ export function AccountPage() {
                 className="px-4 py-2 rounded-lg text-sm font-bold bg-rose-600 text-white hover:opacity-90 disabled:opacity-50"
               >
                 {cancelSubmitting ? 'Cancelling…' : 'Confirm cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {extendRentalTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              Gia hạn đơn thuê {extendRentalTarget.rentalId}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Ngày trả hiện tại: <strong>{formatDate(extendRentalTarget.endDate)}</strong>. Chọn ngày trả mới sau ngày này.
+            </p>
+            {extendError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm px-3 py-2">
+                {extendError}
+              </div>
+            )}
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ngày trả mới
+                </label>
+                <input
+                  type="date"
+                  value={extendNewEndDate}
+                  min={nextDayDateString(extendRentalTarget.endDate)}
+                  onChange={(e) => setExtendNewEndDate(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label htmlFor="extend-note" className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ghi chú (tùy chọn)
+                </label>
+                <textarea
+                  id="extend-note"
+                  value={extendNote}
+                  onChange={(e) => setExtendNote(e.target.value)}
+                  maxLength={255}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  placeholder="Lý do gia hạn…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeExtend}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={extendSubmitting || !extendNewEndDate}
+                onClick={() => void confirmExtend()}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {extendSubmitting ? 'Đang gia hạn…' : 'Xác nhận gia hạn'}
               </button>
             </div>
           </div>

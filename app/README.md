@@ -3,7 +3,7 @@
 Ứng dụng web **full-stack** (React + Express + MySQL) phục vụ cửa hàng cho thuê giày: khách duyệt catalog, đặt thuê, thanh toán trực tuyến (MoMo), wishlist và tài khoản; quản trị viên quản lý giày, đơn thuê, khách hàng, người dùng hệ thống và danh mục. Phần server được tổ chức theo **Hexagonal Architecture (Ports & Adapters)** — domain và use case tách biệt khỏi HTTP và persistence, thuận tiện kiểm thử và thay adapter.
 
 **Tài liệu kiến trúc chi tiết (module, file, endpoint):** [READMEE.md](./READMEE.md)  
-**Khung báo cáo / mô tả đề tài (repo gốc):** [../ReportFinal.md](../ReportFinal.md)
+**Snapshot khôi phục ngữ cảnh (đối chiếu code):** [../docs/context-recovery.md](../docs/context-recovery.md)
 
 ---
 
@@ -11,7 +11,7 @@
 
 | Nhóm | Nội dung |
 |------|----------|
-| **Storefront** | Danh sách & chi tiết giày, biến thể (size/màu), checkout thuê theo ngày |
+| **Storefront** | Sau đăng nhập: danh sách & chi tiết giày, biến thể (size/màu), checkout thuê theo ngày |
 | **Tài khoản** | Đăng ký/đăng nhập (JWT), hồ sơ, đổi mật khẩu |
 | **Wishlist** | Danh sách yêu thích theo khách |
 | **Thanh toán** | MoMo (tạo giao dịch, IPN, job hết hạn thanh toán PENDING) |
@@ -67,7 +67,7 @@
 
 - **Node.js** (khuyến nghị LTS, tương thích Vite 7)  
 - **npm**  
-- **MySQL** — tạo database và import schema: `src/infra/db/schema.sql` (và seed/script bổ sung nếu có trong repo, ví dụ `ReCreateDB.sql` ở thư mục gốc project)
+- **MySQL** — nạp mẫu từ gốc repo: `ReCreateDB.sql` (tự tạo `shoe_rental_system_v2`, user, giày). File đó **không** có `rental_payments` và `customer_wishlist`. Sau đó chạy `src/infra/db/migrations/001_rental_payments.sql` và `CREATE TABLE customer_wishlist` trong `src/infra/db/schema.sql`. `schema.sql` là DDL tham chiếu, seed lookup nhỏ hơn; đừng import seed của nó đè lên DB đã nạp `ReCreateDB.sql`.
 
 ---
 
@@ -157,20 +157,23 @@ src/
 
 Danh sách đầy đủ có trong response **`GET /api/v1/`** (root router) hoặc mục HTTP trong [READMEE.md](./READMEE.md). Ví dụ:
 
-- `POST /api/v1/auth/login`, `POST /api/v1/auth/register`, `GET/PATCH /api/v1/auth/me`  
-- `GET /api/v1/shoes`, `GET /api/v1/shoes/:id`  
-- `POST /api/v1/rentals` (Bearer), kích hoạt/trả/hủy theo route rental  
-- `GET /api/v1/rentals/me` (khách) · `GET /api/v1/rentals` (admin)  
-- `POST /api/v1/payments/momo/create`, `POST .../momo/ipn`  
-- `POST /api/v1/chat`  
-- Wishlist, customers, system-users, catalog admin, shoe-images (admin)
+- `POST /api/v1/auth/login`, `POST /api/v1/auth/register`, `GET/PATCH /api/v1/auth/me`, `POST /api/v1/auth/change-password`
+- `GET /api/v1/shoes`, `GET /api/v1/shoes/:id` — Bearer, role `admin` hoặc `customer` (JWT). Role DB `user` được map thành `customer`.
+- `POST /api/v1/rentals` (admin hoặc customer), `PATCH /api/v1/rentals/me/:id/cancel` (customer), `PATCH /api/v1/rentals/:id/activate|return|cancel` (admin)
+- `GET /api/v1/rentals/me` (customer) · `GET /api/v1/rentals` (admin)
+- `POST /api/v1/payments/momo/create`, `POST .../momo/ipn`
+- `POST /api/v1/chat`
+- Wishlist, customers, system-users, catalog admin, `POST /api/v1/shoe-images/upload` (admin)
+
+Danh sách trong `GET /api/v1/` thiếu route. Đối chiếu controller trong `src/adapter/http/` hoặc [../docs/context-recovery.md](../docs/context-recovery.md).
 
 ---
 
 ## Cơ sở dữ liệu
 
-- Schema tham chiếu: [`src/infra/db/schema.sql`](./src/infra/db/schema.sql)  
-- Các bảng chính: `customers`, `system_users`, `roles`, `shoes`, `shoe_variants`, `rentals`, `rental_items`, `rental_payments`, `customer_wishlist`, `brands`, `categories`, `colors`, `ranks`, …
+- DDL đủ bảng app: [`src/infra/db/schema.sql`](./src/infra/db/schema.sql). Dữ liệu mẫu + user: [`../ReCreateDB.sql`](../ReCreateDB.sql) (thiếu `rental_payments`, `customer_wishlist`).
+- Bảng: `customers`, `system_users`, `roles` (`user` id 1, `admin` id 2), `shoes`, `shoe_variants`, `rentals`, `rental_items`, `rental_payments`, `customer_wishlist`, `brands`, `categories`, `colors`, `ranks`.
+- Code lọc giá và MoMo coi `price_per_day` là USD (`PAYMENT_USD_TO_VND_RATE`). Số trong `ReCreateDB.sql` (khoảng 180000–550000) lớn hơn các bucket `<10`, `10–20`, `20–50`, `>50`.
 
 ---
 
@@ -197,7 +200,7 @@ Tests tập trung **domain** và **use case** (`src/__tests__/`), persistence **
 | File | Mục đích |
 |------|----------|
 | [READMEE.md](./READMEE.md) | Bản đồ kiến trúc Hexagonal, domain, port, adapter, use case, endpoint |
-| [../ReportFinal.md](../ReportFinal.md) | Khung báo cáo / mô tả đề tài (nếu có trong repo) |
+| [../docs/context-recovery.md](../docs/context-recovery.md) | Snapshot hệ thống lấy từ code |
 | [`.env.example`](./.env.example) | Mẫu biến môi trường và gợi ý seed tài khoản |
 
 ---

@@ -1,15 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { getShoe, type GetShoeResponse, type ShoeVariantDto } from '../lib/shoes.api'
-import { createRental, type CreateRentalResponse } from '../lib/rentals.api'
+import {
+  createRental,
+  validateVoucher,
+  type CreateRentalResponse,
+  type ValidateVoucherResponse,
+} from '../lib/rentals.api'
 import { createMomoPayment } from '../lib/payments.api'
 import { getApiErrorMessage } from '../lib/api'
+import { formatCurrency } from '../lib/format'
 import { ShoeImage } from '../components/ShoeImage'
 import { useAuth } from '../auth/AuthContext'
 import { useRentalCart } from '../cart/RentalCartContext'
 
 function toDateString(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 function addDays(d: Date, days: number): Date {
@@ -50,8 +59,16 @@ export function CheckoutPage() {
 
   const today = toDateString(new Date())
   const defaultEnd = addDays(new Date(), 3)
-  const [startDate, setStartDate] = useState(today)
-  const [endDate, setEndDate] = useState(toDateString(defaultEnd))
+  const initialStartDate = searchParams.get('startDate') || today
+  const initialEndDate = searchParams.get('endDate') || toDateString(defaultEnd)
+  const [startDate, setStartDate] = useState(initialStartDate)
+  const [endDate, setEndDate] = useState(initialEndDate)
+
+  // Voucher state
+  const [voucherInput, setVoucherInput] = useState('')
+  const [voucherLoading, setVoucherLoading] = useState(false)
+  const [voucherError, setVoucherError] = useState<string | null>(null)
+  const [appliedVoucher, setAppliedVoucher] = useState<ValidateVoucherResponse | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -157,6 +174,38 @@ export function CheckoutPage() {
     rentalDays,
   ])
 
+  const rankDiscountPercent = user?.rankDiscountPercent ?? 0
+  const voucherDiscountPercent = appliedVoucher?.discountPercent ?? 0
+  const totalDiscountPercent = Math.min(50, rankDiscountPercent + voucherDiscountPercent)
+  const totalDiscountAmount = Math.round(estimatedTotal * (totalDiscountPercent / 100))
+  const finalEstimatedTotal = Math.max(0, estimatedTotal - totalDiscountAmount)
+
+  const handleApplyVoucher = async (codeToApply?: string) => {
+    const code = (codeToApply ?? voucherInput).trim().toUpperCase()
+    if (!code) return
+    setVoucherLoading(true)
+    setVoucherError(null)
+    try {
+      const res = await validateVoucher(code)
+      if (res.valid) {
+        setAppliedVoucher(res)
+        setVoucherInput(res.code)
+      } else {
+        setVoucherError('Mã giảm giá không hợp lệ hoặc đã hết hạn.')
+      }
+    } catch (err: unknown) {
+      setVoucherError(getApiErrorMessage(err))
+    } finally {
+      setVoucherLoading(false)
+    }
+  }
+
+  const handleRemoveVoucher = () => {
+    setAppliedVoucher(null)
+    setVoucherInput('')
+    setVoucherError(null)
+  }
+
   const submitItems = (): { variantId: string; quantity: number }[] => {
     if (useCartMode) {
       return cartLines.map((l) => ({ variantId: l.variantId, quantity: l.quantity }))
@@ -192,6 +241,7 @@ export function CheckoutPage() {
         items,
         startDate,
         endDate,
+        voucherCode: appliedVoucher?.code,
       })
       if (useCartMode) clearCart()
 
@@ -266,7 +316,7 @@ export function CheckoutPage() {
             </span>
           </p>
           <p className="text-sm text-slate-500 mb-8">
-            Total: ${createdRental.totalAmount.toFixed(2)} · {createdRental.totalItems} item(s)
+            Total: {formatCurrency(createdRental.totalAmount)} · {createdRental.totalItems} item(s)
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
@@ -401,7 +451,7 @@ export function CheckoutPage() {
                           {line.brand} · EU {line.size} · {line.color}
                         </p>
                         <p className="text-sm font-semibold text-primary mt-2">
-                          ${line.pricePerDay}/day × {line.quantity} pair(s)
+                          {formatCurrency(line.pricePerDay)}/day × {line.quantity} pair(s)
                         </p>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap sm:flex-col sm:items-end">
@@ -514,20 +564,135 @@ export function CheckoutPage() {
 
         <div className="lg:col-span-1">
           <div className="lg:sticky lg:top-24 space-y-5">
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/90 dark:to-slate-950 shadow-sm p-5 sm:p-6">
-              <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 mb-4">
-                Summary
-              </h2>
-              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400 mb-2">
+            {/* Voucher Card */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/40 shadow-sm p-5 sm:p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base text-primary">sell</span>
+                  Mã giảm giá
+                </h2>
+                {appliedVoucher && (
+                  <button
+                    type="button"
+                    onClick={handleRemoveVoucher}
+                    className="text-xs text-rose-500 hover:underline"
+                  >
+                    Gỡ bỏ
+                  </button>
+                )}
+              </div>
+
+              {appliedVoucher ? (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-700 dark:text-emerald-300">
+                  <div className="font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    Đã áp dụng: {appliedVoucher.code} (-{appliedVoucher.discountPercent}%)
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-emerald-600/80 dark:text-emerald-400/80">
+                    {appliedVoucher.description}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={voucherInput}
+                      onChange={(e) => setVoucherInput(e.target.value.toUpperCase())}
+                      placeholder="Nhập mã (vd: WELCOME10)"
+                      className="flex-1 px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-mono uppercase focus:ring-2 focus:ring-primary"
+                    />
+                    <button
+                      type="button"
+                      disabled={voucherLoading || !voucherInput.trim()}
+                      onClick={() => void handleApplyVoucher()}
+                      className="px-4 py-2 bg-primary text-white font-bold text-xs rounded-xl hover:bg-primary/90 disabled:opacity-50 transition-opacity"
+                    >
+                      {voucherLoading ? 'Kiểm tra…' : 'Áp dụng'}
+                    </button>
+                  </div>
+
+                  {voucherError && (
+                    <p className="text-xs text-rose-600 dark:text-rose-400">{voucherError}</p>
+                  )}
+
+                  <div>
+                    <p className="text-[11px] text-slate-400 mb-1.5 font-medium">Gợi ý mã ưu đãi:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { code: 'WELCOME10', label: 'WELCOME10 (-10%)' },
+                        { code: 'SHOE20', label: 'SHOE20 (-20%)' },
+                        { code: 'GIAM5', label: 'GIAM5 (-5%)' },
+                      ].map((v) => (
+                        <button
+                          key={v.code}
+                          type="button"
+                          onClick={() => void handleApplyVoucher(v.code)}
+                          className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-primary/10 hover:text-primary dark:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors"
+                        >
+                          {v.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Summary Card */}
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900/90 dark:to-slate-950 shadow-sm p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                  Summary
+                </h2>
+                {user?.rank && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+                    Hạng {user.rank} {rankDiscountPercent > 0 ? `(-${rankDiscountPercent}%)` : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex justify-between text-sm text-slate-600 dark:text-slate-400">
                 <span>Duration (inclusive)</span>
                 <span className="font-semibold text-slate-900 dark:text-white">{rentalDays} days</span>
               </div>
-              <div className="border-t border-slate-200 dark:border-slate-800 pt-4 mt-4">
+
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-3 space-y-2 text-sm">
+                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>Tạm tính gốc</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{formatCurrency(estimatedTotal)}</span>
+                </div>
+
+                {rankDiscountPercent > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 text-xs">
+                    <span>Ưu đãi hạng {user?.rank} (-{rankDiscountPercent}%)</span>
+                    <span>-{formatCurrency(Math.round(estimatedTotal * (rankDiscountPercent / 100)))}</span>
+                  </div>
+                )}
+
+                {appliedVoucher && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 text-xs">
+                    <span>Voucher {appliedVoucher.code} (-{appliedVoucher.discountPercent}%)</span>
+                    <span>-{formatCurrency(Math.round(estimatedTotal * (appliedVoucher.discountPercent / 100)))}</span>
+                  </div>
+                )}
+
+                {totalDiscountPercent > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold text-xs pt-1 border-t border-dashed border-slate-200 dark:border-slate-800">
+                    <span>Tổng giảm giá ({totalDiscountPercent}%)</span>
+                    <span>-{formatCurrency(totalDiscountAmount)}</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
                 <div className="flex justify-between items-baseline gap-2">
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    Estimated total
+                    Tổng thanh toán
                   </span>
-                  <span className="text-2xl font-black text-primary">${estimatedTotal.toFixed(2)}</span>
+                  <span className="text-2xl font-black text-primary">
+                    {formatCurrency(finalEstimatedTotal)}
+                  </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
                   Final amount is set on the server when you confirm.

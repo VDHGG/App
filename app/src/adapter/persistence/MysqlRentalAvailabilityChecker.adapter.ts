@@ -9,6 +9,13 @@ interface CountRow extends RowDataPacket {
   reserved_qty: number;
 }
 
+function toSqlDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export class MysqlRentalAvailabilityChecker implements RentalAvailabilityChecker {
   private readonly pool: Pool;
   private readonly deactivationPolicy: VariantDeactivationPolicy;
@@ -39,6 +46,21 @@ export class MysqlRentalAvailabilityChecker implements RentalAvailabilityChecker
 
     const totalStock = Number(stockRows[0]['on_hand_quantity']);
 
+    const alreadyDeactivatedQuantity = await this.getReservedQuantityForVariant(variantId, period);
+
+    this.deactivationPolicy.ensureDeactivateForRental(
+      variantId,
+      totalStock,
+      alreadyDeactivatedQuantity,
+      requestedQuantity
+    );
+  }
+
+  async getReservedQuantityForVariant(
+    variantId: string,
+    period: RentalPeriod
+  ): Promise<number> {
+    const conn = this.conn();
     const [reservedRows] = await conn.query<CountRow[]>(
       `SELECT COALESCE(SUM(ri.quantity), 0) AS reserved_qty
        FROM rental_items ri
@@ -47,16 +69,8 @@ export class MysqlRentalAvailabilityChecker implements RentalAvailabilityChecker
          AND r.status IN ('RESERVED', 'ACTIVE')
          AND r.start_date           <= ?
          AND r.expected_return_date >= ?`,
-      [variantId, period.endDate, period.startDate]
+      [variantId, toSqlDate(period.endDate), toSqlDate(period.startDate)]
     );
-
-    const alreadyDeactivatedQuantity = Number(reservedRows[0].reserved_qty);
-
-    this.deactivationPolicy.ensureDeactivateForRental(
-      variantId,
-      totalStock,
-      alreadyDeactivatedQuantity,
-      requestedQuantity
-    );
+    return Number(reservedRows[0]?.reserved_qty ?? 0);
   }
 }

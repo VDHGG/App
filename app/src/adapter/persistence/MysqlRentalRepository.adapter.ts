@@ -48,6 +48,13 @@ const ITEMS_SQL = `
   WHERE rental_id = ?
 `;
 
+function toSqlDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function toRental(row: RentalRow, items: RentalItemRow[]): Rental {
   const rentalItems = items.map(
     (i) =>
@@ -130,13 +137,13 @@ export class MysqlRentalRepository implements RentalRepository {
 
     const bucket = filters?.amountBucket ?? 'all';
     if (bucket === 'lt50') {
-      conditions.push(`${totalExpr} < 50`);
+      conditions.push(`${totalExpr} < 1000000`);
     } else if (bucket === '50to150') {
-      conditions.push(`${totalExpr} >= 50 AND ${totalExpr} <= 150`);
+      conditions.push(`${totalExpr} >= 1000000 AND ${totalExpr} <= 2000000`);
     } else if (bucket === '150to300') {
-      conditions.push(`${totalExpr} > 150 AND ${totalExpr} <= 300`);
+      conditions.push(`${totalExpr} > 2000000 AND ${totalExpr} <= 3500000`);
     } else if (bucket === 'gt300') {
-      conditions.push(`${totalExpr} > 300`);
+      conditions.push(`${totalExpr} > 3500000`);
     }
 
     if (filters?.search?.trim()) {
@@ -188,6 +195,7 @@ export class MysqlRentalRepository implements RentalRepository {
           actual_return_date, cancelled_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
+         expected_return_date  = VALUES(expected_return_date),
          status                = VALUES(status),
          late_fee              = VALUES(late_fee),
          note                  = VALUES(note),
@@ -198,14 +206,14 @@ export class MysqlRentalRepository implements RentalRepository {
       [
         rental.id,
         rental.customerId,
-        rental.period.startDate,
-        rental.period.endDate,
+        toSqlDate(rental.period.startDate),
+        toSqlDate(rental.period.endDate),
         rental.status,
         rental.lateFee,
         rental.note ?? null,
         rental.createdAt,
         rental.activatedAt ?? null,
-        rental.returnedAt ?? null,
+        rental.returnedAt ? toSqlDate(rental.returnedAt) : null,
         rental.cancelledAt ?? null,
       ]
     );

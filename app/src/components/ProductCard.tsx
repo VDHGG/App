@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { ShoeSummary } from '../lib/shoes.api'
+import { formatCurrency } from '../lib/format'
 import { useWishlist } from '../wishlist/WishlistContext'
 import { ShoeImage } from './ShoeImage'
 
@@ -52,7 +53,7 @@ export function ProductCard({ shoe }: ProductCardProps) {
             </h3>
           </Link>
           <span className="text-primary font-black">
-            ${shoe.pricePerDay}
+            {formatCurrency(shoe.pricePerDay)}
             <span className="text-[10px] text-slate-500 font-normal">/day</span>
           </span>
         </div>

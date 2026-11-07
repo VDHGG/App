@@ -51,6 +51,7 @@ export type CreateRentalRequest = {
   items: CreateRentalItemRequest[]
   startDate: string
   endDate: string
+  voucherCode?: string
 }
 
 export type CreateRentalResponse = {
@@ -62,6 +63,11 @@ export type CreateRentalResponse = {
   totalAmount: number
   startDate: string
   endDate: string
+  originalBasePrice?: number
+  discountPercent?: number
+  discountAmount?: number
+  customerRank?: string
+  appliedVoucher?: string | null
 }
 
 export type ListRentalsResponse = {
@@ -158,4 +164,40 @@ export async function cancelRental(
 
 export async function deleteRentalAdmin(rentalId: string): Promise<void> {
   await api.delete(`/rentals/${encodeURIComponent(rentalId)}`)
+}
+
+export type ValidateVoucherResponse = {
+  valid: boolean
+  code: string
+  discountPercent: number
+  description: string
+}
+
+export async function validateVoucher(code: string): Promise<ValidateVoucherResponse> {
+  const { data } = await api.get<ValidateVoucherResponse>(
+    `/rentals/vouchers/validate?code=${encodeURIComponent(code)}`
+  )
+  return data
+}
+
+export async function extendMyRental(
+  rentalId: string,
+  body: { newEndDate: string; note?: string }
+): Promise<GetRentalResponse> {
+  const { data } = await api.patch<GetRentalResponse>(
+    `/rentals/me/${encodeURIComponent(rentalId)}/extend`,
+    body
+  )
+  return data
+}
+
+export async function extendRentalAdmin(
+  rentalId: string,
+  body: { newEndDate: string; note?: string }
+): Promise<GetRentalResponse> {
+  const { data } = await api.patch<GetRentalResponse>(
+    `/rentals/${encodeURIComponent(rentalId)}/extend`,
+    body
+  )
+  return data
 }

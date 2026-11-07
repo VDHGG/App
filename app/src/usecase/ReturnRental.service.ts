@@ -5,6 +5,8 @@ import type { ReturnRentalResponse } from './ReturnRentalResponse.dto';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import { ValidationError } from '@domain/errors/ValidationError';
 import { NotFoundError } from '@domain/errors/NotFoundError';
+import { RentalStatus } from '@domain/RentalStatus.enum';
+import { resolveRankByTotalSpentVnd, upgradeRankIfHigher } from '@domain/CustomerRank.enum';
 
 export class ReturnRentalService implements ReturnRentalUseCase {
   private readonly rentalRepository: RentalRepository;
@@ -29,16 +31,29 @@ export class ReturnRentalService implements ReturnRentalUseCase {
     const totalItems = rental.totalItems;
     const returnedAt = request.returnedAt ?? new Date();
 
-    rental.completeReturn(returnedAt, request.note);
-
     const customer = await this.customerRepository.findById(rental.customerId);
+
+    rental.completeReturn(returnedAt, request.note);
 
     if (customer) {
       customer.completeRental(totalItems);
-      await this.customerRepository.save(customer);
     }
 
     await this.rentalRepository.save(rental);
+
+    if (customer) {
+      const returnedList = await this.rentalRepository.findList({
+        customerId: customer.id,
+        status: RentalStatus.RETURNED,
+      });
+      const totalSpent = returnedList.items.reduce((sum, r) => sum + r.totalAmount, 0);
+      const nextRank = upgradeRankIfHigher(customer.rank, resolveRankByTotalSpentVnd(totalSpent));
+      if (nextRank !== customer.rank) {
+        customer.changeRank(nextRank);
+      }
+
+      await this.customerRepository.save(customer);
+    }
 
     return {
       rentalId: rental.id,

@@ -9,4 +9,9 @@ export type CreateRentalResponse = {
   totalAmount: number;
   startDate: Date;
   endDate: Date;
+  originalBasePrice?: number;
+  discountPercent?: number;
+  discountAmount?: number;
+  customerRank?: string;
+  appliedVoucher?: string | null;
 };

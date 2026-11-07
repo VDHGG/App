@@ -176,7 +176,7 @@ export function AdminShoesPage() {
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:items-center">
             <div className="flex flex-col gap-1">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                Price / day (USD)
+                Price / day (VND)
               </span>
               <select
                 value={priceBucket ?? 'all'}
@@ -187,10 +187,10 @@ export function AdminShoesPage() {
                 className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[180px]"
               >
                 <option value="all">All prices</option>
-                <option value="lt10">Under $10</option>
-                <option value="10to20">$10 – $20</option>
-                <option value="20to50">$20 – $50</option>
-                <option value="gt50">Over $50</option>
+                <option value="lt10">Under 250.000₫</option>
+                <option value="10to20">250.000₫ – 350.000₫</option>
+                <option value="20to50">350.000₫ – 450.000₫</option>
+                <option value="gt50">Over 450.000₫</option>
               </select>
             </div>
             <div className="flex flex-col gap-1">

@@ -1,5 +1,9 @@
 import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
+import { z } from 'zod';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
+import { RentalPeriod } from '@domain/RentalPeriod.vo';
+import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
 import type { AddShoeUseCase } from '@usecase/AddShoeUseCase.port';
 import type { DeactivateShoeUseCase } from '@usecase/DeactivateShoeUseCase.port';
 import type { GetShoeUseCase } from '@usecase/GetShoeUseCase.port';
@@ -22,6 +26,7 @@ import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
 export type RouteGuards = {
   admin?: RequestHandler[];
   authenticated?: RequestHandler[];
+  customer?: RequestHandler[];
 };
 
 export class ShoeController {
@@ -31,6 +36,8 @@ export class ShoeController {
   private readonly listShoes: ListShoesUseCase;
   private readonly getShoe: GetShoeUseCase;
   private readonly catalog: CatalogLookupPort;
+  private readonly availabilityChecker?: RentalAvailabilityChecker;
+  private readonly pool?: Pool;
 
   constructor(
     addShoe: AddShoeUseCase,
@@ -38,7 +45,9 @@ export class ShoeController {
     deactivateShoe: DeactivateShoeUseCase,
     listShoes: ListShoesUseCase,
     getShoe: GetShoeUseCase,
-    catalog: CatalogLookupPort
+    catalog: CatalogLookupPort,
+    availabilityChecker?: RentalAvailabilityChecker,
+    pool?: Pool
   ) {
     this.addShoe = addShoe;
     this.updateShoe = updateShoe;
@@ -46,15 +55,21 @@ export class ShoeController {
     this.listShoes = listShoes;
     this.getShoe = getShoe;
     this.catalog = catalog;
+    this.availabilityChecker = availabilityChecker;
+    this.pool = pool;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
     const router = Router();
     const admin = guards?.admin ?? [];
     const authenticated = guards?.authenticated ?? [];
+    const customer = guards?.customer ?? [];
     router.get('/catalog/shoe-lookups', ...authenticated, asyncRoute(this.shoeLookups.bind(this)));
     router.get('/shoes', ...authenticated, asyncRoute(this.list.bind(this)));
     router.post('/shoes', ...admin, transactionalRoute(transactionManager, this.add.bind(this)));
+    router.get('/shoes/:id/availability', ...authenticated, asyncRoute(this.getAvailability.bind(this)));
+    router.get('/shoes/:id/reviews', ...authenticated, asyncRoute(this.getReviews.bind(this)));
+    router.post('/shoes/:id/reviews', ...customer, asyncRoute(this.postReview.bind(this)));
     router.patch(
       '/shoes/:id',
       ...admin,
@@ -186,5 +201,139 @@ export class ShoeController {
     const shoeId = req.params['id'] as string;
     const result = await this.deactivateShoe.execute({ shoeId });
     res.json(result);
+  }
+
+  private async getAvailability(req: Request, res: Response): Promise<void> {
+    const shoeId = req.params['id'] as string;
+    const startDateStr = String(req.query['startDate'] ?? '').trim();
+    const endDateStr = String(req.query['endDate'] ?? '').trim();
+
+    if (!startDateStr || !endDateStr) {
+      throw new ValidationError('startDate and endDate query parameters are required.');
+    }
+
+    const startDate = new Date(startDateStr);
+    const endDate = new Date(endDateStr);
+    const period = new RentalPeriod(startDate, endDate);
+
+    const shoe = await this.getShoe.execute({ shoeId });
+
+    const variants = await Promise.all(
+      shoe.variants.map(async (v) => {
+        let reservedQuantity = 0;
+        if (this.availabilityChecker) {
+          reservedQuantity = await this.availabilityChecker.getReservedQuantityForVariant(
+            v.variantId,
+            period
+          );
+        }
+        const availableQuantity = Math.max(0, v.totalQuantity - reservedQuantity);
+        return {
+          variantId: v.variantId,
+          size: v.size,
+          color: v.color,
+          totalQuantity: v.totalQuantity,
+          reservedQuantity,
+          availableQuantity,
+        };
+      })
+    );
+
+    res.json({
+      shoeId,
+      startDate: period.startDate,
+      endDate: period.endDate,
+      durationDays: period.durationInDays,
+      variants,
+    });
+  }
+
+  private async getReviews(req: Request, res: Response): Promise<void> {
+    const shoeId = req.params['id'] as string;
+    await this.getShoe.execute({ shoeId });
+
+    if (!this.pool) {
+      res.json({ shoeId, averageRating: 5, totalReviews: 0, reviews: [] });
+      return;
+    }
+
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `SELECT review_id, shoe_id, customer_id, customer_name, rating, comment, created_at
+       FROM shoe_reviews
+       WHERE shoe_id = ?
+       ORDER BY created_at DESC`,
+      [shoeId]
+    );
+
+    const reviews = rows.map((r) => ({
+      reviewId: Number(r['review_id']),
+      shoeId: String(r['shoe_id']),
+      customerId: String(r['customer_id']),
+      customerName: String(r['customer_name']),
+      rating: Number(r['rating']),
+      comment: String(r['comment']),
+      createdAt: new Date(r['created_at']).toISOString(),
+    }));
+
+    const totalReviews = reviews.length;
+    const averageRating =
+      totalReviews > 0
+        ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / totalReviews) * 10) / 10
+        : 5;
+
+    res.json({ shoeId, averageRating, totalReviews, reviews });
+  }
+
+  private async postReview(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.customerId) {
+      throw new ValidationError('Account is not linked to a customer profile.');
+    }
+
+    const shoeId = req.params['id'] as string;
+    await this.getShoe.execute({ shoeId });
+
+    const schema = z.object({
+      rating: z.number().int().min(1).max(5),
+      comment: z.string().trim().min(1).max(500),
+    });
+    const body = schema.parse(req.body);
+
+    if (!this.pool) {
+      res.status(201).json({ shoeId, customerId: auth.customerId, customerName: auth.customerId, ...body });
+      return;
+    }
+
+    let customerName = auth.customerId;
+    try {
+      const [cRows] = await this.pool.query<RowDataPacket[]>(
+        'SELECT full_name FROM customers WHERE customer_id = ? LIMIT 1',
+        [auth.customerId]
+      );
+      if (cRows.length > 0 && cRows[0]['full_name']) {
+        customerName = String(cRows[0]['full_name']);
+      }
+    } catch {
+      // ignore
+    }
+
+    await this.pool.query(
+      `INSERT INTO shoe_reviews (shoe_id, customer_id, customer_name, rating, comment)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         rating = VALUES(rating),
+         comment = VALUES(comment),
+         customer_name = VALUES(customer_name),
+         updated_at = NOW()`,
+      [shoeId, auth.customerId, customerName, body.rating, body.comment]
+    );
+
+    res.status(201).json({
+      shoeId,
+      customerId: auth.customerId,
+      customerName,
+      rating: body.rating,
+      comment: body.comment,
+    });
   }
 }

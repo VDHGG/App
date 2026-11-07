@@ -49,7 +49,7 @@ export class Rental {
   private readonly idValue: string;
   private readonly customerIdValue: string;
   private readonly itemsValue: RentalItem[];
-  private readonly periodValue: RentalPeriod;
+  private periodValue: RentalPeriod;
   private statusValue: RentalStatus;
   private lateFeeValue: number;
   private noteValue: string | null;
@@ -216,6 +216,31 @@ export class Rental {
 
     if (note !== undefined) {
       this.noteValue = note ? note.trim() : null;
+    }
+  }
+
+  extendPeriod(newEndDate: Date, note?: string): void {
+    if (
+      this.statusValue !== RentalStatus.RESERVED &&
+      this.statusValue !== RentalStatus.ACTIVE
+    ) {
+      throw new BusinessRuleError(
+        'INVALID_RENTAL_STATE',
+        'Only RESERVED or ACTIVE rental can be extended.'
+      );
+    }
+
+    ensureValidDate(newEndDate, 'newEndDate');
+    ensureValidRentalNote(note ?? null);
+    const oldEnd = normalizeDateToCalendarTime(this.periodValue.endDate);
+    const nextEnd = normalizeDateToCalendarTime(newEndDate);
+    if (nextEnd <= oldEnd) {
+      throw new ValidationError('New return date must be after the current expected return date.');
+    }
+
+    this.periodValue = new RentalPeriod(this.periodValue.startDate, newEndDate);
+    if (note !== undefined && note.trim().length > 0) {
+      this.noteValue = note.trim().slice(0, 255);
     }
   }
   

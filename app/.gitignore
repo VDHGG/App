@@ -69,3 +69,6 @@ coverage
 
 # Cursor / project-specific
 cursor 1/
+
+.vercel
+.env*

@@ -15,13 +15,13 @@ function matchesAmount(r: Rental, bucket: ListRentalsFilters['amountBucket']): b
     case 'all':
       return true;
     case 'lt50':
-      return t < 50;
+      return t < 1000000;
     case '50to150':
-      return t >= 50 && t <= 150;
+      return t >= 1000000 && t <= 2000000;
     case '150to300':
-      return t > 150 && t <= 300;
+      return t > 2000000 && t <= 3500000;
     case 'gt300':
-      return t > 300;
+      return t > 3500000;
     default:
       return true;
   }

@@ -7,16 +7,19 @@ import type { ListRentalsUseCase } from '@usecase/ListRentalsUseCase.port';
 import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { DeleteRentalAdminUseCase } from '@usecase/DeleteRentalAdminUseCase.port';
+import type { ExtendRentalService } from '@usecase/ExtendRental.service';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import {
   CreateRentalSchema,
   ReturnRentalSchema,
   CancelRentalSchema,
+  ExtendRentalSchema,
   ListRentalsQuerySchema,
   ListMyRentalsQuerySchema,
 } from './rental.schema';
 import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
 import { ValidationError } from '@domain/errors/ValidationError';
+import { resolveVoucher } from '@domain/Voucher.vo';
 
 export type RouteGuards = {
   admin?: RequestHandler[];
@@ -32,6 +35,7 @@ export class RentalController {
   private readonly listRentals: ListRentalsUseCase;
   private readonly getRental: GetRentalUseCase;
   private readonly deleteRentalAdmin: DeleteRentalAdminUseCase;
+  private readonly extendRental?: ExtendRentalService;
 
   constructor(
     createRental: CreateRentalUseCase,
@@ -40,7 +44,8 @@ export class RentalController {
     cancelRental: CancelRentalUseCase,
     listRentals: ListRentalsUseCase,
     getRental: GetRentalUseCase,
-    deleteRentalAdmin: DeleteRentalAdminUseCase
+    deleteRentalAdmin: DeleteRentalAdminUseCase,
+    extendRental?: ExtendRentalService
   ) {
     this.createRental = createRental;
     this.activateRental = activateRental;
@@ -49,6 +54,7 @@ export class RentalController {
     this.listRentals = listRentals;
     this.getRental = getRental;
     this.deleteRentalAdmin = deleteRentalAdmin;
+    this.extendRental = extendRental;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
@@ -56,12 +62,18 @@ export class RentalController {
     const admin = guards?.admin ?? [];
     const createRental = guards?.createRental ?? [];
     const customer = guards?.customer ?? [];
+    router.get('/vouchers/validate', ...createRental, asyncRoute(this.validateVoucher.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
     router.patch(
       '/me/:id/cancel',
       ...customer,
       transactionalRoute(transactionManager, this.cancelMine.bind(this))
+    );
+    router.patch(
+      '/me/:id/extend',
+      ...customer,
+      transactionalRoute(transactionManager, this.extendMine.bind(this))
     );
     router.get('/', ...admin, asyncRoute(this.list.bind(this)));
     router.get('/:id', ...admin, asyncRoute(this.getById.bind(this)));
@@ -84,6 +96,11 @@ export class RentalController {
       '/:id/cancel',
       ...admin,
       transactionalRoute(transactionManager, this.cancel.bind(this))
+    );
+    router.patch(
+      '/:id/extend',
+      ...admin,
+      transactionalRoute(transactionManager, this.extendAdmin.bind(this))
     );
     router.delete('/:id', ...admin, asyncRoute(this.deleteAdmin.bind(this)));
     return router;
@@ -204,5 +221,57 @@ export class RentalController {
   private async deleteAdmin(req: Request, res: Response): Promise<void> {
     await this.deleteRentalAdmin.execute({ rentalId: req.params['id'] as string });
     res.status(204).end();
+  }
+
+  private async extendMine(req: Request, res: Response): Promise<void> {
+    const auth = req.auth;
+    if (!auth?.customerId) {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Account is not linked to a customer profile.',
+      });
+      return;
+    }
+    if (!this.extendRental) {
+      throw new ValidationError('Extend rental service is not configured.');
+    }
+    const body = ExtendRentalSchema.parse(req.body);
+    const result = await this.extendRental.execute({
+      rentalId: req.params['id'] as string,
+      newEndDate: body.newEndDate,
+      note: body.note,
+      requestingCustomerId: auth.customerId,
+    });
+    res.json(result);
+  }
+
+  private async extendAdmin(req: Request, res: Response): Promise<void> {
+    if (!this.extendRental) {
+      throw new ValidationError('Extend rental service is not configured.');
+    }
+    const body = ExtendRentalSchema.parse(req.body);
+    const result = await this.extendRental.execute({
+      rentalId: req.params['id'] as string,
+      newEndDate: body.newEndDate,
+      note: body.note,
+    });
+    res.json(result);
+  }
+
+  private async validateVoucher(req: Request, res: Response): Promise<void> {
+    const code = String(req.query['code'] ?? '').trim();
+    if (!code) {
+      throw new ValidationError('Voucher code is required.');
+    }
+    const voucher = resolveVoucher(code);
+    if (!voucher) {
+      throw new ValidationError('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
+    }
+    res.json({
+      valid: true,
+      code: voucher.code,
+      discountPercent: voucher.discountPercent,
+      description: voucher.description,
+    });
   }
 }

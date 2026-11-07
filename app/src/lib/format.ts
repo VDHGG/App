@@ -8,7 +8,7 @@ export function formatDate(iso: string): string {
 }
 
 export function formatCurrency(amount: number): string {
-  return `$${amount.toFixed(2)}`
+  return `${Math.round(amount).toLocaleString('vi-VN')}₫`;
 }
 
 export function formatDurationDays(startDate: string, endDate: string): string {

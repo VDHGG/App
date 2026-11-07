@@ -11,6 +11,8 @@ export const CreateRentalSchema = z
     items: z.array(CreateRentalItemSchema).min(1),
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
+    voucherCode: z.string().max(32).optional(),
+    note: z.string().max(255).optional(),
   })
   .refine((d) => d.endDate >= d.startDate, {
     message: 'End date cannot be before start date',
@@ -24,6 +26,11 @@ export const ReturnRentalSchema = z.object({
 
 export const CancelRentalSchema = z.object({
   cancelledAt: z.coerce.date().optional(),
+  note: z.string().max(255).optional(),
+});
+
+export const ExtendRentalSchema = z.object({
+  newEndDate: z.coerce.date(),
   note: z.string().max(255).optional(),
 });
 
@@ -48,6 +55,7 @@ export const ListRentalsQuerySchema = z
 export type CreateRentalInput = z.infer<typeof CreateRentalSchema>;
 export type ReturnRentalInput = z.infer<typeof ReturnRentalSchema>;
 export type CancelRentalInput = z.infer<typeof CancelRentalSchema>;
+export type ExtendRentalInput = z.infer<typeof ExtendRentalSchema>;
 export type ListRentalsQueryInput = z.infer<typeof ListRentalsQuerySchema>;
 
 export const ListMyRentalsQuerySchema = z.object({

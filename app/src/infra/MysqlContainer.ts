@@ -71,6 +71,9 @@ import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
 import { DeleteCustomerAdminService } from '@usecase/DeleteCustomerAdmin.service';
 import { DeleteSystemUserAdminService } from '@usecase/DeleteSystemUserAdmin.service';
 import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
+import { ExtendRentalService } from '@usecase/ExtendRental.service';
+import type { CustomerRepository } from '@port/CustomerRepository.port';
+import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
 import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
 import { createPool } from './db/MysqlConnection';
 
@@ -298,6 +301,25 @@ export class MysqlContainer {
 
   getWishlistUseCase(): WishlistUseCase {
     return new WishlistService(this.shoeRepository, this.wishlistRepository, this.shoeImageService);
+  }
+
+  getCustomerRepository(): CustomerRepository {
+    return this.customerRepository;
+  }
+
+  getExtendRentalUseCase(): ExtendRentalService {
+    return new ExtendRentalService(
+      this.rentalRepository,
+      new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy())
+    );
+  }
+
+  getRentalAvailabilityChecker(): RentalAvailabilityChecker {
+    return new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy());
+  }
+
+  getPool(): Pool {
+    return this.pool;
   }
 
   async pingDatabase(): Promise<boolean> {

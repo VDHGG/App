@@ -8,4 +8,6 @@ export type CreateRentalRequest = {
   items: CreateRentalItemRequest[];
   startDate: Date;
   endDate: Date;
+  voucherCode?: string;
+  note?: string;
 };

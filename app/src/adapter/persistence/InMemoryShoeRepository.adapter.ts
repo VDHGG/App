@@ -11,13 +11,13 @@ function matchesPriceBucket(shoe: Shoe, bucket: ListShoesFilters['priceBucket'])
     case 'all':
       return true;
     case 'lt10':
-      return p < 10;
+      return p < 250000;
     case '10to20':
-      return p >= 10 && p < 20;
+      return p >= 250000 && p < 350000;
     case '20to50':
-      return p >= 20 && p <= 50;
+      return p >= 350000 && p <= 450000;
     case 'gt50':
-      return p > 50;
+      return p > 450000;
     default:
       return true;
   }

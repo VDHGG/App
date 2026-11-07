@@ -78,35 +78,35 @@ export function DiscoveryTrendsPage() {
               rank: '#1',
               tag: 'Oxford',
               title: 'Heritage formal',
-              sub: 'From $25 / day',
+              sub: 'From 250.000₫ / day',
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuA0wT30EYU758w4LwKH4JEguLGZ3EfdgAtbFNnsbPJKeGnS4BfPN74ovDp8PloSMssJBOdSqtDPIoN2LATHGzUL9SRaHfs1X8W8a4U-OQhofseinhfoeLMGZmD7YDpYgKSyvZ4m4B32YqTM0i65VUISoiGyn4yMdeEc9zcqNOcmJwUgOxxr5DDg2I6kVAWcyLnkMbxmZJDrcjfn-fIAnZ50RIAqbhkB1mLCF8bcYTCRznCyWnAR71gx2ofcmGBCBeIzJFbYy-d8Ag',
             },
             {
               rank: '#2',
               tag: 'Sneakers',
               title: 'Street performance',
-              sub: 'From $18 / day',
+              sub: 'From 180.000₫ / day',
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBjIVsHCeV5MkhpmR0g6jIXgxyILcEs7jyCyEgLPCY8jxb-0ThRkGcgqx_RYKhf9UkRJpyQCkPnJLPa1UQ6khAOktHlceYKTgzSIdkCzMMR8QFtYXYBA4_UVixWs7BFni41aVUvXJMW-2-gl6n6hzUFuy-c3Q4bqRKe5M8C5TzFDJ742ZjzI-wH1JDbLZZhi3l6XfZMD378KXiUE0bJDOz4z2Wlh-z4oDbsMz7BYvXN4i5T2ewKntBQVE-Z7CAnqmXRAdDYueFLVg',
             },
             {
               rank: '#3',
               tag: 'Boots',
               title: 'All-weather edge',
-              sub: 'From $22 / day',
+              sub: 'From 220.000₫ / day',
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAA1In5eGF1DGL4SZSyyvK8TpGl0F4NIufV1p9-xUQjshfBpRWHH-9Pn5RBzE39CAgLBw1HDBc950KAJwE479MGc3P0BUx5HZv6XuS51V1KyO8LWKkR4YlinEm8aokVLdLUIVXUKRcM4gDXHKzXd21QMxv_NocoAjg2dgawLcjM6QYNi7MyOK-Zlhpiod3inn-uZ7tFg3PPT_i7cqD9EVxcQIpXq9T40IjLZs_gD2Dp_Nbo37yNfSIwHMWkJ9Jy0ww-i4IVP7jXZw',
             },
             {
               rank: '#4',
               tag: 'Loafers',
               title: 'Everyday luxury',
-              sub: 'From $20 / day',
+              sub: 'From 200.000₫ / day',
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCIQlg3h7os9SzlEKGsB4L-zS8jStlaHJq4VLBXsXlnxnNuAljnEomlKBEFeUIgoUdb-qXmekBLhpV_QBzFamE8QKep9OrQ2ccJ1LMbKcEu3XpDOXyH00pcZ7HQxF5pIbJSqpZA2O07TJehSh6WD7s-HJFQqL7jL8bNNYRdqri4T9Iy2F5AANlNxF28MDgKrxfH3OO5g7GsHfw6bKCPniU-1mwG1elBBK41K-eSOIk8l5OMvMN0gB35WUvYnRVP06NbN20Yr1Jjeg',
             },
             {
               rank: '#5',
               tag: 'Statement',
               title: 'Event ready',
-              sub: 'From $28 / day',
+              sub: 'From 280.000₫ / day',
               img: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDQd7Z0I5oCfJr9mAM2fTfqD1JqXfnBXr4jStwVdbanRA_xUMC_HbMSyZ4g-XN8bIIC7SYrSkZW7E1C4rX-byF3Yhy9PIsFd9qlxuVRkMuxbUhpz0e0eTVdTGlz4fbibvWky4MiKKnxCo4Cr2CwmnpzzMlENPgxINJmVA8PX1XhvCsTHePJfsHHWmF9fNOrrPAahVhq0zo-z-NciyxtDKoWn4Z3Ot-NQe3QniWX32jwRYSL3wlXKXBKBwRvLdor8L4wppK0aP9WDg',
             },
           ].map((card) => (
@@ -242,7 +242,7 @@ export function DiscoveryTrendsPage() {
               <p className="text-slate-300 mb-4 max-w-md text-sm">
                 Soft suede and sturdy soles—ideal for long days when you still want to look sharp.
               </p>
-              <span className="text-2xl font-black">From $45 / day</span>
+              <span className="text-2xl font-black">From 450.000₫ / day</span>
             </div>
           </Link>
           <Link
@@ -261,7 +261,7 @@ export function DiscoveryTrendsPage() {
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Timeless street appeal</p>
             <div className="flex justify-between items-center">
-              <span className="font-black text-primary">From $15 / day</span>
+              <span className="font-black text-primary">From 150.000₫ / day</span>
               <span className="material-symbols-outlined text-slate-400">add_circle</span>
             </div>
           </Link>
@@ -281,7 +281,7 @@ export function DiscoveryTrendsPage() {
             </h3>
             <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">Performance at scale</p>
             <div className="flex justify-between items-center">
-              <span className="font-black text-primary">From $22 / day</span>
+              <span className="font-black text-primary">From 220.000₫ / day</span>
               <span className="material-symbols-outlined text-slate-400">add_circle</span>
             </div>
           </Link>

@@ -20,8 +20,9 @@ Mở đầu gợi ý: “Chào bạn! Mình hỗ trợ thắc mắc về thuê g
 
 ## Dịch vụ
 
-- Thuê giày theo ngày: xem mẫu → chọn variant (size, màu) → chọn ngày bắt đầu/kết thúc → thanh toán (COD hoặc MoMo nếu bật).
-- Khách đăng nhập xem đơn trong tài khoản / đơn thuê.
+- Thuê giày theo ngày: đăng nhập → xem mẫu → chọn variant (size, màu) → chọn ngày bắt đầu/kết thúc → thanh toán (COD hoặc MoMo nếu bật).
+- Khách đã đăng nhập và có hồ sơ khách xem đơn trong tài khoản / đơn thuê.
+- Khách chỉ hủy đơn `RESERVED`, và phải còn ít nhất một ngày lịch trước ngày bắt đầu thuê. Đơn `ACTIVE` không tự hủy.
 
 ---
 

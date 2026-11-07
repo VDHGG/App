@@ -12,7 +12,18 @@ export type RentalPaymentRecord = {
   expiresAt: Date;
 };
 
+export type RentalPaymentSummary = {
+  status: RentalPaymentStatus;
+  amountVnd: number;
+  gatewayOrderId: string;
+  paidAt: Date | null;
+};
+
 export interface RentalPaymentRepository {
+  findLatestByRentalIds(
+    rentalIds: string[],
+    customerId?: string
+  ): Promise<Record<string, RentalPaymentSummary>>;
   countMomoAttemptsSince(customerId: string, since: Date): Promise<number>;
   cancelPendingForRental(rentalId: string): Promise<void>;
   insertPending(row: {
