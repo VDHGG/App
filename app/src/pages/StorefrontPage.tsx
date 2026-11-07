@@ -522,9 +522,37 @@ export function StorefrontPage() {
             selectedColors.size > 0 ||
             categories.size > 0 ||
             brands.size > 0 ||
+            priceMin !== '' ||
+            priceMax !== '' ||
             Boolean(qFromUrl)) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">Đang lọc:</span>
+              {Boolean(qFromUrl) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalSearch('')
+                    const next = new URLSearchParams(searchParams)
+                    next.delete('q')
+                    setSearchParams(next, { replace: true })
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  Từ khóa: &ldquo;{qFromUrl}&rdquo; ×
+                </button>
+              )}
+              {(priceMin !== '' || priceMax !== '') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriceMin('')
+                    setPriceMax('')
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-primary/10 text-primary hover:bg-primary/20"
+                >
+                  Giá: {priceMin || '0'}₫ – {priceMax || '∞'}₫ ×
+                </button>
+              )}
               {[...selectedSizes].map((sz) => (
                 <button
                   key={`sz-${sz}`}

@@ -744,9 +744,10 @@ export class RentalController {
            INNER JOIN colors c ON c.id = sv.color_id
            LEFT JOIN rental_items ri ON ri.variant_id = sv.variant_id
            LEFT JOIN rentals r ON r.rental_id = ri.rental_id
-             AND r.status IN ('RESERVED', 'ACTIVE')
-             AND r.start_date <= ?
-             AND r.expected_return_date >= ?
+             AND (
+               (r.status = 'RESERVED' AND r.start_date <= ? AND r.expected_return_date >= ?)
+               OR (r.status = 'ACTIVE' AND r.start_date <= ?)
+             )
            WHERE s.is_active = 1
            GROUP BY sv.variant_id, sv.shoe_id, s.name, sv.size, c.name, sv.on_hand_quantity
            HAVING sv.on_hand_quantity <= 2
@@ -755,7 +756,7 @@ export class RentalController {
                     sv.on_hand_quantity ASC,
                     s.name ASC
            LIMIT 12`,
-          [todayStr, todayStr]
+          [todayStr, todayStr, todayStr]
         );
         lowStockVariants = lowStockRows.map((row) => {
           const totalQuantity = Number(row['totalQuantity'] || 0);
@@ -795,7 +796,19 @@ export class RentalController {
 
   private async getActivityFeed(req: Request, res: Response): Promise<void> {
     await this.lazySweepExpiredMomo();
-    const rawType = String(req.query['type'] ?? 'ALL').trim().toUpperCase();
+    const rawTypeInput = String(req.query['type'] ?? 'ALL').trim().toUpperCase();
+    const allowedTypes = new Set([
+      'ALL',
+      'RESERVED',
+      'MOMO',
+      'MOMO_PAID',
+      'MOMO_EXPIRED',
+      'ACTIVE',
+      'RETURNED',
+      'CANCELLED',
+      'REVIEW',
+    ]);
+    const rawType = allowedTypes.has(rawTypeInput) ? rawTypeInput : 'ALL';
     const parsedLimit = Number(req.query['limit'] ?? 20);
     const limit = Number.isFinite(parsedLimit)
       ? Math.min(50, Math.max(1, Math.trunc(parsedLimit)))
@@ -834,7 +847,7 @@ export class RentalController {
       return fallbackIso;
     };
 
-    const recentList = await this.listRentals.execute({ page: 1, pageSize: 50 });
+    const recentList = await this.listRentals.execute();
     const summaryById = new Map(recentList.rentals.map((r) => [r.rentalId, r]));
 
     if (this.pool) {
@@ -843,7 +856,7 @@ export class RentalController {
           `SELECT r.*, c.full_name AS customer_name
            FROM rentals r
            LEFT JOIN customers c ON c.customer_id = r.customer_id
-           ORDER BY r.created_at DESC
+           ORDER BY COALESCE(r.updated_at, r.cancelled_at, r.activated_at, r.created_at) DESC
            LIMIT 40`
         );
         for (const row of rentalRows) {

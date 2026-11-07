@@ -68,7 +68,7 @@ export function CustomerDetailPage() {
     setError(null)
     Promise.all([
       getCustomer(id),
-      listRentals({ customerId: id, page: 1, pageSize: 50 }),
+      listRentals({ customerId: id }),
     ])
       .then(([custRes, rentalsRes]) => {
         setCustomer(custRes)
@@ -125,7 +125,7 @@ export function CustomerDetailPage() {
         remainingAmount: 2_000_000,
       }
     }
-    if (customer.rank === 'DIAMOND' || totalSpentReturned >= 10_000_000) {
+    if (customer.rank === 'DIAMOND') {
       return {
         nextRank: null,
         targetAmount: 10_000_000,
@@ -133,30 +133,18 @@ export function CustomerDetailPage() {
         remainingAmount: 0,
       }
     }
-    if (totalSpentReturned < 2_000_000 && customer.rank === 'BRONZE') {
-      const pct = Math.min(100, Math.round((totalSpentReturned / 2_000_000) * 100))
-      return {
-        nextRank: 'SILVER' as CustomerRank,
-        targetAmount: 2_000_000,
-        percent: pct,
-        remainingAmount: Math.max(0, 2_000_000 - totalSpentReturned),
-      }
+    const nextRankMap: Record<Exclude<CustomerRank, 'DIAMOND'>, { next: CustomerRank; target: number }> = {
+      BRONZE: { next: 'SILVER', target: 2_000_000 },
+      SILVER: { next: 'GOLD', target: 5_000_000 },
+      GOLD: { next: 'DIAMOND', target: 10_000_000 },
     }
-    if (totalSpentReturned < 5_000_000 && (customer.rank === 'BRONZE' || customer.rank === 'SILVER')) {
-      const pct = Math.min(100, Math.round((totalSpentReturned / 5_000_000) * 100))
-      return {
-        nextRank: 'GOLD' as CustomerRank,
-        targetAmount: 5_000_000,
-        percent: pct,
-        remainingAmount: Math.max(0, 5_000_000 - totalSpentReturned),
-      }
-    }
-    const pct = Math.min(100, Math.round((totalSpentReturned / 10_000_000) * 100))
+    const { next, target } = nextRankMap[customer.rank]
+    const pct = Math.min(100, Math.round((totalSpentReturned / target) * 100))
     return {
-      nextRank: 'DIAMOND' as CustomerRank,
-      targetAmount: 10_000_000,
+      nextRank: next,
+      targetAmount: target,
       percent: pct,
-      remainingAmount: Math.max(0, 10_000_000 - totalSpentReturned),
+      remainingAmount: Math.max(0, target - totalSpentReturned),
     }
   }, [customer, totalSpentReturned])
 
@@ -364,6 +352,10 @@ export function CustomerDetailPage() {
               {tierProgress.nextRank === null ? (
                 <span className="text-cyan-600 dark:text-cyan-400 font-bold">
                   100% — Đã đạt hạng cao nhất DIAMOND (-15%)
+                </span>
+              ) : tierProgress.remainingAmount === 0 ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                  Đã đủ mốc chi tiêu nâng hạng {tierProgress.nextRank} ({formatCurrency(tierProgress.targetAmount)})
                 </span>
               ) : (
                 <span>
