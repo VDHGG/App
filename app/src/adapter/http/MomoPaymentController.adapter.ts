@@ -3,6 +3,7 @@ import type { Request, Response, RequestHandler } from 'express';
 import { z } from 'zod';
 import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
+import type { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import { asyncRoute } from './middleware/routeMiddleware';
 import { momoCreatePayment, verifyMomoIpnSignature } from '@infra/momo/momoGateway';
 import { ValidationError } from '@domain/errors/ValidationError';
@@ -53,10 +54,16 @@ function maxMomoAttemptsPerHour(): number {
 export class MomoPaymentController {
   private readonly getRental: GetRentalUseCase;
   private readonly rentalPayments: RentalPaymentRepository;
+  private readonly expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService;
 
-  constructor(getRental: GetRentalUseCase, rentalPayments: RentalPaymentRepository) {
+  constructor(
+    getRental: GetRentalUseCase,
+    rentalPayments: RentalPaymentRepository,
+    expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService
+  ) {
     this.getRental = getRental;
     this.rentalPayments = rentalPayments;
+    this.expirePendingOnlinePayments = expirePendingOnlinePayments;
   }
 
   routes(createGuards: RequestHandler[], statusGuards: RequestHandler[] = createGuards): Router {
@@ -86,6 +93,10 @@ export class MomoPaymentController {
         throw new ValidationError('Account is not linked to a customer profile.');
       }
       customerId = auth.customerId;
+    }
+
+    if (this.expirePendingOnlinePayments) {
+      await this.expirePendingOnlinePayments.execute().catch(() => undefined);
     }
 
     const payments = await this.rentalPayments.findLatestByRentalIds(ids, customerId);

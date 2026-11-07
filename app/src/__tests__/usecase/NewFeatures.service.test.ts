@@ -26,7 +26,9 @@ import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
 import { ExtendRentalService } from '@usecase/ExtendRental.service';
 import { ListRentalsService } from '@usecase/ListRentals.service';
 import { GetRentalService } from '@usecase/GetRental.service';
+import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import { ChatController } from '@adapter/http/ChatController.adapter';
+import type { RentalPaymentRepository, RentalPaymentRecord, RentalPaymentStatus } from '@port/RentalPaymentRepository.port';
 import { transactionalRoute } from '@adapter/http/middleware/routeMiddleware';
 import { sanitizeCsvCell } from '../../lib/rentals.api';
 import type { TransactionManager } from '@port/TransactionManager.port';
@@ -1573,6 +1575,131 @@ describe('New Features - Unit Tests', () => {
       expect(sanitizeCsvCell('-50000')).toBe('\'-50000');
       expect(sanitizeCsvCell('@SUM(A1:A10)')).toBe('\'@SUM(A1:A10)');
       expect(sanitizeCsvCell('Nguyễn Văn A, VIP')).toBe('"Nguyễn Văn A, VIP"');
+    });
+  });
+
+  describe('Phase L: Hybrid Auto-Expiry Sweep for Unpaid MoMo RESERVED Orders', () => {
+    it('cancels expired PENDING MoMo RESERVED rental, marks payment EXPIRED, restores customer currentRentedItems and voucher usedCount, and returns cancelledRentalIds', async () => {
+      const customerRepo = new InMemoryCustomerRepository();
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+      const checker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
+
+      await customerRepo.save(
+        new Customer({
+          id: 'C_MOMO',
+          fullName: 'MoMo Buyer',
+          email: 'momo@example.com',
+          rank: CustomerRank.BRONZE,
+        })
+      );
+
+      const shoe = new Shoe({
+        id: 'S_MOMO',
+        name: 'Jordan 1',
+        brand: 'Nike',
+        category: 'Lifestyle',
+        pricePerDay: 300000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V_MOMO',
+          size: 42,
+          color: 'Red',
+          totalQuantity: 5,
+          availableQuantity: 5,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      await voucherRepo.save({
+        code: 'FLASH15',
+        discountPercent: 15,
+        description: 'Flash 15%',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: null,
+      });
+
+      const createService = new CreateRentalService(
+        customerRepo,
+        shoeRepo,
+        rentalRepo,
+        checker,
+        new ShortIdGenerator('R'),
+        voucherRepo
+      );
+      const cancelService = new CancelRentalService(rentalRepo, customerRepo, voucherRepo);
+
+      const created = await createService.execute({
+        customerId: 'C_MOMO',
+        items: [{ variantId: 'V_MOMO', quantity: 2 }],
+        startDate: new Date('2099-09-01'),
+        endDate: new Date('2099-09-02'),
+        voucherCode: 'FLASH15',
+      });
+
+      expect((await customerRepo.findById('C_MOMO'))?.currentRentedItems).toBe(2);
+      expect((await voucherRepo.findByCode('FLASH15'))?.usedCount).toBe(1);
+
+      const paymentMap = new Map<number, RentalPaymentRecord>();
+      paymentMap.set(101, {
+        id: 101,
+        rentalId: created.rentalId,
+        customerId: 'C_MOMO',
+        provider: 'momo',
+        gatewayOrderId: 'RS_TEST_101',
+        gatewayRequestId: 'RS_TEST_101',
+        amountVnd: created.totalAmount,
+        status: 'PENDING',
+        expiresAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const mockPaymentRepo: RentalPaymentRepository = {
+        insertPending: async () => 101,
+        cancelPendingForRental: async () => undefined,
+        findByGatewayOrderId: async () => null,
+        updateFromIpn: async () => undefined,
+        findLatestByRentalIds: async () => ({}),
+        listPendingExpired: async (now: Date) =>
+          Array.from(paymentMap.values()).filter(
+            (p) => p.status === 'PENDING' && p.expiresAt.getTime() <= now.getTime()
+          ),
+        setStatus: async (id: number, status: RentalPaymentStatus) => {
+          const existing = paymentMap.get(id);
+          if (existing) {
+            paymentMap.set(id, { ...existing, status });
+          }
+        },
+        countMomoAttemptsSince: async () => 0,
+      };
+
+      const txManager: TransactionManager = {
+        runInTransaction: async <T>(work: () => Promise<T>): Promise<T> => work(),
+      };
+
+      const sweepService = new ExpirePendingOnlinePaymentsService(
+        txManager,
+        mockPaymentRepo,
+        rentalRepo,
+        cancelService
+      );
+
+      const sweepResult = await sweepService.execute(new Date('2026-01-01T00:05:00Z'));
+
+      expect(sweepResult.expired).toBe(1);
+      expect(sweepResult.errors).toBe(0);
+      expect(sweepResult.cancelledRentalIds).toEqual([created.rentalId]);
+
+      const updatedRental = await rentalRepo.findById(created.rentalId);
+      expect(updatedRental?.status).toBe(RentalStatus.CANCELLED);
+      expect(updatedRental?.note).toContain('Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).');
+      expect(updatedRental?.note).toContain('[Ưu đãi: Voucher FLASH15 -15%]');
+
+      expect(paymentMap.get(101)?.status).toBe('EXPIRED');
+      expect((await customerRepo.findById('C_MOMO'))?.currentRentedItems).toBe(0);
+      expect((await voucherRepo.findByCode('FLASH15'))?.usedCount).toBe(0);
     });
   });
 });

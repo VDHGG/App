@@ -5,9 +5,11 @@ import {
   activateRental,
   cancelRental,
   fetchAdminStatsOverview,
+  sweepExpiredMomoRentals,
   exportRentalsToCsv,
   type RentalSummary,
   type AdminStatsOverviewResponse,
+  type StatsPeriod,
 } from '../../lib/rentals.api'
 import { listCustomers } from '../../lib/customers.api'
 import type { CustomerSummary } from '../../lib/customers.api'
@@ -40,6 +42,9 @@ export function AdminDashboardPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [stats, setStats] = useState<AdminStatsOverviewResponse | null>(null)
+  const [period, setPeriod] = useState<StatsPeriod>('all')
+  const [sweepLoading, setSweepLoading] = useState(false)
+  const [sweepMessage, setSweepMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -51,7 +56,7 @@ export function AdminDashboardPage() {
     Promise.all([
       listRentals(),
       listCustomers(),
-      fetchAdminStatsOverview().catch(() => null),
+      fetchAdminStatsOverview('all').catch(() => null),
     ])
       .then(([rentalsRes, customersRes, statsRes]) => {
         setRentals(rentalsRes.rentals)
@@ -61,6 +66,36 @@ export function AdminDashboardPage() {
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
+
+  const handlePeriodChange = async (nextPeriod: StatsPeriod) => {
+    setPeriod(nextPeriod)
+    try {
+      const statsRes = await fetchAdminStatsOverview(nextPeriod)
+      setStats(statsRes)
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleSweepExpiredMomo = async () => {
+    setSweepLoading(true)
+    setSweepMessage(null)
+    setActionError(null)
+    try {
+      const res = await sweepExpiredMomoRentals()
+      setSweepMessage(`Đã quét và giải phóng ${res.sweptCount} đơn treo MoMo quá hạn.`)
+      const [rentalsRes, statsRes] = await Promise.all([
+        listRentals(),
+        fetchAdminStatsOverview(period).catch(() => null),
+      ])
+      setRentals(rentalsRes.rentals)
+      setStats(statsRes)
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err))
+    } finally {
+      setSweepLoading(false)
+    }
+  }
 
   const totalRentals = rentals.length
   const pendingReturns = rentals.filter((r) => r.status === 'ACTIVE').length
@@ -86,7 +121,7 @@ export function AdminDashboardPage() {
       else await cancelRental(rentalId)
       const [res, statsRes] = await Promise.all([
         listRentals(),
-        fetchAdminStatsOverview().catch(() => null),
+        fetchAdminStatsOverview(period).catch(() => null),
       ])
       setRentals(res.rentals)
       setStats(statsRes)
@@ -120,10 +155,64 @@ export function AdminDashboardPage() {
     )
   }
 
+  const series = stats?.revenueSeries ?? []
+  const maxSeriesRevenue = Math.max(1, ...series.map((p) => p.totalRevenue))
+  const statusTotal = Math.max(
+    1,
+    (stats?.statusCounts.RESERVED ?? 0) +
+      (stats?.statusCounts.ACTIVE ?? 0) +
+      (stats?.statusCounts.RETURNED ?? 0) +
+      (stats?.statusCounts.CANCELLED ?? 0)
+  )
+
   return (
     <>
       <AdminHeader title="Dashboard Overview" />
       <div className="p-6 lg:p-8 space-y-8 max-w-[1400px]">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 px-5 py-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center gap-2">
+            <span className="material-symbols-outlined text-primary text-lg">calendar_month</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+              Chu kỳ thống kê:
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Bộ lọc thời gian">
+            {(
+              [
+                { value: 'all', label: 'Tất cả' },
+                { value: '6m', label: '6 tháng qua' },
+                { value: '30d', label: '30 ngày qua' },
+                { value: '7d', label: '7 ngày qua' },
+              ] as { value: StatsPeriod; label: string }[]
+            ).map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => void handlePeriodChange(opt.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  period === opt.value
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {sweepMessage && (
+          <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-900/25 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-sm font-semibold flex items-center justify-between">
+            <span>{sweepMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSweepMessage(null)}
+              className="text-xs underline ml-4"
+            >
+              Đóng
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
             <div>
@@ -235,6 +324,198 @@ export function AdminDashboardPage() {
             <span className="material-symbols-outlined">download</span>
             Xuất CSV báo cáo
           </button>
+          <button
+            type="button"
+            disabled={sweepLoading}
+            onClick={() => void handleSweepExpiredMomo()}
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 text-sm font-semibold text-amber-700 dark:text-amber-300 hover:bg-amber-100/60 dark:hover:bg-amber-900/40 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined">timer_off</span>
+            {sweepLoading ? 'Đang quét…' : 'Quét đơn MoMo quá hạn'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+              <div>
+                <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary">bar_chart</span>
+                  Biểu đồ Xu hướng Doanh thu
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  So sánh doanh thu hoàn tất (RETURNED) và doanh thu đang thực hiện theo thời gian
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="inline-flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                  <span className="size-2.5 rounded-sm bg-emerald-500" />
+                  Đã hoàn tất
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-blue-600 dark:text-blue-400">
+                  <span className="size-2.5 rounded-sm bg-blue-500" />
+                  Đang thuê / Đặt
+                </span>
+              </div>
+            </div>
+
+            {series.length === 0 ? (
+              <div className="h-52 flex items-center justify-center text-sm text-slate-400">
+                Chưa có dữ liệu biểu đồ cho chu kỳ này
+              </div>
+            ) : (
+              <div className="h-60 flex items-end gap-2 sm:gap-3 pt-6 pb-2 px-2 border-b border-slate-100 dark:border-slate-800 overflow-x-auto">
+                {series.map((point) => {
+                  const returnedPct = Math.round((point.returnedRevenue / maxSeriesRevenue) * 100)
+                  const activePct = Math.round((point.activeRevenue / maxSeriesRevenue) * 100)
+                  const totalHeightPct = Math.min(100, Math.max(point.totalRevenue > 0 ? 6 : 2, returnedPct + activePct))
+                  return (
+                    <div
+                      key={point.label}
+                      className="flex-1 min-w-[42px] h-full flex flex-col justify-end items-center group"
+                      title={`${point.label}: Tổng ${formatCurrency(point.totalRevenue)} (${point.rentalCount} đơn)`}
+                    >
+                      <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1 opacity-85 group-hover:opacity-100 truncate max-w-[68px]">
+                        {point.totalRevenue > 0
+                          ? `${Math.round(point.totalRevenue / 1000).toLocaleString('vi-VN')}k`
+                          : '0'}
+                      </span>
+                      <div
+                        className="w-full max-w-[36px] rounded-t-lg overflow-hidden flex flex-col justify-end bg-slate-100 dark:bg-slate-800 transition-all"
+                        style={{ height: `${totalHeightPct}%` }}
+                      >
+                        {point.activeRevenue > 0 && (
+                          <div
+                            className="w-full bg-blue-500 transition-all"
+                            style={{
+                              height: `${
+                                point.totalRevenue > 0
+                                  ? Math.round((point.activeRevenue / point.totalRevenue) * 100)
+                                  : 0
+                              }%`,
+                            }}
+                          />
+                        )}
+                        {point.returnedRevenue > 0 && (
+                          <div
+                            className="w-full bg-emerald-500 transition-all"
+                            style={{
+                              height: `${
+                                point.totalRevenue > 0
+                                  ? Math.round((point.returnedRevenue / point.totalRevenue) * 100)
+                                  : 0
+                              }%`,
+                            }}
+                          />
+                        )}
+                      </div>
+                      <span className="mt-2 text-[10px] font-bold text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        {point.label}
+                      </span>
+                      <span className="text-[9px] text-slate-400 whitespace-nowrap">
+                        {point.rentalCount} đơn
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-6 flex flex-col justify-between">
+            <div>
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2 mb-1">
+                <span className="material-symbols-outlined text-primary">pie_chart</span>
+                Phân bổ Trạng thái Đơn thuê
+              </h3>
+              <p className="text-xs text-slate-500 mb-5">
+                Tỷ trọng đơn thuê theo trạng thái xử lý hiện tại
+              </p>
+
+              <div className="h-3.5 w-full rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex mb-6">
+                <div
+                  className="bg-amber-500 h-full transition-all"
+                  style={{
+                    width: `${Math.round(((stats?.statusCounts.RESERVED ?? 0) / statusTotal) * 100)}%`,
+                  }}
+                  title={`RESERVED: ${stats?.statusCounts.RESERVED ?? 0}`}
+                />
+                <div
+                  className="bg-blue-500 h-full transition-all"
+                  style={{
+                    width: `${Math.round(((stats?.statusCounts.ACTIVE ?? 0) / statusTotal) * 100)}%`,
+                  }}
+                  title={`ACTIVE: ${stats?.statusCounts.ACTIVE ?? 0}`}
+                />
+                <div
+                  className="bg-emerald-500 h-full transition-all"
+                  style={{
+                    width: `${Math.round(((stats?.statusCounts.RETURNED ?? 0) / statusTotal) * 100)}%`,
+                  }}
+                  title={`RETURNED: ${stats?.statusCounts.RETURNED ?? 0}`}
+                />
+                <div
+                  className="bg-rose-500 h-full transition-all"
+                  style={{
+                    width: `${Math.round(((stats?.statusCounts.CANCELLED ?? 0) / statusTotal) * 100)}%`,
+                  }}
+                  title={`CANCELLED: ${stats?.statusCounts.CANCELLED ?? 0}`}
+                />
+              </div>
+
+              <div className="space-y-3 text-xs">
+                {[
+                  {
+                    key: 'RESERVED',
+                    label: 'Đã đặt giữ chỗ (RESERVED)',
+                    count: stats?.statusCounts.RESERVED ?? 0,
+                    dot: 'bg-amber-500',
+                  },
+                  {
+                    key: 'ACTIVE',
+                    label: 'Đang thuê (ACTIVE)',
+                    count: stats?.statusCounts.ACTIVE ?? 0,
+                    dot: 'bg-blue-500',
+                  },
+                  {
+                    key: 'RETURNED',
+                    label: 'Đã hoàn trả (RETURNED)',
+                    count: stats?.statusCounts.RETURNED ?? 0,
+                    dot: 'bg-emerald-500',
+                  },
+                  {
+                    key: 'CANCELLED',
+                    label: 'Đã hủy (CANCELLED)',
+                    count: stats?.statusCounts.CANCELLED ?? 0,
+                    dot: 'bg-rose-500',
+                  },
+                ].map((row) => {
+                  const pct =
+                    (stats?.totalRentals ?? 0) > 0
+                      ? Math.round((row.count / statusTotal) * 100)
+                      : 0
+                  return (
+                    <div key={row.key} className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-2 font-medium text-slate-600 dark:text-slate-300">
+                        <span className={`size-2.5 rounded-full ${row.dot}`} />
+                        {row.label}
+                      </span>
+                      <span className="font-bold text-slate-900 dark:text-white">
+                        {row.count} đơn ({pct}%)
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+              <span>Tổng số đơn trong kỳ:</span>
+              <span className="font-black text-slate-900 dark:text-white text-sm">
+                {stats?.totalRentals ?? totalRentals} đơn
+              </span>
+            </div>
+          </div>
         </div>
 
         {stats?.topShoes && stats.topShoes.length > 0 && (

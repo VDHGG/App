@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {  getRental,  activateRental,  returnRental,  cancelRental} from '../../lib/rentals.api'
+import { fetchMomoPaymentStatuses, type MomoPaymentStatusRecord } from '../../lib/payments.api'
 import { getCustomer } from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { RentalStatusBadge } from '../../components/admin/RentalStatusBadge'
+import { RentalTimeline } from '../../components/RentalTimeline'
 import { formatDate, formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
 
@@ -39,6 +41,7 @@ export function RentalDetailPage() {
   const [returnLoading, setReturnLoading] = useState(false)
   const [returnError, setReturnError] = useState<string | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
+  const [paymentRecord, setPaymentRecord] = useState<MomoPaymentStatusRecord | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -50,6 +53,12 @@ export function RentalDetailPage() {
           setCustomerName(c.fullName)
         } catch {
           setCustomerName(r.customerId)
+        }
+        try {
+          const payRes = await fetchMomoPaymentStatuses([r.rentalId])
+          setPaymentRecord(payRes.payments[r.rentalId] ?? null)
+        } catch {
+          setPaymentRecord(null)
         }
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
@@ -275,6 +284,8 @@ export function RentalDetailPage() {
                 )}
               </p>
             </div>
+
+            <RentalTimeline rental={rental} paymentStatus={paymentRecord?.status} />
 
             <div>
               <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">

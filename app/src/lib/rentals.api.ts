@@ -211,7 +211,18 @@ export async function extendRentalAdmin(
   return data
 }
 
+export type StatsPeriod = '7d' | '30d' | '6m' | 'all'
+
+export type RevenueSeriesPoint = {
+  label: string
+  returnedRevenue: number
+  activeRevenue: number
+  totalRevenue: number
+  rentalCount: number
+}
+
 export type AdminStatsOverviewResponse = {
+  period?: StatsPeriod
   totalRentals: number
   statusCounts: {
     RESERVED: number
@@ -226,6 +237,7 @@ export type AdminStatsOverviewResponse = {
   momoPaidCount: number
   momoPaidAmountVnd: number
   totalCustomers: number
+  revenueSeries?: RevenueSeriesPoint[]
   topShoes: Array<{
     shoeId: string
     shoeName: string
@@ -235,8 +247,25 @@ export type AdminStatsOverviewResponse = {
   }>
 }
 
-export async function fetchAdminStatsOverview(): Promise<AdminStatsOverviewResponse> {
-  const { data } = await api.get<AdminStatsOverviewResponse>('/rentals/stats/overview')
+export async function fetchAdminStatsOverview(
+  period?: StatsPeriod
+): Promise<AdminStatsOverviewResponse> {
+  const { data } = await api.get<AdminStatsOverviewResponse>('/rentals/stats/overview', {
+    ...(period ? { params: { period } } : {}),
+  })
+  return data
+}
+
+export async function sweepExpiredMomoRentals(): Promise<{
+  sweptCount: number
+  cancelledRentalIds: string[]
+  errors: number
+}> {
+  const { data } = await api.post<{
+    sweptCount: number
+    cancelledRentalIds: string[]
+    errors: number
+  }>('/rentals/sweep-expired-momo')
   return data
 }
 

@@ -3565,8 +3565,10 @@ class ExpirePendingOnlinePaymentsService {
     const batch = await this.rentalPayments.listPendingExpired(now, 50);
     let expired = 0;
     let errors = 0;
+    const cancelledRentalIds = [];
     for (const p of batch) {
       try {
+        let wasCancelled = false;
         await this.transactionManager.runInTransaction(async () => {
           const rental = await this.rentals.findById(p.rentalId);
           if (!rental) {
@@ -3577,18 +3579,22 @@ class ExpirePendingOnlinePaymentsService {
             await this.cancelRental.execute({
               rentalId: p.rentalId,
               cancelledAt: now,
-              note: "Online payment not completed within the allowed time.",
+              note: "Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).",
               requestingCustomerId: void 0
             });
+            wasCancelled = true;
           }
           await this.rentalPayments.setStatus(p.id, "EXPIRED");
         });
+        if (wasCancelled) {
+          cancelledRentalIds.push(p.rentalId);
+        }
         expired += 1;
       } catch {
         errors += 1;
       }
     }
-    return { expired, errors };
+    return { expired, cancelledRentalIds, errors };
   }
 }
 class ExtendRentalService {
@@ -4062,6 +4068,8 @@ class ShoeController {
     const authenticated = guards?.authenticated ?? [];
     const customer = guards?.customer ?? [];
     router.get("/catalog/shoe-lookups", ...authenticated, asyncRoute(this.shoeLookups.bind(this)));
+    router.get("/reviews", ...admin, asyncRoute(this.listAllReviewsAdmin.bind(this)));
+    router.delete("/reviews/:reviewId", ...admin, asyncRoute(this.deleteReviewAdmin.bind(this)));
     router.get("/shoes", ...authenticated, asyncRoute(this.list.bind(this)));
     router.post("/shoes", ...admin, transactionalRoute(transactionManager, this.add.bind(this)));
     router.get("/shoes/:id/availability", ...authenticated, asyncRoute(this.getAvailability.bind(this)));
@@ -4299,6 +4307,71 @@ class ShoeController {
       comment: body.comment
     });
   }
+  async listAllReviewsAdmin(req, res) {
+    if (!this.pool) {
+      res.json({ reviews: [], total: 0, averageRating: 5 });
+      return;
+    }
+    const conditions = [];
+    const params = [];
+    const rawRating = String(req.query["rating"] ?? "").trim();
+    if (rawRating === "1" || rawRating === "2" || rawRating === "3" || rawRating === "4" || rawRating === "5") {
+      conditions.push("sr.rating = ?");
+      params.push(Number(rawRating));
+    }
+    const search = String(req.query["search"] ?? "").trim();
+    if (search) {
+      const like = `%${search}%`;
+      conditions.push(
+        "(sr.shoe_id LIKE ? OR s.name LIKE ? OR sr.customer_name LIKE ? OR sr.customer_id LIKE ? OR sr.comment LIKE ?)"
+      );
+      params.push(like, like, like, like, like);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const [rows] = await this.pool.query(
+      `SELECT sr.review_id, sr.shoe_id, COALESCE(s.name, sr.shoe_id) AS shoe_name,
+              sr.customer_id, sr.customer_name, sr.rating, sr.comment, sr.created_at
+       FROM shoe_reviews sr
+       LEFT JOIN shoes s ON s.shoe_id = sr.shoe_id
+       ${whereClause}
+       ORDER BY sr.created_at DESC
+       LIMIT 200`,
+      params
+    );
+    const reviews = rows.map((r) => ({
+      reviewId: Number(r["review_id"]),
+      shoeId: String(r["shoe_id"]),
+      shoeName: String(r["shoe_name"]),
+      customerId: String(r["customer_id"]),
+      customerName: String(r["customer_name"]),
+      rating: Number(r["rating"]),
+      comment: String(r["comment"]),
+      createdAt: new Date(r["created_at"]).toISOString()
+    }));
+    const total = reviews.length;
+    const averageRating = total > 0 ? Math.round(reviews.reduce((sum, r) => sum + r.rating, 0) / total * 10) / 10 : 5;
+    res.json({ reviews, total, averageRating });
+  }
+  async deleteReviewAdmin(req, res) {
+    const reviewId = Number(req.params["reviewId"]);
+    if (!Number.isInteger(reviewId) || reviewId <= 0) {
+      throw new ValidationError("Invalid reviewId.");
+    }
+    if (!this.pool) {
+      res.status(204).end();
+      return;
+    }
+    const [result] = await this.pool.query(
+      "DELETE FROM shoe_reviews WHERE review_id = ?",
+      [reviewId]
+    );
+    const affected = result?.affectedRows ?? 0;
+    if (affected === 0) {
+      res.status(404).json({ error: "NOT_FOUND", message: "Review not found." });
+      return;
+    }
+    res.status(204).end();
+  }
 }
 const ALLOWED_MIMES = /* @__PURE__ */ new Set(["image/jpeg", "image/png", "image/webp"]);
 const uploadMiddleware = multer({
@@ -4400,6 +4473,36 @@ function getVietnamTodayYmd$1(now = /* @__PURE__ */ new Date()) {
   const d = parts.find((p) => p.type === "day")?.value ?? String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
+function toRentalYmd(val) {
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return getVietnamTodayYmd$1(parsed);
+    }
+    return trimmed.slice(0, 10);
+  }
+  return getVietnamTodayYmd$1(val);
+}
+function addDaysYmd(ymd, deltaDays) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+function formatDdMm(ymd) {
+  const [, m, d] = ymd.split("-");
+  return `${d}/${m}`;
+}
+function formatMmYyyy(ym) {
+  const [y, m] = ym.split("-");
+  return `${m}/${y}`;
+}
 class RentalController {
   createRental;
   activateRental;
@@ -4411,7 +4514,8 @@ class RentalController {
   extendRental;
   voucherRepository;
   pool;
-  constructor(createRental, activateRental, returnRental, cancelRental, listRentals, getRental, deleteRentalAdmin, extendRental, voucherRepository, pool) {
+  expirePendingOnlinePayments;
+  constructor(createRental, activateRental, returnRental, cancelRental, listRentals, getRental, deleteRentalAdmin, extendRental, voucherRepository, pool, expirePendingOnlinePayments) {
     this.createRental = createRental;
     this.activateRental = activateRental;
     this.returnRental = returnRental;
@@ -4422,6 +4526,7 @@ class RentalController {
     this.extendRental = extendRental;
     this.voucherRepository = voucherRepository;
     this.pool = pool;
+    this.expirePendingOnlinePayments = expirePendingOnlinePayments;
   }
   routes(transactionManager, guards) {
     const router = Router();
@@ -4432,6 +4537,7 @@ class RentalController {
     router.get("/vouchers/active", ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
     router.get("/notifications", ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get("/stats/overview", ...admin, asyncRoute(this.getStatsOverview.bind(this)));
+    router.post("/sweep-expired-momo", ...admin, asyncRoute(this.sweepExpiredMomo.bind(this)));
     router.get("/me", ...customer, asyncRoute(this.listMine.bind(this)));
     router.get("/me/:id", ...customer, asyncRoute(this.getMine.bind(this)));
     router.patch(
@@ -4741,10 +4847,36 @@ class RentalController {
       unreadCount: notifications.length
     });
   }
-  async getStatsOverview(_req, res) {
+  async sweepExpiredMomo(_req, res) {
+    if (!this.expirePendingOnlinePayments) {
+      res.json({ sweptCount: 0, cancelledRentalIds: [], errors: 0 });
+      return;
+    }
+    const result = await this.expirePendingOnlinePayments.execute();
+    res.json({
+      sweptCount: result.expired,
+      cancelledRentalIds: result.cancelledRentalIds,
+      errors: result.errors
+    });
+  }
+  async getStatsOverview(req, res) {
+    const rawPeriod = String(req.query["period"] ?? "all").trim();
+    const period = rawPeriod === "7d" || rawPeriod === "30d" || rawPeriod === "6m" ? rawPeriod : "all";
+    const todayStr = getVietnamTodayYmd$1();
+    const [ty, tm] = todayStr.split("-").map(Number);
+    const sixMonthsStartDt = new Date(Date.UTC(ty, tm - 1 - 5, 1));
+    const cutoff6m = `${sixMonthsStartDt.getUTCFullYear()}-${String(sixMonthsStartDt.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    let cutoffYmd = null;
+    if (period === "7d") {
+      cutoffYmd = addDaysYmd(todayStr, -6);
+    } else if (period === "30d") {
+      cutoffYmd = addDaysYmd(todayStr, -29);
+    } else if (period === "6m") {
+      cutoffYmd = cutoff6m;
+    }
     const all = await this.listRentals.execute();
-    const rentals = all.rentals;
-    const totalRentals = all.total ?? rentals.length;
+    const rentals = cutoffYmd !== null ? all.rentals.filter((r) => toRentalYmd(r.startDate) >= cutoffYmd) : all.rentals;
+    const totalRentals = cutoffYmd !== null ? rentals.length : all.total ?? rentals.length;
     const statusCounts = {
       RESERVED: 0,
       ACTIVE: 0,
@@ -4760,6 +4892,58 @@ class RentalController {
     const totalRevenueReturned = rentals.filter((r) => r.status === "RETURNED").reduce((sum, r) => sum + r.totalAmount, 0);
     const activeExpectedRevenue = rentals.filter((r) => r.status === "ACTIVE" || r.status === "RESERVED").reduce((sum, r) => sum + r.totalAmount, 0);
     const totalLateFeesCollected = rentals.filter((r) => r.status === "RETURNED").reduce((sum, r) => sum + Math.max(0, r.totalAmount - r.basePrice), 0);
+    const buildBucket = (label, matched) => {
+      const returnedRevenue = matched.filter((r) => r.status === "RETURNED").reduce((sum, r) => sum + r.totalAmount, 0);
+      const activeRevenue = matched.filter((r) => r.status === "ACTIVE" || r.status === "RESERVED").reduce((sum, r) => sum + r.totalAmount, 0);
+      const rentalCount = matched.filter((r) => r.status !== "CANCELLED").length;
+      return {
+        label,
+        returnedRevenue,
+        activeRevenue,
+        totalRevenue: returnedRevenue + activeRevenue,
+        rentalCount
+      };
+    };
+    let revenueSeries = [];
+    if (period === "7d") {
+      for (let i = 6; i >= 0; i--) {
+        const dayYmd = addDaysYmd(todayStr, -i);
+        const matched = rentals.filter((r) => toRentalYmd(r.startDate) === dayYmd);
+        revenueSeries.push(buildBucket(formatDdMm(dayYmd), matched));
+      }
+    } else if (period === "30d") {
+      for (let b = 0; b < 10; b++) {
+        const startOffset = -29 + b * 3;
+        const endOffset = startOffset + 2;
+        const startYmd = addDaysYmd(todayStr, startOffset);
+        const endYmd = addDaysYmd(todayStr, endOffset);
+        const matched = rentals.filter((r) => {
+          const ymd = toRentalYmd(r.startDate);
+          return ymd >= startYmd && ymd <= endYmd;
+        });
+        revenueSeries.push(buildBucket(formatDdMm(endYmd), matched));
+      }
+    } else {
+      const monthKeys = [];
+      for (let i = 5; i >= 0; i--) {
+        const dt = new Date(Date.UTC(ty, tm - 1 - i, 1));
+        const ym = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}`;
+        monthKeys.push(ym);
+      }
+      revenueSeries = monthKeys.map((ym) => {
+        const matched = rentals.filter((r) => toRentalYmd(r.startDate).slice(0, 7) === ym);
+        return buildBucket(formatMmYyyy(ym), matched);
+      });
+      if (period === "all" && revenueSeries.every((b) => b.rentalCount === 0) && rentals.length > 0) {
+        const distinctYms = Array.from(
+          new Set(rentals.map((r) => toRentalYmd(r.startDate).slice(0, 7)))
+        ).sort().slice(-6);
+        revenueSeries = distinctYms.map((ym) => {
+          const matched = rentals.filter((r) => toRentalYmd(r.startDate).slice(0, 7) === ym);
+          return buildBucket(formatMmYyyy(ym), matched);
+        });
+      }
+    }
     let momoPaidCount = 0;
     let momoPaidAmountVnd = 0;
     let totalCustomers = 0;
@@ -4810,6 +4994,7 @@ class RentalController {
       }
     }
     res.json({
+      period,
       totalRentals,
       statusCounts,
       overdueCount,
@@ -4819,7 +5004,8 @@ class RentalController {
       momoPaidCount,
       momoPaidAmountVnd,
       totalCustomers,
-      topShoes
+      topShoes,
+      revenueSeries
     });
   }
 }
@@ -5295,9 +5481,11 @@ function maxMomoAttemptsPerHour() {
 class MomoPaymentController {
   getRental;
   rentalPayments;
-  constructor(getRental, rentalPayments) {
+  expirePendingOnlinePayments;
+  constructor(getRental, rentalPayments, expirePendingOnlinePayments) {
     this.getRental = getRental;
     this.rentalPayments = rentalPayments;
+    this.expirePendingOnlinePayments = expirePendingOnlinePayments;
   }
   routes(createGuards, statusGuards = createGuards) {
     const router = Router();
@@ -5320,6 +5508,9 @@ class MomoPaymentController {
         throw new ValidationError("Account is not linked to a customer profile.");
       }
       customerId = auth.customerId;
+    }
+    if (this.expirePendingOnlinePayments) {
+      await this.expirePendingOnlinePayments.execute().catch(() => void 0);
     }
     const payments = await this.rentalPayments.findLatestByRentalIds(ids, customerId);
     res.json({ payments });
@@ -6284,14 +6475,16 @@ function createRouter(container2) {
     container2.getDeleteRentalAdminUseCase(),
     container2.getExtendRentalUseCase(),
     container2.getVoucherRepository(),
-    container2.getPool()
+    container2.getPool(),
+    container2.getExpirePendingOnlinePaymentsService()
   );
   const voucherCtrl = new VoucherController(container2.getVoucherRepository());
   const catalogAdminCtrl = new CatalogAdminController(container2.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container2.getWishlistUseCase());
   const momoPaymentCtrl = new MomoPaymentController(
     container2.getGetRentalUseCase(),
-    container2.getRentalPaymentRepository()
+    container2.getRentalPaymentRepository(),
+    container2.getExpirePendingOnlinePaymentsService()
   );
   const optionalBearer = createOptionalBearerAuthMiddleware(accessTokenService);
   const chatRateLimit = rateLimit({

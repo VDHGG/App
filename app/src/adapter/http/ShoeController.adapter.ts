@@ -65,6 +65,8 @@ export class ShoeController {
     const authenticated = guards?.authenticated ?? [];
     const customer = guards?.customer ?? [];
     router.get('/catalog/shoe-lookups', ...authenticated, asyncRoute(this.shoeLookups.bind(this)));
+    router.get('/reviews', ...admin, asyncRoute(this.listAllReviewsAdmin.bind(this)));
+    router.delete('/reviews/:reviewId', ...admin, asyncRoute(this.deleteReviewAdmin.bind(this)));
     router.get('/shoes', ...authenticated, asyncRoute(this.list.bind(this)));
     router.post('/shoes', ...admin, transactionalRoute(transactionManager, this.add.bind(this)));
     router.get('/shoes/:id/availability', ...authenticated, asyncRoute(this.getAvailability.bind(this)));
@@ -335,5 +337,91 @@ export class ShoeController {
       rating: body.rating,
       comment: body.comment,
     });
+  }
+
+  private async listAllReviewsAdmin(req: Request, res: Response): Promise<void> {
+    if (!this.pool) {
+      res.json({ reviews: [], total: 0, averageRating: 5 });
+      return;
+    }
+
+    const conditions: string[] = [];
+    const params: Array<string | number> = [];
+
+    const rawRating = String(req.query['rating'] ?? '').trim();
+    if (
+      rawRating === '1' ||
+      rawRating === '2' ||
+      rawRating === '3' ||
+      rawRating === '4' ||
+      rawRating === '5'
+    ) {
+      conditions.push('sr.rating = ?');
+      params.push(Number(rawRating));
+    }
+
+    const search = String(req.query['search'] ?? '').trim();
+    if (search) {
+      const like = `%${search}%`;
+      conditions.push(
+        '(sr.shoe_id LIKE ? OR s.name LIKE ? OR sr.customer_name LIKE ? OR sr.customer_id LIKE ? OR sr.comment LIKE ?)'
+      );
+      params.push(like, like, like, like, like);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `SELECT sr.review_id, sr.shoe_id, COALESCE(s.name, sr.shoe_id) AS shoe_name,
+              sr.customer_id, sr.customer_name, sr.rating, sr.comment, sr.created_at
+       FROM shoe_reviews sr
+       LEFT JOIN shoes s ON s.shoe_id = sr.shoe_id
+       ${whereClause}
+       ORDER BY sr.created_at DESC
+       LIMIT 200`,
+      params
+    );
+
+    const reviews = rows.map((r) => ({
+      reviewId: Number(r['review_id']),
+      shoeId: String(r['shoe_id']),
+      shoeName: String(r['shoe_name']),
+      customerId: String(r['customer_id']),
+      customerName: String(r['customer_name']),
+      rating: Number(r['rating']),
+      comment: String(r['comment']),
+      createdAt: new Date(r['created_at']).toISOString(),
+    }));
+
+    const total = reviews.length;
+    const averageRating =
+      total > 0
+        ? Math.round((reviews.reduce((sum, r) => sum + r.rating, 0) / total) * 10) / 10
+        : 5;
+
+    res.json({ reviews, total, averageRating });
+  }
+
+  private async deleteReviewAdmin(req: Request, res: Response): Promise<void> {
+    const reviewId = Number(req.params['reviewId']);
+    if (!Number.isInteger(reviewId) || reviewId <= 0) {
+      throw new ValidationError('Invalid reviewId.');
+    }
+
+    if (!this.pool) {
+      res.status(204).end();
+      return;
+    }
+
+    const [result] = await this.pool.query(
+      'DELETE FROM shoe_reviews WHERE review_id = ?',
+      [reviewId]
+    );
+    const affected = (result as { affectedRows?: number })?.affectedRows ?? 0;
+    if (affected === 0) {
+      res.status(404).json({ error: 'NOT_FOUND', message: 'Review not found.' });
+      return;
+    }
+
+    res.status(204).end();
   }
 }

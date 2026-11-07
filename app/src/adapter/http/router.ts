@@ -112,14 +112,16 @@ export function createRouter(container: MysqlContainer): Router {
     container.getDeleteRentalAdminUseCase(),
     container.getExtendRentalUseCase(),
     container.getVoucherRepository(),
-    container.getPool()
+    container.getPool(),
+    container.getExpirePendingOnlinePaymentsService()
   );
   const voucherCtrl = new VoucherController(container.getVoucherRepository());
   const catalogAdminCtrl = new CatalogAdminController(container.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container.getWishlistUseCase());
   const momoPaymentCtrl = new MomoPaymentController(
     container.getGetRentalUseCase(),
-    container.getRentalPaymentRepository()
+    container.getRentalPaymentRepository(),
+    container.getExpirePendingOnlinePaymentsService()
   );
   const optionalBearer = createOptionalBearerAuthMiddleware(accessTokenService);
   const chatRateLimit = rateLimit({

@@ -1,6 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { ContentPageShell } from '../components/content/ContentPageShell'
 import { RentalStatusBadge } from '../components/admin/RentalStatusBadge'
+import { RentalTimeline } from '../components/RentalTimeline'
 import { useAuth } from '../auth/AuthContext'
 import { changePassword, updateProfile } from '../lib/auth.api'
 import { getApiErrorMessage } from '../lib/api'
@@ -617,6 +618,12 @@ export function AccountPage() {
                       </span>
                     )}
                   </div>
+                </div>
+                <div className="pt-2">
+                  <RentalTimeline
+                    rental={detail}
+                    paymentStatus={paymentMap[detail.rentalId]?.status}
+                  />
                 </div>
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
                   <p className="text-slate-500 mb-2">Items</p>

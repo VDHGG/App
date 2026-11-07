@@ -8,6 +8,7 @@ import type { ReturnRentalUseCase } from '@usecase/ReturnRentalUseCase.port';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { DeleteRentalAdminUseCase } from '@usecase/DeleteRentalAdminUseCase.port';
 import type { ExtendRentalService } from '@usecase/ExtendRental.service';
+import type { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { VoucherRepository } from '@port/VoucherRepository.port';
 import type { Pool, RowDataPacket } from 'mysql2/promise';
@@ -36,6 +37,40 @@ function getVietnamTodayYmd(now: Date = new Date()): string {
   return `${y}-${m}-${d}`;
 }
 
+function toRentalYmd(val: Date | string): string {
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      return trimmed;
+    }
+    const parsed = new Date(trimmed);
+    if (!Number.isNaN(parsed.getTime())) {
+      return getVietnamTodayYmd(parsed);
+    }
+    return trimmed.slice(0, 10);
+  }
+  return getVietnamTodayYmd(val);
+}
+
+function addDaysYmd(ymd: string, deltaDays: number): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const yy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(dt.getUTCDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
+function formatDdMm(ymd: string): string {
+  const [, m, d] = ymd.split('-');
+  return `${d}/${m}`;
+}
+
+function formatMmYyyy(ym: string): string {
+  const [y, m] = ym.split('-');
+  return `${m}/${y}`;
+}
+
 export type RouteGuards = {
   admin?: RequestHandler[];
   createRental?: RequestHandler[];
@@ -53,6 +88,7 @@ export class RentalController {
   private readonly extendRental?: ExtendRentalService;
   private readonly voucherRepository?: VoucherRepository;
   private readonly pool?: Pool;
+  private readonly expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService;
 
   constructor(
     createRental: CreateRentalUseCase,
@@ -64,7 +100,8 @@ export class RentalController {
     deleteRentalAdmin: DeleteRentalAdminUseCase,
     extendRental?: ExtendRentalService,
     voucherRepository?: VoucherRepository,
-    pool?: Pool
+    pool?: Pool,
+    expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService
   ) {
     this.createRental = createRental;
     this.activateRental = activateRental;
@@ -76,6 +113,7 @@ export class RentalController {
     this.extendRental = extendRental;
     this.voucherRepository = voucherRepository;
     this.pool = pool;
+    this.expirePendingOnlinePayments = expirePendingOnlinePayments;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
@@ -87,6 +125,7 @@ export class RentalController {
     router.get('/vouchers/active', ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
     router.get('/notifications', ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get('/stats/overview', ...admin, asyncRoute(this.getStatsOverview.bind(this)));
+    router.post('/sweep-expired-momo', ...admin, asyncRoute(this.sweepExpiredMomo.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
     router.patch(
@@ -444,11 +483,45 @@ export class RentalController {
     });
   }
 
-  private async getStatsOverview(_req: Request, res: Response): Promise<void> {
-    const all = await this.listRentals.execute();
-    const rentals = all.rentals;
+  private async sweepExpiredMomo(_req: Request, res: Response): Promise<void> {
+    if (!this.expirePendingOnlinePayments) {
+      res.json({ sweptCount: 0, cancelledRentalIds: [], errors: 0 });
+      return;
+    }
+    const result = await this.expirePendingOnlinePayments.execute();
+    res.json({
+      sweptCount: result.expired,
+      cancelledRentalIds: result.cancelledRentalIds,
+      errors: result.errors,
+    });
+  }
 
-    const totalRentals = all.total ?? rentals.length;
+  private async getStatsOverview(req: Request, res: Response): Promise<void> {
+    const rawPeriod = String(req.query['period'] ?? 'all').trim();
+    const period: '7d' | '30d' | '6m' | 'all' =
+      rawPeriod === '7d' || rawPeriod === '30d' || rawPeriod === '6m' ? rawPeriod : 'all';
+
+    const todayStr = getVietnamTodayYmd();
+    const [ty, tm] = todayStr.split('-').map(Number);
+    const sixMonthsStartDt = new Date(Date.UTC(ty, tm - 1 - 5, 1));
+    const cutoff6m = `${sixMonthsStartDt.getUTCFullYear()}-${String(sixMonthsStartDt.getUTCMonth() + 1).padStart(2, '0')}-01`;
+
+    let cutoffYmd: string | null = null;
+    if (period === '7d') {
+      cutoffYmd = addDaysYmd(todayStr, -6);
+    } else if (period === '30d') {
+      cutoffYmd = addDaysYmd(todayStr, -29);
+    } else if (period === '6m') {
+      cutoffYmd = cutoff6m;
+    }
+
+    const all = await this.listRentals.execute();
+    const rentals =
+      cutoffYmd !== null
+        ? all.rentals.filter((r) => toRentalYmd(r.startDate) >= cutoffYmd)
+        : all.rentals;
+
+    const totalRentals = cutoffYmd !== null ? rentals.length : (all.total ?? rentals.length);
     const statusCounts = {
       RESERVED: 0,
       ACTIVE: 0,
@@ -471,6 +544,79 @@ export class RentalController {
     const totalLateFeesCollected = rentals
       .filter((r) => r.status === 'RETURNED')
       .reduce((sum, r) => sum + Math.max(0, r.totalAmount - r.basePrice), 0);
+
+    type RevenueBucket = {
+      label: string;
+      returnedRevenue: number;
+      activeRevenue: number;
+      totalRevenue: number;
+      rentalCount: number;
+    };
+
+    const buildBucket = (label: string, matched: typeof rentals): RevenueBucket => {
+      const returnedRevenue = matched
+        .filter((r) => r.status === 'RETURNED')
+        .reduce((sum, r) => sum + r.totalAmount, 0);
+      const activeRevenue = matched
+        .filter((r) => r.status === 'ACTIVE' || r.status === 'RESERVED')
+        .reduce((sum, r) => sum + r.totalAmount, 0);
+      const rentalCount = matched.filter((r) => r.status !== 'CANCELLED').length;
+      return {
+        label,
+        returnedRevenue,
+        activeRevenue,
+        totalRevenue: returnedRevenue + activeRevenue,
+        rentalCount,
+      };
+    };
+
+    let revenueSeries: RevenueBucket[] = [];
+    if (period === '7d') {
+      for (let i = 6; i >= 0; i--) {
+        const dayYmd = addDaysYmd(todayStr, -i);
+        const matched = rentals.filter((r) => toRentalYmd(r.startDate) === dayYmd);
+        revenueSeries.push(buildBucket(formatDdMm(dayYmd), matched));
+      }
+    } else if (period === '30d') {
+      for (let b = 0; b < 10; b++) {
+        const startOffset = -29 + b * 3;
+        const endOffset = startOffset + 2;
+        const startYmd = addDaysYmd(todayStr, startOffset);
+        const endYmd = addDaysYmd(todayStr, endOffset);
+        const matched = rentals.filter((r) => {
+          const ymd = toRentalYmd(r.startDate);
+          return ymd >= startYmd && ymd <= endYmd;
+        });
+        revenueSeries.push(buildBucket(formatDdMm(endYmd), matched));
+      }
+    } else {
+      const monthKeys: string[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const dt = new Date(Date.UTC(ty, tm - 1 - i, 1));
+        const ym = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}`;
+        monthKeys.push(ym);
+      }
+      revenueSeries = monthKeys.map((ym) => {
+        const matched = rentals.filter((r) => toRentalYmd(r.startDate).slice(0, 7) === ym);
+        return buildBucket(formatMmYyyy(ym), matched);
+      });
+
+      if (
+        period === 'all' &&
+        revenueSeries.every((b) => b.rentalCount === 0) &&
+        rentals.length > 0
+      ) {
+        const distinctYms = Array.from(
+          new Set(rentals.map((r) => toRentalYmd(r.startDate).slice(0, 7)))
+        )
+          .sort()
+          .slice(-6);
+        revenueSeries = distinctYms.map((ym) => {
+          const matched = rentals.filter((r) => toRentalYmd(r.startDate).slice(0, 7) === ym);
+          return buildBucket(formatMmYyyy(ym), matched);
+        });
+      }
+    }
 
     let momoPaidCount = 0;
     let momoPaidAmountVnd = 0;
@@ -535,6 +681,7 @@ export class RentalController {
     }
 
     res.json({
+      period,
       totalRentals,
       statusCounts,
       overdueCount,
@@ -545,6 +692,7 @@ export class RentalController {
       momoPaidAmountVnd,
       totalCustomers,
       topShoes,
+      revenueSeries,
     });
   }
 }

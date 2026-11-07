@@ -7,6 +7,7 @@ import {
   cancelRental,
   extendRentalAdmin,
   deleteRentalAdmin,
+  sweepExpiredMomoRentals,
   exportRentalsToCsv,
   type ListRentalsQuery,
 } from '../../lib/rentals.api'
@@ -77,6 +78,8 @@ export function RentalsListPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [sweepLoading, setSweepLoading] = useState(false)
+  const [sweepMessage, setSweepMessage] = useState<string | null>(null)
   const [confirmDeleteRental, setConfirmDeleteRental] = useState<RentalSummary | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const [page, setPage] = useState(1)
@@ -275,6 +278,37 @@ export function RentalsListPage() {
     exportRentalsToCsv(rentals, nameMap, toDateString(new Date()))
   }
 
+  const handleSweepExpiredMomo = async () => {
+    setSweepLoading(true)
+    setSweepMessage(null)
+    setActionError(null)
+    try {
+      const res = await sweepExpiredMomoRentals()
+      setSweepMessage(`Đã quét và giải phóng ${res.sweptCount} đơn treo MoMo quá hạn.`)
+      const rentalsRes = await listRentals(rentalQuery)
+      setRentals(rentalsRes.rentals)
+      setListMeta({
+        total: rentalsRes.total,
+        totalPages: rentalsRes.totalPages,
+        pageSize: rentalsRes.pageSize,
+      })
+      if (rentalsRes.rentals.length > 0) {
+        try {
+          const payStatuses = await fetchMomoPaymentStatuses(
+            rentalsRes.rentals.map((r) => r.rentalId)
+          )
+          setPaymentMap(payStatuses.payments)
+        } catch {
+          // ignore
+        }
+      }
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err))
+    } finally {
+      setSweepLoading(false)
+    }
+  }
+
   const handleAction = async (
     rentalId: string,
     action: 'activate' | 'cancel'
@@ -428,7 +462,16 @@ export function RentalsListPage() {
                 </select>
               </div>
             </div>
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex flex-wrap items-center gap-3 shrink-0">
+              <button
+                type="button"
+                disabled={sweepLoading}
+                onClick={() => void handleSweepExpiredMomo()}
+                className="px-3.5 py-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100/80 dark:hover:bg-amber-900/50 text-xs font-bold text-amber-800 dark:text-amber-300 inline-flex items-center gap-1.5 transition-colors disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined text-base">timer_off</span>
+                {sweepLoading ? 'Đang quét…' : 'Quét đơn MoMo quá hạn'}
+              </button>
               <button
                 type="button"
                 onClick={handleExportCsv}
@@ -443,6 +486,19 @@ export function RentalsListPage() {
             </div>
           </div>
         </div>
+
+        {sweepMessage && (
+          <div className="mb-4 p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 text-sm font-semibold flex items-center justify-between">
+            <span>{sweepMessage}</span>
+            <button
+              type="button"
+              onClick={() => setSweepMessage(null)}
+              className="text-xs underline ml-4"
+            >
+              Đóng
+            </button>
+          </div>
+        )}
 
         {actionError && (
           <div className="mb-4 p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">

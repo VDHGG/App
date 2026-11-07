@@ -22,13 +22,17 @@ export class ExpirePendingOnlinePaymentsService {
     this.cancelRental = cancelRental;
   }
 
-  async execute(now: Date = new Date()): Promise<{ expired: number; errors: number }> {
+  async execute(
+    now: Date = new Date()
+  ): Promise<{ expired: number; cancelledRentalIds: string[]; errors: number }> {
     const batch = await this.rentalPayments.listPendingExpired(now, 50);
     let expired = 0;
     let errors = 0;
+    const cancelledRentalIds: string[] = [];
 
     for (const p of batch) {
       try {
+        let wasCancelled = false;
         await this.transactionManager.runInTransaction(async () => {
           const rental = await this.rentals.findById(p.rentalId);
           if (!rental) {
@@ -40,19 +44,23 @@ export class ExpirePendingOnlinePaymentsService {
             await this.cancelRental.execute({
               rentalId: p.rentalId,
               cancelledAt: now,
-              note: 'Online payment not completed within the allowed time.',
+              note: 'Tự động hủy đơn do quá hạn thanh toán MoMo (15 phút).',
               requestingCustomerId: undefined,
             });
+            wasCancelled = true;
           }
 
           await this.rentalPayments.setStatus(p.id, 'EXPIRED');
         });
+        if (wasCancelled) {
+          cancelledRentalIds.push(p.rentalId);
+        }
         expired += 1;
       } catch {
         errors += 1;
       }
     }
 
-    return { expired, errors };
+    return { expired, cancelledRentalIds, errors };
   }
 }
