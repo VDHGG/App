@@ -1728,7 +1728,7 @@ class MysqlRentalRepository {
     await this.conn().query("DELETE FROM rentals WHERE customer_id = ?", [customerId]);
   }
 }
-function mapRow(r) {
+function mapRow$1(r) {
   return {
     id: r.id,
     rentalId: r.rental_id,
@@ -1814,7 +1814,7 @@ class MysqlRentalPaymentRepository {
        FROM rental_payments WHERE gateway_order_id = ? LIMIT 1`,
       [gatewayOrderId]
     );
-    return rows.length > 0 ? mapRow(rows[0]) : null;
+    return rows.length > 0 ? mapRow$1(rows[0]) : null;
   }
   async updateFromIpn(id, patch) {
     await this.conn().query(
@@ -1848,13 +1848,119 @@ class MysqlRentalPaymentRepository {
        LIMIT ?`,
       [before, limit]
     );
-    return rows.map(mapRow);
+    return rows.map(mapRow$1);
   }
   async setStatus(id, status) {
     await this.conn().query(`UPDATE rental_payments SET status = ?, updated_at = NOW() WHERE id = ?`, [
       status,
       id
     ]);
+  }
+}
+function toYmd(val) {
+  if (!val) return null;
+  if (typeof val === "string") return val.slice(0, 10);
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, "0");
+    const d = String(val.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).slice(0, 10);
+}
+function mapRow(r) {
+  return {
+    code: String(r["code"]),
+    discountPercent: Number(r["discount_percent"]),
+    description: String(r["description"]),
+    isActive: Boolean(r["is_active"]),
+    maxUses: r["max_uses"] !== null && r["max_uses"] !== void 0 ? Number(r["max_uses"]) : null,
+    usedCount: Number(r["used_count"] || 0),
+    expiresAt: toYmd(r["expires_at"]),
+    createdAt: r["created_at"] ? new Date(r["created_at"]).toISOString() : (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+class MysqlVoucherRepository {
+  pool;
+  constructor(pool) {
+    this.pool = pool;
+  }
+  conn() {
+    return transactionContext.getStore() ?? this.pool;
+  }
+  async findByCode(code) {
+    const key = code.trim().toUpperCase();
+    const [rows] = await this.conn().query(
+      `SELECT code, discount_percent, description, is_active, max_uses, used_count, expires_at, created_at
+       FROM vouchers
+       WHERE code = ?
+       LIMIT 1`,
+      [key]
+    );
+    if (rows.length === 0) return null;
+    return mapRow(rows[0]);
+  }
+  async listAll() {
+    const [rows] = await this.conn().query(
+      `SELECT code, discount_percent, description, is_active, max_uses, used_count, expires_at, created_at
+       FROM vouchers
+       ORDER BY code ASC`
+    );
+    return rows.map(mapRow);
+  }
+  async listActive(todayDateStr) {
+    const [rows] = await this.conn().query(
+      `SELECT code, discount_percent, description, is_active, max_uses, used_count, expires_at, created_at
+       FROM vouchers
+       WHERE is_active = 1
+         AND (expires_at IS NULL OR expires_at >= ?)
+         AND (max_uses IS NULL OR used_count < max_uses)
+       ORDER BY code ASC`,
+      [todayDateStr]
+    );
+    return rows.map(mapRow);
+  }
+  async save(input) {
+    const code = input.code.trim().toUpperCase();
+    await this.conn().query(
+      `INSERT INTO vouchers (code, discount_percent, description, is_active, max_uses, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         discount_percent = VALUES(discount_percent),
+         description      = VALUES(description),
+         is_active        = VALUES(is_active),
+         max_uses         = VALUES(max_uses),
+         expires_at       = VALUES(expires_at),
+         updated_at       = NOW()`,
+      [
+        code,
+        input.discountPercent,
+        input.description,
+        input.isActive ? 1 : 0,
+        input.maxUses,
+        input.expiresAt
+      ]
+    );
+    const saved = await this.findByCode(code);
+    if (!saved) {
+      throw new Error(`Failed to retrieve saved voucher ${code}`);
+    }
+    return saved;
+  }
+  async incrementUsedCount(code) {
+    const key = code.trim().toUpperCase();
+    await this.conn().query(
+      `UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?`,
+      [key]
+    );
+  }
+  async deleteByCode(code) {
+    const key = code.trim().toUpperCase();
+    const [result] = await this.conn().query(
+      `DELETE FROM vouchers WHERE code = ?`,
+      [key]
+    );
+    return result.affectedRows > 0;
   }
 }
 class MysqlWishlistRepository {
@@ -2292,6 +2398,17 @@ class GetRentalService {
         throw new NotFoundError("Rental", request.rentalId);
       }
     }
+    const now = /* @__PURE__ */ new Date();
+    const isOverdue = rental.isOverdue(now);
+    const endNorm = new Date(
+      rental.period.endDate.getFullYear(),
+      rental.period.endDate.getMonth(),
+      rental.period.endDate.getDate()
+    ).getTime();
+    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 864e5)) : 0;
+    const dailyRate = rental.basePrice / rental.period.durationInDays;
+    const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : rental.lateFee;
     return {
       rentalId: rental.id,
       customerId: rental.customerId,
@@ -2302,6 +2419,9 @@ class GetRentalService {
       totalAmount: rental.totalAmount,
       startDate: rental.period.startDate,
       endDate: rental.period.endDate,
+      isOverdue,
+      overdueDays,
+      estimatedLateFee,
       items: rental.items.map((item) => ({
         shoeId: item.shoeId,
         variantId: item.variantId,
@@ -2409,17 +2529,33 @@ class ListRentalsService {
       ...limit !== void 0 ? { limit, offset } : {}
     });
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
+    const now = /* @__PURE__ */ new Date();
+    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     return {
-      rentals: items.map((r) => ({
-        rentalId: r.id,
-        customerId: r.customerId,
-        status: r.status,
-        totalItems: r.totalItems,
-        basePrice: r.basePrice,
-        totalAmount: r.totalAmount,
-        startDate: r.period.startDate,
-        endDate: r.period.endDate
-      })),
+      rentals: items.map((r) => {
+        const isOverdue = r.isOverdue(now);
+        const endNorm = new Date(
+          r.period.endDate.getFullYear(),
+          r.period.endDate.getMonth(),
+          r.period.endDate.getDate()
+        ).getTime();
+        const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 864e5)) : 0;
+        const dailyRate = r.basePrice / r.period.durationInDays;
+        const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
+        return {
+          rentalId: r.id,
+          customerId: r.customerId,
+          status: r.status,
+          totalItems: r.totalItems,
+          basePrice: r.basePrice,
+          totalAmount: r.totalAmount,
+          startDate: r.period.startDate,
+          endDate: r.period.endDate,
+          isOverdue,
+          overdueDays,
+          estimatedLateFee
+        };
+      }),
       total,
       page: paginate ? page : 1,
       pageSize: effectivePageSize,
@@ -2539,12 +2675,14 @@ class CreateRentalService {
   rentalRepository;
   availabilityChecker;
   idGenerator;
-  constructor(customerRepository, shoeRepository, rentalRepository, availabilityChecker, idGenerator) {
+  voucherRepository;
+  constructor(customerRepository, shoeRepository, rentalRepository, availabilityChecker, idGenerator, voucherRepository) {
     this.customerRepository = customerRepository;
     this.shoeRepository = shoeRepository;
     this.rentalRepository = rentalRepository;
     this.availabilityChecker = availabilityChecker;
     this.idGenerator = idGenerator;
+    this.voucherRepository = voucherRepository;
   }
   async execute(request) {
     const rentalPeriod = new RentalPeriod(request.startDate, request.endDate);
@@ -2552,8 +2690,30 @@ class CreateRentalService {
     const customer = await this.customerRepository.findById(request.customerId);
     if (!customer) throw new NotFoundError("Customer", request.customerId);
     const rankDiscount = getDiscountPercentByRank(customer.rank);
-    const voucher = resolveVoucher(request.voucherCode);
-    const totalDiscountPercent = Math.min(50, rankDiscount + (voucher?.discountPercent ?? 0));
+    let appliedVoucherCode = null;
+    let voucherDiscountPercent = 0;
+    const trimmedCode = request.voucherCode?.trim();
+    if (trimmedCode) {
+      if (this.voucherRepository) {
+        const normalized = trimmedCode.toUpperCase();
+        const v = await this.voucherRepository.findByCode(normalized);
+        const now = /* @__PURE__ */ new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
+        if (!isValid) {
+          throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
+        }
+        appliedVoucherCode = v.code;
+        voucherDiscountPercent = v.discountPercent;
+      } else {
+        const v = resolveVoucher(trimmedCode);
+        if (v) {
+          appliedVoucherCode = v.code;
+          voucherDiscountPercent = v.discountPercent;
+        }
+      }
+    }
+    const totalDiscountPercent = Math.min(50, rankDiscount + voucherDiscountPercent);
     const loadedShoes = /* @__PURE__ */ new Map();
     const originalRentalItems = [];
     for (const requestedItem of request.items) {
@@ -2589,8 +2749,8 @@ class CreateRentalService {
       if (rankDiscount > 0) {
         tagParts.push(`Hạng ${customer.rank} -${rankDiscount}%`);
       }
-      if (voucher) {
-        tagParts.push(`Voucher ${voucher.code} -${voucher.discountPercent}%`);
+      if (appliedVoucherCode) {
+        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
       }
       const tag = `[Ưu đãi: ${tagParts.join(", ")}]`;
       noteText = noteText ? `${noteText} ${tag}` : tag;
@@ -2605,6 +2765,9 @@ class CreateRentalService {
     customer.registerRental(totalRequestedQuantity);
     await this.customerRepository.save(customer);
     await this.rentalRepository.save(rental);
+    if (appliedVoucherCode && this.voucherRepository) {
+      await this.voucherRepository.incrementUsedCount(appliedVoucherCode);
+    }
     const discountAmount = Math.max(0, originalBasePrice - rental.basePrice);
     return {
       rentalId: rental.id,
@@ -2619,7 +2782,7 @@ class CreateRentalService {
       discountPercent: totalDiscountPercent,
       discountAmount,
       customerRank: customer.rank,
-      appliedVoucher: voucher?.code ?? null
+      appliedVoucher: appliedVoucherCode
     };
   }
   async loadShoeForVariant(variantId, loadedShoes) {
@@ -3382,6 +3545,7 @@ class MysqlContainer {
   shoeRepository;
   rentalRepository;
   rentalPaymentRepository;
+  voucherRepository;
   expirePendingOnlinePayments;
   wishlistRepository;
   transactionManager;
@@ -3401,6 +3565,7 @@ class MysqlContainer {
     this.shoeRepository = new MysqlShoeRepository(this.pool);
     this.rentalRepository = new MysqlRentalRepository(this.pool);
     this.rentalPaymentRepository = new MysqlRentalPaymentRepository(this.pool);
+    this.voucherRepository = new MysqlVoucherRepository(this.pool);
     this.transactionManager = new MysqlTransactionManager(this.pool);
     this.expirePendingOnlinePayments = new ExpirePendingOnlinePaymentsService(
       this.transactionManager,
@@ -3469,7 +3634,8 @@ class MysqlContainer {
       this.shoeRepository,
       this.rentalRepository,
       new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy()),
-      new UuidGenerator("R")
+      new UuidGenerator("R"),
+      this.voucherRepository
     );
   }
   getReturnRentalUseCase() {
@@ -3570,6 +3736,9 @@ class MysqlContainer {
   }
   getRentalAvailabilityChecker() {
     return new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy());
+  }
+  getVoucherRepository() {
+    return this.voucherRepository;
   }
   getPool() {
     return this.pool;
@@ -4103,7 +4272,9 @@ class RentalController {
   getRental;
   deleteRentalAdmin;
   extendRental;
-  constructor(createRental, activateRental, returnRental, cancelRental, listRentals, getRental, deleteRentalAdmin, extendRental) {
+  voucherRepository;
+  pool;
+  constructor(createRental, activateRental, returnRental, cancelRental, listRentals, getRental, deleteRentalAdmin, extendRental, voucherRepository, pool) {
     this.createRental = createRental;
     this.activateRental = activateRental;
     this.returnRental = returnRental;
@@ -4112,6 +4283,8 @@ class RentalController {
     this.getRental = getRental;
     this.deleteRentalAdmin = deleteRentalAdmin;
     this.extendRental = extendRental;
+    this.voucherRepository = voucherRepository;
+    this.pool = pool;
   }
   routes(transactionManager, guards) {
     const router = Router();
@@ -4119,6 +4292,8 @@ class RentalController {
     const createRental = guards?.createRental ?? [];
     const customer = guards?.customer ?? [];
     router.get("/vouchers/validate", ...createRental, asyncRoute(this.validateVoucher.bind(this)));
+    router.get("/vouchers/active", ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
+    router.get("/stats/overview", ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get("/me", ...customer, asyncRoute(this.listMine.bind(this)));
     router.get("/me/:id", ...customer, asyncRoute(this.getMine.bind(this)));
     router.patch(
@@ -4302,6 +4477,23 @@ class RentalController {
     if (!code) {
       throw new ValidationError("Voucher code is required.");
     }
+    if (this.voucherRepository) {
+      const normalized = code.toUpperCase();
+      const v = await this.voucherRepository.findByCode(normalized);
+      const now = /* @__PURE__ */ new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
+      if (!isValid) {
+        throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
+      }
+      res.json({
+        valid: true,
+        code: v.code,
+        discountPercent: v.discountPercent,
+        description: v.description
+      });
+      return;
+    }
     const voucher = resolveVoucher(code);
     if (!voucher) {
       throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
@@ -4311,6 +4503,93 @@ class RentalController {
       code: voucher.code,
       discountPercent: voucher.discountPercent,
       description: voucher.description
+    });
+  }
+  async listActiveVouchers(_req, res) {
+    const now = /* @__PURE__ */ new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
+    res.json({ vouchers });
+  }
+  async getStatsOverview(_req, res) {
+    const all = await this.listRentals.execute();
+    const rentals = all.rentals;
+    const totalRentals = all.total ?? rentals.length;
+    const statusCounts = {
+      RESERVED: 0,
+      ACTIVE: 0,
+      RETURNED: 0,
+      CANCELLED: 0
+    };
+    for (const r of rentals) {
+      if (r.status in statusCounts) {
+        statusCounts[r.status] += 1;
+      }
+    }
+    const overdueCount = rentals.filter((r) => r.isOverdue).length;
+    const totalRevenueReturned = rentals.filter((r) => r.status === "RETURNED").reduce((sum, r) => sum + r.totalAmount, 0);
+    const activeExpectedRevenue = rentals.filter((r) => r.status === "ACTIVE" || r.status === "RESERVED").reduce((sum, r) => sum + r.totalAmount, 0);
+    const totalLateFeesCollected = rentals.filter((r) => r.status === "RETURNED").reduce((sum, r) => sum + Math.max(0, r.totalAmount - r.basePrice), 0);
+    let momoPaidCount = 0;
+    let momoPaidAmountVnd = 0;
+    let totalCustomers = 0;
+    let topShoes = [];
+    if (this.pool) {
+      try {
+        const [paymentRows] = await this.pool.query(
+          `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_vnd), 0) AS total_vnd FROM rental_payments WHERE status = 'PAID'`
+        );
+        if (paymentRows.length > 0) {
+          momoPaidCount = Number(paymentRows[0]["cnt"] || 0);
+          momoPaidAmountVnd = Number(paymentRows[0]["total_vnd"] || 0);
+        }
+      } catch {
+      }
+      try {
+        const [custRows] = await this.pool.query(
+          `SELECT COUNT(*) AS cnt FROM customers WHERE is_active = 1`
+        );
+        if (custRows.length > 0) {
+          totalCustomers = Number(custRows[0]["cnt"] || 0);
+        }
+      } catch {
+      }
+      try {
+        const [shoeRows] = await this.pool.query(
+          `SELECT
+             ri.shoe_id AS shoeId,
+             MAX(ri.shoe_name) AS shoeName,
+             COUNT(DISTINCT ri.rental_id) AS totalRentalsCount,
+             COALESCE(SUM(ri.quantity), 0) AS totalUnitsRented,
+             (SELECT ROUND(AVG(sr.rating), 1) FROM shoe_reviews sr WHERE sr.shoe_id = ri.shoe_id) AS averageRating
+           FROM rental_items ri
+           INNER JOIN rentals r ON r.rental_id = ri.rental_id
+           WHERE r.status IN ('RESERVED', 'ACTIVE', 'RETURNED')
+           GROUP BY ri.shoe_id
+           ORDER BY totalUnitsRented DESC, totalRentalsCount DESC
+           LIMIT 5`
+        );
+        topShoes = shoeRows.map((row) => ({
+          shoeId: String(row["shoeId"]),
+          shoeName: String(row["shoeName"]),
+          totalRentalsCount: Number(row["totalRentalsCount"] || 0),
+          totalUnitsRented: Number(row["totalUnitsRented"] || 0),
+          averageRating: row["averageRating"] !== null ? Number(row["averageRating"]) : null
+        }));
+      } catch {
+      }
+    }
+    res.json({
+      totalRentals,
+      statusCounts,
+      overdueCount,
+      totalRevenueReturned,
+      activeExpectedRevenue,
+      totalLateFeesCollected,
+      momoPaidCount,
+      momoPaidAmountVnd,
+      totalCustomers,
+      topShoes
     });
   }
 }
@@ -4981,6 +5260,77 @@ class MomoPaymentController {
     res.status(200).json({ resultCode: 0, message: "Success" });
   }
 }
+const CreateVoucherSchema = z.object({
+  code: z.string().trim().min(2).max(32).regex(/^[A-Za-z0-9_-]+$/, "Mã voucher chỉ bao gồm chữ cái, số, gạch dưới và gạch nối."),
+  discountPercent: z.number().int().min(1).max(50),
+  description: z.string().trim().min(1).max(255),
+  isActive: z.boolean().optional().default(true),
+  maxUses: z.number().int().min(1).nullable().optional(),
+  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").nullable().optional()
+});
+const UpdateVoucherSchema = z.object({
+  discountPercent: z.number().int().min(1).max(50).optional(),
+  description: z.string().trim().min(1).max(255).optional(),
+  isActive: z.boolean().optional(),
+  maxUses: z.number().int().min(1).nullable().optional(),
+  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").nullable().optional()
+});
+class VoucherController {
+  voucherRepo;
+  constructor(voucherRepo) {
+    this.voucherRepo = voucherRepo;
+  }
+  routes(adminGuards) {
+    const router = Router();
+    router.get("/", ...adminGuards, asyncRoute(this.listAll.bind(this)));
+    router.post("/", ...adminGuards, asyncRoute(this.create.bind(this)));
+    router.patch("/:code", ...adminGuards, asyncRoute(this.update.bind(this)));
+    router.delete("/:code", ...adminGuards, asyncRoute(this.delete.bind(this)));
+    return router;
+  }
+  async listAll(_req, res) {
+    const vouchers = await this.voucherRepo.listAll();
+    res.json({ vouchers });
+  }
+  async create(req, res) {
+    const body = CreateVoucherSchema.parse(req.body);
+    const code = body.code.toUpperCase();
+    const saved = await this.voucherRepo.save({
+      code,
+      discountPercent: body.discountPercent,
+      description: body.description,
+      isActive: body.isActive ?? true,
+      maxUses: body.maxUses ?? null,
+      expiresAt: body.expiresAt ?? null
+    });
+    res.status(201).json(saved);
+  }
+  async update(req, res) {
+    const rawCode = String(req.params["code"] ?? "").trim().toUpperCase();
+    const existing = await this.voucherRepo.findByCode(rawCode);
+    if (!existing) {
+      throw new NotFoundError("Voucher", rawCode);
+    }
+    const body = UpdateVoucherSchema.parse(req.body);
+    const updated = await this.voucherRepo.save({
+      code: existing.code,
+      discountPercent: body.discountPercent ?? existing.discountPercent,
+      description: body.description ?? existing.description,
+      isActive: body.isActive !== void 0 ? body.isActive : existing.isActive,
+      maxUses: body.maxUses !== void 0 ? body.maxUses : existing.maxUses,
+      expiresAt: body.expiresAt !== void 0 ? body.expiresAt : existing.expiresAt
+    });
+    res.json(updated);
+  }
+  async delete(req, res) {
+    const rawCode = String(req.params["code"] ?? "").trim().toUpperCase();
+    const deleted = await this.voucherRepo.deleteByCode(rawCode);
+    if (!deleted) {
+      throw new NotFoundError("Voucher", rawCode);
+    }
+    res.status(204).end();
+  }
+}
 const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
   {
     name: "list_my_rentals",
@@ -5431,8 +5781,11 @@ function createRouter(container2) {
     container2.getListRentalsUseCase(),
     container2.getGetRentalUseCase(),
     container2.getDeleteRentalAdminUseCase(),
-    container2.getExtendRentalUseCase()
+    container2.getExtendRentalUseCase(),
+    container2.getVoucherRepository(),
+    container2.getPool()
   );
+  const voucherCtrl = new VoucherController(container2.getVoucherRepository());
   const catalogAdminCtrl = new CatalogAdminController(container2.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container2.getWishlistUseCase());
   const momoPaymentCtrl = new MomoPaymentController(
@@ -5463,6 +5816,7 @@ function createRouter(container2) {
   router.use("/customers", customerCtrl.routes(tx, { admin: adminGuard }));
   router.use("/system-users", adminSystemUserCtrl.routes(tx, { admin: adminGuard }));
   router.use("/shoe-images", shoeImageCtrl.routes({ admin: adminGuard }));
+  router.use("/vouchers", voucherCtrl.routes(adminGuard));
   router.use(
     "/rentals",
     rentalCtrl.routes(tx, {

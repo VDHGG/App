@@ -9,6 +9,7 @@ import { CatalogAdminController } from './CatalogAdminController.adapter';
 import { AdminSystemUserController } from './AdminSystemUserController.adapter';
 import { WishlistController } from './WishlistController.adapter';
 import { MomoPaymentController } from './MomoPaymentController.adapter';
+import { VoucherController } from './VoucherController.adapter';
 import { ChatController } from './ChatController.adapter';
 import {
   createBearerAuthMiddleware,
@@ -109,8 +110,11 @@ export function createRouter(container: MysqlContainer): Router {
     container.getListRentalsUseCase(),
     container.getGetRentalUseCase(),
     container.getDeleteRentalAdminUseCase(),
-    container.getExtendRentalUseCase()
+    container.getExtendRentalUseCase(),
+    container.getVoucherRepository(),
+    container.getPool()
   );
+  const voucherCtrl = new VoucherController(container.getVoucherRepository());
   const catalogAdminCtrl = new CatalogAdminController(container.getCatalogAdminRepository());
   const wishlistCtrl = new WishlistController(container.getWishlistUseCase());
   const momoPaymentCtrl = new MomoPaymentController(
@@ -142,6 +146,7 @@ export function createRouter(container: MysqlContainer): Router {
   router.use('/customers', customerCtrl.routes(tx, { admin: adminGuard }));
   router.use('/system-users', adminSystemUserCtrl.routes(tx, { admin: adminGuard }));
   router.use('/shoe-images', shoeImageCtrl.routes({ admin: adminGuard }));
+  router.use('/vouchers', voucherCtrl.routes(adminGuard));
   router.use(
     '/rentals',
     rentalCtrl.routes(tx, {

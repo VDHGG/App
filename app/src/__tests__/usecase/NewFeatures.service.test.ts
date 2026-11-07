@@ -17,10 +17,13 @@ import { InMemoryCustomerRepository } from '@adapter/persistence/InMemoryCustome
 import { InMemoryRentalRepository } from '@adapter/persistence/InMemoryRentalRepository.adapter';
 import { InMemoryShoeRepository } from '@adapter/persistence/InMemoryShoeRepository.adapter';
 import { InMemoryRentalAvailabilityChecker } from '@adapter/persistence/InMemoryRentalAvailabilityChecker.adapter';
+import { InMemoryVoucherRepository } from '@adapter/persistence/InMemoryVoucherRepository.adapter';
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import { CreateRentalService } from '@usecase/CreateRental.service';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
 import { ExtendRentalService } from '@usecase/ExtendRental.service';
+import { ListRentalsService } from '@usecase/ListRentals.service';
+import { GetRentalService } from '@usecase/GetRental.service';
 import { transactionalRoute } from '@adapter/http/middleware/routeMiddleware';
 import type { TransactionManager } from '@port/TransactionManager.port';
 import type { Request, Response, NextFunction } from 'express';
@@ -835,6 +838,240 @@ describe('New Features - Unit Tests', () => {
       expect(sent).toBe(false);
       expect(caughtError).toBeInstanceOf(Error);
       expect((caughtError as Error).message).toBe('Database commit failure');
+    });
+  });
+
+  describe('Phase D: DB-backed Voucher Management & CreateRentalService', () => {
+    let customerRepo: InMemoryCustomerRepository;
+    let shoeRepo: InMemoryShoeRepository;
+    let rentalRepo: InMemoryRentalRepository;
+    let checker: InMemoryRentalAvailabilityChecker;
+    let voucherRepo: InMemoryVoucherRepository;
+    let service: CreateRentalService;
+
+    beforeEach(async () => {
+      customerRepo = new InMemoryCustomerRepository();
+      shoeRepo = new InMemoryShoeRepository();
+      rentalRepo = new InMemoryRentalRepository();
+      checker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
+      voucherRepo = new InMemoryVoucherRepository();
+      service = new CreateRentalService(
+        customerRepo,
+        shoeRepo,
+        rentalRepo,
+        checker,
+        new ShortIdGenerator('R'),
+        voucherRepo
+      );
+
+      await customerRepo.save(
+        new Customer({
+          id: 'C_BRONZE',
+          fullName: 'Bronze User',
+          email: 'bronze@test.com',
+          rank: CustomerRank.BRONZE,
+        })
+      );
+
+      const shoe = new Shoe({
+        id: 'S001',
+        name: 'Runner',
+        brand: 'Nike',
+        category: 'Running',
+        pricePerDay: 100000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V001',
+          size: 42,
+          color: 'Black',
+          totalQuantity: 20,
+          availableQuantity: 20,
+        })
+      );
+      await shoeRepo.save(shoe);
+    });
+
+    it('applies dynamically created active voucher and increments usedCount', async () => {
+      await voucherRepo.save({
+        code: 'FLASH30',
+        discountPercent: 30,
+        description: 'Flash sale 30%',
+        isActive: true,
+        maxUses: 10,
+        expiresAt: '2099-12-31',
+      });
+
+      const res = await service.execute({
+        customerId: 'C_BRONZE',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-06-01'),
+        endDate: new Date('2026-06-01'),
+        voucherCode: 'flash30',
+      });
+
+      expect(res.discountPercent).toBe(30);
+      expect(res.appliedVoucher).toBe('FLASH30');
+      expect(res.basePrice).toBe(70000);
+
+      const stored = await voucherRepo.findByCode('FLASH30');
+      expect(stored?.usedCount).toBe(1);
+    });
+
+    it('rejects expired voucher', async () => {
+      await voucherRepo.save({
+        code: 'EXPIRED10',
+        discountPercent: 10,
+        description: 'Expired voucher',
+        isActive: true,
+        maxUses: null,
+        expiresAt: '2020-01-01',
+      });
+
+      await expect(
+        service.execute({
+          customerId: 'C_BRONZE',
+          items: [{ variantId: 'V001', quantity: 1 }],
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2026-06-01'),
+          voucherCode: 'EXPIRED10',
+        })
+      ).rejects.toThrow(/Mã giảm giá không hợp lệ hoặc đã hết hạn/);
+    });
+
+    it('rejects voucher when maxUses is exhausted', async () => {
+      await voucherRepo.save({
+        code: 'ONCE20',
+        discountPercent: 20,
+        description: 'Single use voucher',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: null,
+      });
+
+      // 1st use succeeds
+      const first = await service.execute({
+        customerId: 'C_BRONZE',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-06-01'),
+        endDate: new Date('2026-06-01'),
+        voucherCode: 'ONCE20',
+      });
+      expect(first.appliedVoucher).toBe('ONCE20');
+
+      // 2nd use rejected
+      await expect(
+        service.execute({
+          customerId: 'C_BRONZE',
+          items: [{ variantId: 'V001', quantity: 1 }],
+          startDate: new Date('2026-06-02'),
+          endDate: new Date('2026-06-02'),
+          voucherCode: 'ONCE20',
+        })
+      ).rejects.toThrow(/Mã giảm giá không hợp lệ hoặc đã hết hạn/);
+    });
+
+    it('rejects inactive voucher', async () => {
+      await voucherRepo.save({
+        code: 'DISABLED15',
+        discountPercent: 15,
+        description: 'Disabled voucher',
+        isActive: false,
+        maxUses: null,
+        expiresAt: null,
+      });
+
+      await expect(
+        service.execute({
+          customerId: 'C_BRONZE',
+          items: [{ variantId: 'V001', quantity: 1 }],
+          startDate: new Date('2026-06-01'),
+          endDate: new Date('2026-06-01'),
+          voucherCode: 'DISABLED15',
+        })
+      ).rejects.toThrow(/Mã giảm giá không hợp lệ hoặc đã hết hạn/);
+    });
+  });
+
+  describe('Phase C: Overdue Late-Fee Preview in ListRentals & GetRental', () => {
+    let rentalRepo: InMemoryRentalRepository;
+    let listService: ListRentalsService;
+    let getService: GetRentalService;
+
+    beforeEach(async () => {
+      rentalRepo = new InMemoryRentalRepository();
+      listService = new ListRentalsService(rentalRepo);
+      getService = new GetRentalService(rentalRepo);
+
+      // Overdue rental (Jan 1-5, 2020)
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_OVERDUE',
+          customerId: 'C001',
+          items: [
+            new RentalItem({
+              shoeId: 'S001',
+              variantId: 'V001',
+              shoeName: 'Nike',
+              size: 42,
+              color: 'Black',
+              pricePerDay: 100000,
+              quantity: 1,
+            }),
+          ],
+          period: new RentalPeriod(new Date('2020-01-01'), new Date('2020-01-05')),
+          status: RentalStatus.ACTIVE,
+          activatedAt: new Date('2020-01-01'),
+        })
+      );
+
+      // Current/future rental (non-overdue)
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_FUTURE',
+          customerId: 'C001',
+          items: [
+            new RentalItem({
+              shoeId: 'S001',
+              variantId: 'V001',
+              shoeName: 'Nike',
+              size: 42,
+              color: 'Black',
+              pricePerDay: 100000,
+              quantity: 1,
+            }),
+          ],
+          period: new RentalPeriod(new Date('2099-01-01'), new Date('2099-01-05')),
+          status: RentalStatus.ACTIVE,
+          activatedAt: new Date('2099-01-01'),
+        })
+      );
+    });
+
+    it('returns isOverdue, overdueDays, and estimatedLateFee in ListRentalsService', async () => {
+      const res = await listService.execute();
+      const overdue = res.rentals.find((r) => r.rentalId === 'R_OVERDUE');
+      const future = res.rentals.find((r) => r.rentalId === 'R_FUTURE');
+
+      expect(overdue?.isOverdue).toBe(true);
+      expect(overdue?.overdueDays).toBeGreaterThan(0);
+      expect(overdue?.estimatedLateFee).toBeGreaterThan(0);
+
+      expect(future?.isOverdue).toBe(false);
+      expect(future?.overdueDays).toBe(0);
+      expect(future?.estimatedLateFee).toBe(0);
+    });
+
+    it('returns isOverdue, overdueDays, and estimatedLateFee in GetRentalService', async () => {
+      const overdue = await getService.execute({ rentalId: 'R_OVERDUE' });
+      expect(overdue.isOverdue).toBe(true);
+      expect(overdue.overdueDays).toBeGreaterThan(0);
+      expect(overdue.estimatedLateFee).toBeGreaterThan(0);
+
+      const future = await getService.execute({ rentalId: 'R_FUTURE' });
+      expect(future.isOverdue).toBe(false);
+      expect(future.overdueDays).toBe(0);
+      expect(future.estimatedLateFee).toBe(0);
     });
   });
 });

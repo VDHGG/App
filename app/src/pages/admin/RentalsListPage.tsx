@@ -95,6 +95,13 @@ export function RentalsListPage() {
   const [extendLoading, setExtendLoading] = useState(false)
   const [extendError, setExtendError] = useState<string | null>(null)
 
+  // Return rental modal state
+  const [returnRentalTarget, setReturnRentalTarget] = useState<RentalSummary | null>(null)
+  const [returnDate, setReturnDate] = useState('')
+  const [returnNote, setReturnNote] = useState('')
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnError, setReturnError] = useState<string | null>(null)
+
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
   useEffect(() => {
@@ -170,6 +177,63 @@ export function RentalsListPage() {
       setExtendError(getApiErrorMessage(err))
     } finally {
       setExtendLoading(false)
+    }
+  }
+
+  const openReturn = (r: RentalSummary) => {
+    setReturnRentalTarget(r)
+    setReturnDate(toDateString(new Date()))
+    setReturnNote('')
+    setReturnError(null)
+  }
+
+  const closeReturn = () => {
+    setReturnRentalTarget(null)
+    setReturnError(null)
+  }
+
+  const returnCalculation = useMemo(() => {
+    if (!returnRentalTarget || !returnDate) {
+      return { overdueDays: 0, lateFee: 0, totalPayable: 0 }
+    }
+    const startD = new Date(returnRentalTarget.startDate)
+    const endD = new Date(returnRentalTarget.endDate)
+    const retD = new Date(`${returnDate}T00:00:00`)
+
+    const startNorm = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime()
+    const endNorm = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime()
+    const retNorm = new Date(retD.getFullYear(), retD.getMonth(), retD.getDate()).getTime()
+
+    const overdueDays = Math.max(0, Math.round((retNorm - endNorm) / 86400000))
+    const rentalDays = Math.max(1, Math.round((endNorm - startNorm) / 86400000) + 1)
+    const dailyRate = returnRentalTarget.basePrice / rentalDays
+    const lateFee = Math.round(overdueDays * dailyRate * 0.5)
+    const totalPayable = returnRentalTarget.basePrice + lateFee
+
+    return { overdueDays, lateFee, totalPayable }
+  }, [returnRentalTarget, returnDate])
+
+  const confirmReturn = async () => {
+    if (!returnRentalTarget || !returnDate) return
+    setReturnLoading(true)
+    setReturnError(null)
+    try {
+      await returnRental(returnRentalTarget.rentalId, {
+        returnedAt: returnDate,
+        note: returnNote.trim() || undefined,
+      })
+      closeReturn()
+      const res = await listRentals(rentalQuery)
+      setRentals(res.rentals)
+      setListMeta({
+        total: res.total,
+        totalPages: res.totalPages,
+        pageSize: res.pageSize,
+      })
+    } catch (err: unknown) {
+      setReturnError(getApiErrorMessage(err))
+    } finally {
+      setReturnLoading(false)
     }
   }
 
@@ -411,7 +475,12 @@ export function RentalsListPage() {
                         {formatDate(r.startDate)}
                       </td>
                       <td className="px-6 py-4 text-sm text-slate-500">
-                        {formatDurationDays(r.startDate, r.endDate)}
+                        <div>{formatDurationDays(r.startDate, r.endDate)}</div>
+                        {r.isOverdue && (r.overdueDays ?? 0) > 0 && (
+                          <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                            Quá hạn {r.overdueDays}d (+{formatCurrency(r.estimatedLateFee ?? 0)})
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <RentalStatusBadge status={r.status} />
@@ -459,10 +528,10 @@ export function RentalsListPage() {
                           {r.status === 'ACTIVE' && (
                             <button
                               type="button"
-                              onClick={() => handleAction(r.rentalId, 'return')}
+                              onClick={() => openReturn(r)}
                               disabled={actionLoading === r.rentalId}
                               className="p-1 hover:text-blue-600 transition-colors disabled:opacity-50"
-                              title="Return"
+                              title="Xác nhận trả giày"
                             >
                               <span className="material-symbols-outlined text-lg">
                                 assignment_return
@@ -590,6 +659,102 @@ export function RentalsListPage() {
                 className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
               >
                 {extendLoading ? 'Đang gia hạn…' : 'Xác nhận gia hạn'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {returnRentalTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              Xác nhận trả giày — Đơn {returnRentalTarget.rentalId}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Ngày thuê: <strong>{formatDate(returnRentalTarget.startDate)}</strong> → Hạn trả:{' '}
+              <strong>{formatDate(returnRentalTarget.endDate)}</strong>
+            </p>
+            {returnError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm px-3 py-2">
+                {returnError}
+              </div>
+            )}
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ngày trả thực tế
+                </label>
+                <input
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                  required
+                />
+              </div>
+
+              <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-200 dark:border-slate-700 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Giá thuê gốc (Base price)</span>
+                  <span className="font-semibold">{formatCurrency(returnRentalTarget.basePrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Số ngày quá hạn (Overdue days)</span>
+                  <span className={`font-semibold ${returnCalculation.overdueDays > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : ''}`}>
+                    {returnCalculation.overdueDays} ngày
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phí phạt trễ hạn (50%/ngày)</span>
+                  <span className={`font-semibold ${returnCalculation.lateFee > 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                    +{formatCurrency(returnCalculation.lateFee)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-base">
+                  <span>Tổng cộng thanh toán</span>
+                  <span className="text-primary">{formatCurrency(returnCalculation.totalPayable)}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                * Hệ thống sẽ tự động cộng tích lũy và nâng hạng thành viên cho khách nếu đạt cột mốc.
+              </p>
+
+              <div>
+                <label htmlFor="admin-return-note" className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ghi chú (tùy chọn)
+                </label>
+                <textarea
+                  id="admin-return-note"
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  maxLength={255}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  placeholder="Ghi chú tình trạng giày khi trả…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeReturn}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={returnLoading || !returnDate}
+                onClick={() => void confirmReturn()}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {returnLoading ? 'Đang xử lý…' : 'Xác nhận trả'}
               </button>
             </div>
           </div>

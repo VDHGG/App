@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listRentals, activateRental, returnRental, cancelRental } from '../../lib/rentals.api'
-import type { RentalSummary } from '../../lib/rentals.api'
+import {
+  listRentals,
+  activateRental,
+  returnRental,
+  cancelRental,
+  fetchAdminStatsOverview,
+  type RentalSummary,
+  type AdminStatsOverviewResponse,
+} from '../../lib/rentals.api'
 import { listCustomers } from '../../lib/customers.api'
 import type { CustomerSummary } from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
@@ -24,6 +31,7 @@ function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean 
 export function AdminDashboardPage() {
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
+  const [stats, setStats] = useState<AdminStatsOverviewResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -32,10 +40,15 @@ export function AdminDashboardPage() {
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
   useEffect(() => {
-    Promise.all([listRentals(), listCustomers()])
-      .then(([rentalsRes, customersRes]) => {
+    Promise.all([
+      listRentals(),
+      listCustomers(),
+      fetchAdminStatsOverview().catch(() => null),
+    ])
+      .then(([rentalsRes, customersRes, statsRes]) => {
         setRentals(rentalsRes.rentals)
         setCustomers(customersRes.customers)
+        setStats(statsRes)
       })
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
@@ -96,41 +109,83 @@ export function AdminDashboardPage() {
       <AdminHeader title="Dashboard Overview" />
       <div className="p-6 lg:p-8 space-y-8 max-w-[1400px]">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
-                <span className="material-symbols-outlined">history</span>
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-emerald-600 dark:text-emerald-400">
+                  <span className="material-symbols-outlined">payments</span>
+                </div>
               </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Doanh thu hoàn tất (RETURNED)</p>
+              <h3 className="text-2xl font-bold mt-1 text-slate-900 dark:text-white">
+                {formatCurrency(stats?.totalRevenueReturned ?? revenue)}
+              </h3>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Total Rentals</p>
-            <h3 className="text-2xl font-bold mt-1">{totalRentals}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              Phụ phí trễ hạn: <span className="font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(stats?.totalLateFeesCollected ?? 0)}</span>
+            </p>
           </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400">
-                <span className="material-symbols-outlined">assignment_return</span>
+
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                  <span className="material-symbols-outlined">trending_up</span>
+                </div>
               </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Doanh thu đang thực hiện</p>
+              <h3 className="text-2xl font-bold mt-1 text-slate-900 dark:text-white">
+                {formatCurrency(stats?.activeExpectedRevenue ?? 0)}
+              </h3>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Pending Returns</p>
-            <h3 className="text-2xl font-bold mt-1">{pendingReturns}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              MoMo PAID: <span className="font-semibold text-blue-600 dark:text-blue-400">{formatCurrency(stats?.momoPaidAmountVnd ?? 0)}</span> ({stats?.momoPaidCount ?? 0} đơn)
+            </p>
           </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                <span className="material-symbols-outlined">payments</span>
+
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg text-amber-600 dark:text-amber-400">
+                  <span className="material-symbols-outlined">assignment_return</span>
+                </div>
+                {(stats?.overdueCount ?? 0) > 0 ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 px-2.5 py-0.5 rounded-full">
+                    <span className="size-1.5 rounded-full bg-rose-500" />
+                    {stats?.overdueCount} đơn quá hạn
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2.5 py-0.5 rounded-full">
+                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                    0 quá hạn
+                  </span>
+                )}
               </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Đơn đang thuê (ACTIVE)</p>
+              <h3 className="text-2xl font-bold mt-1 text-slate-900 dark:text-white">
+                {stats?.statusCounts.ACTIVE ?? pendingReturns} đơn
+              </h3>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Revenue (Returned)</p>
-            <h3 className="text-2xl font-bold mt-1">{formatCurrency(revenue)}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+              Cần theo dõi sát lịch trả để xử lý quá hạn kịp thời
+            </p>
           </div>
-          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg text-emerald-600 dark:text-emerald-400">
-                <span className="material-symbols-outlined">group</span>
+
+          <div className="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg text-purple-600 dark:text-purple-400">
+                  <span className="material-symbols-outlined">group</span>
+                </div>
               </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Tổng đơn & Khách hàng</p>
+              <h3 className="text-2xl font-bold mt-1 text-slate-900 dark:text-white">
+                {stats?.totalRentals ?? totalRentals} đơn · {stats?.totalCustomers ?? customers.length} khách
+              </h3>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">Customers</p>
-            <h3 className="text-2xl font-bold mt-1">{customers.length}</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 pt-2 border-t border-slate-100 dark:border-slate-800 truncate" title={`Đặt: ${stats?.statusCounts.RESERVED ?? 0} · Trả: ${stats?.statusCounts.RETURNED ?? 0} · Hủy: ${stats?.statusCounts.CANCELLED ?? 0}`}>
+              Đặt: {stats?.statusCounts.RESERVED ?? 0} · Trả: {stats?.statusCounts.RETURNED ?? 0} · Hủy: {stats?.statusCounts.CANCELLED ?? 0}
+            </p>
           </div>
         </div>
 
@@ -149,7 +204,80 @@ export function AdminDashboardPage() {
             <span className="material-symbols-outlined">inventory_2</span>
             Shoe inventory
           </Link>
+          <Link
+            to="/admin/vouchers"
+            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 px-4 py-3 text-sm font-semibold text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/40"
+          >
+            <span className="material-symbols-outlined">local_activity</span>
+            Manage Vouchers
+          </Link>
         </div>
+
+        {stats?.topShoes && stats.topShoes.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-500">hotel_class</span>
+                <h3 className="font-bold text-lg">Top Mẫu Giày Được Thuê Nhiều Nhất</h3>
+              </div>
+              <span className="text-xs text-slate-500">Theo lượt thuê và số đôi thực tế</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className="bg-slate-50 dark:bg-slate-800/50">
+                  <tr>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Hạng
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                      Tên giày
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                      Số đơn
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-center">
+                      Số đôi đã thuê
+                    </th>
+                    <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
+                      Đánh giá TB
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {stats.topShoes.map((shoe, idx) => (
+                    <tr
+                      key={shoe.shoeId}
+                      className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors"
+                    >
+                      <td className="px-6 py-4 font-bold text-sm text-slate-400">
+                        #{idx + 1}
+                      </td>
+                      <td className="px-6 py-4 font-semibold text-sm">
+                        <Link
+                          to={`/shoes/${shoe.shoeId}`}
+                          className="hover:text-primary transition-colors"
+                        >
+                          {shoe.shoeName}
+                        </Link>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-center text-slate-600 dark:text-slate-300">
+                        {shoe.totalRentalsCount} đơn
+                      </td>
+                      <td className="px-6 py-4 text-sm text-center font-bold text-primary">
+                        {shoe.totalUnitsRented} đôi
+                      </td>
+                      <td className="px-6 py-4 text-sm text-right font-medium text-amber-500">
+                        {shoe.averageRating !== null && shoe.averageRating !== undefined
+                          ? `${shoe.averageRating.toFixed(1)} ★`
+                          : 'Chưa có'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">

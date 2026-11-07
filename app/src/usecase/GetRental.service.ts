@@ -30,6 +30,18 @@ export class GetRentalService implements GetRentalUseCase {
       }
     }
 
+    const now = new Date();
+    const isOverdue = rental.isOverdue(now);
+    const endNorm = new Date(
+      rental.period.endDate.getFullYear(),
+      rental.period.endDate.getMonth(),
+      rental.period.endDate.getDate()
+    ).getTime();
+    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 86400000)) : 0;
+    const dailyRate = rental.basePrice / rental.period.durationInDays;
+    const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : rental.lateFee;
+
     return {
       rentalId: rental.id,
       customerId: rental.customerId,
@@ -40,6 +52,9 @@ export class GetRentalService implements GetRentalUseCase {
       totalAmount: rental.totalAmount,
       startDate: rental.period.startDate,
       endDate: rental.period.endDate,
+      isOverdue,
+      overdueDays,
+      estimatedLateFee,
       items: rental.items.map((item) => ({
         shoeId: item.shoeId,
         variantId: item.variantId,

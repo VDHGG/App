@@ -420,7 +420,14 @@ export function AccountPage() {
                     >
                       <td className="px-3 py-2 font-mono text-xs">{r.rentalId}</td>
                       <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.startDate)}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.endDate)}</td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {formatDate(r.endDate)}
+                        {r.isOverdue && (r.overdueDays ?? 0) > 0 && (
+                          <span className="block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                            Quá hạn {r.overdueDays} ngày (+{formatCurrency(r.estimatedLateFee ?? 0)})
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2">
                         <RentalStatusBadge status={r.status} />
                       </td>
@@ -601,7 +608,14 @@ export function AccountPage() {
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-slate-500">Expected return</span>
-                  <span>{formatDate(detail.endDate)}</span>
+                  <div className="text-right">
+                    <span>{formatDate(detail.endDate)}</span>
+                    {detail.isOverdue && (detail.overdueDays ?? 0) > 0 && (
+                      <span className="block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                        Quá hạn {detail.overdueDays} ngày (+{formatCurrency(detail.estimatedLateFee ?? 0)})
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
                   <p className="text-slate-500 mb-2">Items</p>

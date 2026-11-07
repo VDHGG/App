@@ -7,6 +7,7 @@ import { MysqlCatalogLookup } from '@adapter/persistence/MysqlCatalogLookup.adap
 import { MysqlCatalogAdmin } from '@adapter/persistence/MysqlCatalogAdmin.adapter';
 import { MysqlRentalRepository } from '@adapter/persistence/MysqlRentalRepository.adapter';
 import { MysqlRentalPaymentRepository } from '@adapter/persistence/MysqlRentalPaymentRepository.adapter';
+import { MysqlVoucherRepository } from '@adapter/persistence/MysqlVoucherRepository.adapter';
 import { MysqlWishlistRepository } from '@adapter/persistence/MysqlWishlistRepository.adapter';
 import { MysqlRentalAvailabilityChecker } from '@adapter/persistence/MysqlRentalAvailabilityChecker.adapter';
 import { MysqlTransactionManager } from '@adapter/persistence/MysqlTransactionManager.adapter';
@@ -75,6 +76,7 @@ import { ExtendRentalService } from '@usecase/ExtendRental.service';
 import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { RentalAvailabilityChecker } from '@port/RentalAvailabilityChecker.port';
 import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
+import type { VoucherRepository } from '@port/VoucherRepository.port';
 import { createPool } from './db/MysqlConnection';
 
 export class MysqlContainer {
@@ -84,6 +86,7 @@ export class MysqlContainer {
   private readonly shoeRepository: MysqlShoeRepository;
   private readonly rentalRepository: MysqlRentalRepository;
   private readonly rentalPaymentRepository: MysqlRentalPaymentRepository;
+  private readonly voucherRepository: MysqlVoucherRepository;
   private readonly expirePendingOnlinePayments: ExpirePendingOnlinePaymentsService;
   private readonly wishlistRepository: MysqlWishlistRepository;
   private readonly transactionManager: MysqlTransactionManager;
@@ -104,6 +107,7 @@ export class MysqlContainer {
     this.shoeRepository = new MysqlShoeRepository(this.pool);
     this.rentalRepository = new MysqlRentalRepository(this.pool);
     this.rentalPaymentRepository = new MysqlRentalPaymentRepository(this.pool);
+    this.voucherRepository = new MysqlVoucherRepository(this.pool);
     this.transactionManager = new MysqlTransactionManager(this.pool);
     this.expirePendingOnlinePayments = new ExpirePendingOnlinePaymentsService(
       this.transactionManager,
@@ -189,7 +193,8 @@ export class MysqlContainer {
       this.shoeRepository,
       this.rentalRepository,
       new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy()),
-      new UuidGenerator('R')
+      new UuidGenerator('R'),
+      this.voucherRepository
     );
   }
 
@@ -316,6 +321,10 @@ export class MysqlContainer {
 
   getRentalAvailabilityChecker(): RentalAvailabilityChecker {
     return new MysqlRentalAvailabilityChecker(this.pool, new VariantDeactivationPolicy());
+  }
+
+  getVoucherRepository(): VoucherRepository {
+    return this.voucherRepository;
   }
 
   getPool(): Pool {

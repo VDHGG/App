@@ -30,18 +30,35 @@ export class ListRentalsService implements ListRentalsUseCase {
     });
 
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
+    const now = new Date();
+    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
     return {
-      rentals: items.map((r) => ({
-        rentalId: r.id,
-        customerId: r.customerId,
-        status: r.status,
-        totalItems: r.totalItems,
-        basePrice: r.basePrice,
-        totalAmount: r.totalAmount,
-        startDate: r.period.startDate,
-        endDate: r.period.endDate,
-      })),
+      rentals: items.map((r) => {
+        const isOverdue = r.isOverdue(now);
+        const endNorm = new Date(
+          r.period.endDate.getFullYear(),
+          r.period.endDate.getMonth(),
+          r.period.endDate.getDate()
+        ).getTime();
+        const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 86400000)) : 0;
+        const dailyRate = r.basePrice / r.period.durationInDays;
+        const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
+
+        return {
+          rentalId: r.id,
+          customerId: r.customerId,
+          status: r.status,
+          totalItems: r.totalItems,
+          basePrice: r.basePrice,
+          totalAmount: r.totalAmount,
+          startDate: r.period.startDate,
+          endDate: r.period.endDate,
+          isOverdue,
+          overdueDays,
+          estimatedLateFee,
+        };
+      }),
       total,
       page: paginate ? page : 1,
       pageSize: effectivePageSize,

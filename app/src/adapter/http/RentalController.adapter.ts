@@ -9,6 +9,8 @@ import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
 import type { DeleteRentalAdminUseCase } from '@usecase/DeleteRentalAdminUseCase.port';
 import type { ExtendRentalService } from '@usecase/ExtendRental.service';
 import type { TransactionManager } from '@port/TransactionManager.port';
+import type { VoucherRepository } from '@port/VoucherRepository.port';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
 import {
   CreateRentalSchema,
   ReturnRentalSchema,
@@ -36,6 +38,8 @@ export class RentalController {
   private readonly getRental: GetRentalUseCase;
   private readonly deleteRentalAdmin: DeleteRentalAdminUseCase;
   private readonly extendRental?: ExtendRentalService;
+  private readonly voucherRepository?: VoucherRepository;
+  private readonly pool?: Pool;
 
   constructor(
     createRental: CreateRentalUseCase,
@@ -45,7 +49,9 @@ export class RentalController {
     listRentals: ListRentalsUseCase,
     getRental: GetRentalUseCase,
     deleteRentalAdmin: DeleteRentalAdminUseCase,
-    extendRental?: ExtendRentalService
+    extendRental?: ExtendRentalService,
+    voucherRepository?: VoucherRepository,
+    pool?: Pool
   ) {
     this.createRental = createRental;
     this.activateRental = activateRental;
@@ -55,6 +61,8 @@ export class RentalController {
     this.getRental = getRental;
     this.deleteRentalAdmin = deleteRentalAdmin;
     this.extendRental = extendRental;
+    this.voucherRepository = voucherRepository;
+    this.pool = pool;
   }
 
   routes(transactionManager: TransactionManager, guards?: RouteGuards): Router {
@@ -63,6 +71,8 @@ export class RentalController {
     const createRental = guards?.createRental ?? [];
     const customer = guards?.customer ?? [];
     router.get('/vouchers/validate', ...createRental, asyncRoute(this.validateVoucher.bind(this)));
+    router.get('/vouchers/active', ...createRental, asyncRoute(this.listActiveVouchers.bind(this)));
+    router.get('/stats/overview', ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
     router.patch(
@@ -263,6 +273,30 @@ export class RentalController {
     if (!code) {
       throw new ValidationError('Voucher code is required.');
     }
+
+    if (this.voucherRepository) {
+      const normalized = code.toUpperCase();
+      const v = await this.voucherRepository.findByCode(normalized);
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const isValid =
+        v &&
+        v.isActive &&
+        (!v.expiresAt || todayStr <= v.expiresAt) &&
+        (v.maxUses === null || v.usedCount < v.maxUses);
+
+      if (!isValid) {
+        throw new ValidationError('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
+      }
+      res.json({
+        valid: true,
+        code: v.code,
+        discountPercent: v.discountPercent,
+        description: v.description,
+      });
+      return;
+    }
+
     const voucher = resolveVoucher(code);
     if (!voucher) {
       throw new ValidationError('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
@@ -272,6 +306,117 @@ export class RentalController {
       code: voucher.code,
       discountPercent: voucher.discountPercent,
       description: voucher.description,
+    });
+  }
+
+  private async listActiveVouchers(_req: Request, res: Response): Promise<void> {
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
+    res.json({ vouchers });
+  }
+
+  private async getStatsOverview(_req: Request, res: Response): Promise<void> {
+    const all = await this.listRentals.execute();
+    const rentals = all.rentals;
+
+    const totalRentals = all.total ?? rentals.length;
+    const statusCounts = {
+      RESERVED: 0,
+      ACTIVE: 0,
+      RETURNED: 0,
+      CANCELLED: 0,
+    };
+    for (const r of rentals) {
+      if (r.status in statusCounts) {
+        statusCounts[r.status as keyof typeof statusCounts] += 1;
+      }
+    }
+
+    const overdueCount = rentals.filter((r) => r.isOverdue).length;
+    const totalRevenueReturned = rentals
+      .filter((r) => r.status === 'RETURNED')
+      .reduce((sum, r) => sum + r.totalAmount, 0);
+    const activeExpectedRevenue = rentals
+      .filter((r) => r.status === 'ACTIVE' || r.status === 'RESERVED')
+      .reduce((sum, r) => sum + r.totalAmount, 0);
+    const totalLateFeesCollected = rentals
+      .filter((r) => r.status === 'RETURNED')
+      .reduce((sum, r) => sum + Math.max(0, r.totalAmount - r.basePrice), 0);
+
+    let momoPaidCount = 0;
+    let momoPaidAmountVnd = 0;
+    let totalCustomers = 0;
+    let topShoes: Array<{
+      shoeId: string;
+      shoeName: string;
+      totalRentalsCount: number;
+      totalUnitsRented: number;
+      averageRating: number | null;
+    }> = [];
+
+    if (this.pool) {
+      try {
+        const [paymentRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT COUNT(*) AS cnt, COALESCE(SUM(amount_vnd), 0) AS total_vnd FROM rental_payments WHERE status = 'PAID'`
+        );
+        if (paymentRows.length > 0) {
+          momoPaidCount = Number(paymentRows[0]['cnt'] || 0);
+          momoPaidAmountVnd = Number(paymentRows[0]['total_vnd'] || 0);
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [custRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT COUNT(*) AS cnt FROM customers WHERE is_active = 1`
+        );
+        if (custRows.length > 0) {
+          totalCustomers = Number(custRows[0]['cnt'] || 0);
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [shoeRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT
+             ri.shoe_id AS shoeId,
+             MAX(ri.shoe_name) AS shoeName,
+             COUNT(DISTINCT ri.rental_id) AS totalRentalsCount,
+             COALESCE(SUM(ri.quantity), 0) AS totalUnitsRented,
+             (SELECT ROUND(AVG(sr.rating), 1) FROM shoe_reviews sr WHERE sr.shoe_id = ri.shoe_id) AS averageRating
+           FROM rental_items ri
+           INNER JOIN rentals r ON r.rental_id = ri.rental_id
+           WHERE r.status IN ('RESERVED', 'ACTIVE', 'RETURNED')
+           GROUP BY ri.shoe_id
+           ORDER BY totalUnitsRented DESC, totalRentalsCount DESC
+           LIMIT 5`
+        );
+        topShoes = shoeRows.map((row) => ({
+          shoeId: String(row['shoeId']),
+          shoeName: String(row['shoeName']),
+          totalRentalsCount: Number(row['totalRentalsCount'] || 0),
+          totalUnitsRented: Number(row['totalUnitsRented'] || 0),
+          averageRating: row['averageRating'] !== null ? Number(row['averageRating']) : null,
+        }));
+      } catch {
+        // ignore
+      }
+    }
+
+    res.json({
+      totalRentals,
+      statusCounts,
+      overdueCount,
+      totalRevenueReturned,
+      activeExpectedRevenue,
+      totalLateFeesCollected,
+      momoPaidCount,
+      momoPaidAmountVnd,
+      totalCustomers,
+      topShoes,
     });
   }
 }

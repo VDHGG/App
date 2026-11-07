@@ -200,6 +200,20 @@ CREATE TABLE IF NOT EXISTS `shoe_reviews` (
   CONSTRAINT `fk_shoe_reviews_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`customer_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `vouchers` (
+  `code` varchar(32) NOT NULL,
+  `discount_percent` int(11) NOT NULL,
+  `description` varchar(255) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `max_uses` int(11) DEFAULT NULL,
+  `used_count` int(11) NOT NULL DEFAULT 0,
+  `expires_at` date DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`code`),
+  CONSTRAINT `chk_voucher_discount` CHECK (`discount_percent` >= 1 AND `discount_percent` <= 50)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Views
 
 DROP VIEW IF EXISTS `customer_active_rental_load`;
@@ -236,3 +250,11 @@ INSERT IGNORE INTO `colors` (`id`, `name`) VALUES
 (11, 'Emerald'), (12, 'Quartz');
 
 INSERT IGNORE INTO `roles` (`id`, `name`) VALUES (1, 'user'), (2, 'admin');
+
+INSERT IGNORE INTO `vouchers` (`code`, `discount_percent`, `description`, `is_active`, `max_uses`, `used_count`, `expires_at`) VALUES
+('WELCOME10', 10, 'Giảm 10% cho đơn thuê', 1, NULL, 0, NULL),
+('GIAM10', 10, 'Giảm 10% cho đơn thuê', 1, NULL, 0, NULL),
+('SHOE20', 20, 'Ưu đãi VIP giảm 20%', 1, NULL, 0, NULL),
+('VIP20', 20, 'Ưu đãi VIP giảm 20%', 1, NULL, 0, NULL),
+('GIAM5', 5, 'Giảm 5% phí thuê giày', 1, NULL, 0, NULL),
+('FREESHIP5', 5, 'Giảm 5% phí thuê giày', 1, NULL, 0, NULL);

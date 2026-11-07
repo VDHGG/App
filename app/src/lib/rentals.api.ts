@@ -21,6 +21,9 @@ export type RentalSummary = {
   totalAmount: number
   startDate: string
   endDate: string
+  isOverdue?: boolean
+  overdueDays?: number
+  estimatedLateFee?: number
 }
 
 export type GetRentalResponse = {
@@ -39,6 +42,9 @@ export type GetRentalResponse = {
   activatedAt: string | null
   returnedAt: string | null
   cancelledAt: string | null
+  isOverdue?: boolean
+  overdueDays?: number
+  estimatedLateFee?: number
 }
 
 export type CreateRentalItemRequest = {
@@ -199,5 +205,34 @@ export async function extendRentalAdmin(
     `/rentals/${encodeURIComponent(rentalId)}/extend`,
     body
   )
+  return data
+}
+
+export type AdminStatsOverviewResponse = {
+  totalRentals: number
+  statusCounts: {
+    RESERVED: number
+    ACTIVE: number
+    RETURNED: number
+    CANCELLED: number
+  }
+  overdueCount: number
+  totalRevenueReturned: number
+  activeExpectedRevenue: number
+  totalLateFeesCollected: number
+  momoPaidCount: number
+  momoPaidAmountVnd: number
+  totalCustomers: number
+  topShoes: Array<{
+    shoeId: string
+    shoeName: string
+    totalRentalsCount: number
+    totalUnitsRented: number
+    averageRating: number | null
+  }>
+}
+
+export async function fetchAdminStatsOverview(): Promise<AdminStatsOverviewResponse> {
+  const { data } = await api.get<AdminStatsOverviewResponse>('/rentals/stats/overview')
   return data
 }

@@ -7,6 +7,7 @@ import {
   type CreateRentalResponse,
   type ValidateVoucherResponse,
 } from '../lib/rentals.api'
+import { listActiveVouchers } from '../lib/vouchers.api'
 import { createMomoPayment } from '../lib/payments.api'
 import { getApiErrorMessage } from '../lib/api'
 import { formatCurrency } from '../lib/format'
@@ -69,6 +70,28 @@ export function CheckoutPage() {
   const [voucherLoading, setVoucherLoading] = useState(false)
   const [voucherError, setVoucherError] = useState<string | null>(null)
   const [appliedVoucher, setAppliedVoucher] = useState<ValidateVoucherResponse | null>(null)
+  const [activeVoucherPills, setActiveVoucherPills] = useState<Array<{ code: string; label: string }>>([])
+
+  useEffect(() => {
+    let cancelled = false
+    listActiveVouchers()
+      .then((res) => {
+        if (!cancelled && res.vouchers.length > 0) {
+          setActiveVoucherPills(
+            res.vouchers.map((v) => ({
+              code: v.code,
+              label: `${v.code} (-${v.discountPercent}%)`,
+            }))
+          )
+        }
+      })
+      .catch(() => {
+        // Fallback to default vouchers
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -619,11 +642,14 @@ export function CheckoutPage() {
                   <div>
                     <p className="text-[11px] text-slate-400 mb-1.5 font-medium">Gợi ý mã ưu đãi:</p>
                     <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { code: 'WELCOME10', label: 'WELCOME10 (-10%)' },
-                        { code: 'SHOE20', label: 'SHOE20 (-20%)' },
-                        { code: 'GIAM5', label: 'GIAM5 (-5%)' },
-                      ].map((v) => (
+                      {(activeVoucherPills.length > 0
+                        ? activeVoucherPills
+                        : [
+                            { code: 'WELCOME10', label: 'WELCOME10 (-10%)' },
+                            { code: 'SHOE20', label: 'SHOE20 (-20%)' },
+                            { code: 'GIAM5', label: 'GIAM5 (-5%)' },
+                          ]
+                      ).map((v) => (
                         <button
                           key={v.code}
                           type="button"

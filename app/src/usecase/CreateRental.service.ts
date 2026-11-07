@@ -11,7 +11,9 @@ import type { ShoeRepository } from '@port/ShoeRepository.port';
 import type { CreateRentalRequest } from './CreateRentalRequest.dto';
 import type { CreateRentalResponse } from './CreateRentalResponse.dto';
 import type { CreateRentalUseCase } from '@usecase/CreateRentalUseCase.port';
+import type { VoucherRepository } from '@port/VoucherRepository.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 export class CreateRentalService implements CreateRentalUseCase {
   private readonly customerRepository: CustomerRepository;
@@ -19,19 +21,22 @@ export class CreateRentalService implements CreateRentalUseCase {
   private readonly rentalRepository: RentalRepository;
   private readonly availabilityChecker: RentalAvailabilityChecker;
   private readonly idGenerator: IdGenerator;
+  private readonly voucherRepository?: VoucherRepository;
 
   constructor(
     customerRepository: CustomerRepository,
     shoeRepository: ShoeRepository,
     rentalRepository: RentalRepository,
     availabilityChecker: RentalAvailabilityChecker,
-    idGenerator: IdGenerator
+    idGenerator: IdGenerator,
+    voucherRepository?: VoucherRepository
   ) {
     this.customerRepository = customerRepository;
     this.shoeRepository = shoeRepository;
     this.rentalRepository = rentalRepository;
     this.availabilityChecker = availabilityChecker;
     this.idGenerator = idGenerator;
+    this.voucherRepository = voucherRepository;
   }
 
   async execute(request: CreateRentalRequest): Promise<CreateRentalResponse> {
@@ -42,8 +47,38 @@ export class CreateRentalService implements CreateRentalUseCase {
     if (!customer) throw new NotFoundError('Customer', request.customerId);
 
     const rankDiscount = getDiscountPercentByRank(customer.rank);
-    const voucher = resolveVoucher(request.voucherCode);
-    const totalDiscountPercent = Math.min(50, rankDiscount + (voucher?.discountPercent ?? 0));
+    let appliedVoucherCode: string | null = null;
+    let voucherDiscountPercent = 0;
+
+    const trimmedCode = request.voucherCode?.trim();
+    if (trimmedCode) {
+      if (this.voucherRepository) {
+        const normalized = trimmedCode.toUpperCase();
+        const v = await this.voucherRepository.findByCode(normalized);
+        const now = new Date();
+        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const isValid =
+          v &&
+          v.isActive &&
+          (!v.expiresAt || todayStr <= v.expiresAt) &&
+          (v.maxUses === null || v.usedCount < v.maxUses);
+
+        if (!isValid) {
+          throw new ValidationError('Mã giảm giá không hợp lệ hoặc đã hết hạn.');
+        }
+
+        appliedVoucherCode = v.code;
+        voucherDiscountPercent = v.discountPercent;
+      } else {
+        const v = resolveVoucher(trimmedCode);
+        if (v) {
+          appliedVoucherCode = v.code;
+          voucherDiscountPercent = v.discountPercent;
+        }
+      }
+    }
+
+    const totalDiscountPercent = Math.min(50, rankDiscount + voucherDiscountPercent);
 
     const loadedShoes = new Map<string, Awaited<ReturnType<ShoeRepository['findByVariantId']>>>();
     const originalRentalItems: RentalItem[] = [];
@@ -89,8 +124,8 @@ export class CreateRentalService implements CreateRentalUseCase {
       if (rankDiscount > 0) {
         tagParts.push(`Hạng ${customer.rank} -${rankDiscount}%`);
       }
-      if (voucher) {
-        tagParts.push(`Voucher ${voucher.code} -${voucher.discountPercent}%`);
+      if (appliedVoucherCode) {
+        tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
       }
       const tag = `[Ưu đãi: ${tagParts.join(', ')}]`;
       noteText = noteText ? `${noteText} ${tag}` : tag;
@@ -109,6 +144,10 @@ export class CreateRentalService implements CreateRentalUseCase {
     await this.customerRepository.save(customer);
     await this.rentalRepository.save(rental);
 
+    if (appliedVoucherCode && this.voucherRepository) {
+      await this.voucherRepository.incrementUsedCount(appliedVoucherCode);
+    }
+
     const discountAmount = Math.max(0, originalBasePrice - rental.basePrice);
 
     return {
@@ -124,7 +163,7 @@ export class CreateRentalService implements CreateRentalUseCase {
       discountPercent: totalDiscountPercent,
       discountAmount,
       customerRank: customer.rank,
-      appliedVoucher: voucher?.code ?? null,
+      appliedVoucher: appliedVoucherCode,
     };
   }
 

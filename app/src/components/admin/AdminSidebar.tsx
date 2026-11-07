@@ -62,6 +62,12 @@ export function AdminSidebar() {
           </span>
           <span className="text-sm font-medium">Shoe inventory</span>
         </NavLink>
+        <NavLink to="/admin/vouchers" className={navClass}>
+          <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
+            local_activity
+          </span>
+          <span className="text-sm font-medium">Vouchers</span>
+        </NavLink>
         <NavLink to="/admin/catalog/brands" className={navClass}>
           <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
             sell

@@ -9,6 +9,9 @@ export type RentalSummary = {
   totalAmount: number;
   startDate: Date;
   endDate: Date;
+  isOverdue: boolean;
+  overdueDays: number;
+  estimatedLateFee: number;
 };
 
 export type ListRentalsResponse = {

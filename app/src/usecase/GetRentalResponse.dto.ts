@@ -20,6 +20,9 @@ export type GetRentalResponse = {
   totalAmount: number;
   startDate: Date;
   endDate: Date;
+  isOverdue: boolean;
+  overdueDays: number;
+  estimatedLateFee: number;
   items: RentalItemDto[];
   note: string | null;
   createdAt: Date;
