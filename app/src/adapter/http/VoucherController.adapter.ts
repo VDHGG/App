@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { VoucherRepository } from '@port/VoucherRepository.port';
 import { asyncRoute } from './middleware/routeMiddleware';
 import { NotFoundError } from '@domain/errors/NotFoundError';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 const CreateVoucherSchema = z.object({
   code: z
@@ -18,7 +19,8 @@ const CreateVoucherSchema = z.object({
   maxUses: z.number().int().min(1).nullable().optional(),
   expiresAt: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày hết hạn phải theo định dạng YYYY-MM-DD.')
+    .regex(/^\d{4}-\d{2}-\d{2}/, 'Ngày hết hạn phải theo định dạng YYYY-MM-DD.')
+    .transform((s) => s.slice(0, 10))
     .nullable()
     .optional(),
 });
@@ -30,7 +32,8 @@ const UpdateVoucherSchema = z.object({
   maxUses: z.number().int().min(1).nullable().optional(),
   expiresAt: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày hết hạn phải theo định dạng YYYY-MM-DD.')
+    .regex(/^\d{4}-\d{2}-\d{2}/, 'Ngày hết hạn phải theo định dạng YYYY-MM-DD.')
+    .transform((s) => s.slice(0, 10))
     .nullable()
     .optional(),
 });
@@ -59,6 +62,10 @@ export class VoucherController {
   private async create(req: Request, res: Response): Promise<void> {
     const body = CreateVoucherSchema.parse(req.body);
     const code = body.code.toUpperCase();
+    const existing = await this.voucherRepo.findByCode(code);
+    if (existing) {
+      throw new ValidationError(`Mã voucher ${code} đã tồn tại.`);
+    }
     const saved = await this.voucherRepo.save({
       code,
       discountPercent: body.discountPercent,
@@ -78,6 +85,11 @@ export class VoucherController {
     }
 
     const body = UpdateVoucherSchema.parse(req.body);
+    if (body.maxUses !== undefined && body.maxUses !== null && body.maxUses < existing.usedCount) {
+      throw new ValidationError(
+        `Giới hạn lượt dùng (${body.maxUses}) không thể nhỏ hơn số lượt đã dùng (${existing.usedCount}).`
+      );
+    }
     const updated = await this.voucherRepo.save({
       code: existing.code,
       discountPercent: body.discountPercent ?? existing.discountPercent,

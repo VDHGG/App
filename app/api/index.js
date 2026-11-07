@@ -1665,11 +1665,24 @@ class MysqlRentalRepository {
       listParams.push(filters.limit, filters.offset ?? 0);
     }
     const [rentalRows] = await conn.query(listSql, listParams);
-    const rentals = [];
-    for (const row of rentalRows) {
-      const [itemRows] = await conn.query(ITEMS_SQL, [row.rental_id]);
-      rentals.push(toRental(row, itemRows));
+    if (rentalRows.length === 0) {
+      return { items: [], total };
     }
+    const rentalIds = rentalRows.map((r) => r.rental_id);
+    const placeholders = rentalIds.map(() => "?").join(", ");
+    const [allItemRows] = await conn.query(
+      `SELECT rental_id, variant_id, quantity, price_per_day, shoe_id, shoe_name, size, color
+       FROM rental_items
+       WHERE rental_id IN (${placeholders})`,
+      rentalIds
+    );
+    const itemsByRentalId = /* @__PURE__ */ new Map();
+    for (const itemRow of allItemRows) {
+      const list = itemsByRentalId.get(itemRow.rental_id) ?? [];
+      list.push(itemRow);
+      itemsByRentalId.set(itemRow.rental_id, list);
+    }
+    const rentals = rentalRows.map((row) => toRental(row, itemsByRentalId.get(row.rental_id) ?? []));
     return { items: rentals, total };
   }
   async save(rental) {
@@ -1949,8 +1962,22 @@ class MysqlVoucherRepository {
   }
   async incrementUsedCount(code) {
     const key = code.trim().toUpperCase();
+    const [result] = await this.conn().query(
+      `UPDATE vouchers
+       SET used_count = used_count + 1
+       WHERE code = ?
+         AND is_active = 1
+         AND (max_uses IS NULL OR used_count < max_uses)`,
+      [key]
+    );
+    if (result.affectedRows === 0) {
+      throw new ValidationError("Mã giảm giá đã hết lượt sử dụng hoặc không còn hiệu lực.");
+    }
+  }
+  async decrementUsedCount(code) {
+    const key = code.trim().toUpperCase();
     await this.conn().query(
-      `UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?`,
+      `UPDATE vouchers SET used_count = GREATEST(0, used_count - 1) WHERE code = ?`,
       [key]
     );
   }
@@ -2379,6 +2406,18 @@ class GetCustomerService {
     };
   }
 }
+function getVietnamTodayDate$1(now = /* @__PURE__ */ new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === "year")?.value ?? now.getFullYear());
+  const m = Number(parts.find((p) => p.type === "month")?.value ?? now.getMonth() + 1);
+  const d = Number(parts.find((p) => p.type === "day")?.value ?? now.getDate());
+  return new Date(y, m - 1, d);
+}
 class GetRentalService {
   rentalRepository;
   constructor(rentalRepository) {
@@ -2398,14 +2437,14 @@ class GetRentalService {
         throw new NotFoundError("Rental", request.rentalId);
       }
     }
-    const now = /* @__PURE__ */ new Date();
+    const now = getVietnamTodayDate$1();
     const isOverdue = rental.isOverdue(now);
     const endNorm = new Date(
       rental.period.endDate.getFullYear(),
       rental.period.endDate.getMonth(),
       rental.period.endDate.getDate()
     ).getTime();
-    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const nowNorm = now.getTime();
     const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 864e5)) : 0;
     const dailyRate = rental.basePrice / rental.period.durationInDays;
     const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : rental.lateFee;
@@ -2507,6 +2546,18 @@ class ListCustomersService {
     };
   }
 }
+function getVietnamTodayDate(now = /* @__PURE__ */ new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === "year")?.value ?? now.getFullYear());
+  const m = Number(parts.find((p) => p.type === "month")?.value ?? now.getMonth() + 1);
+  const d = Number(parts.find((p) => p.type === "day")?.value ?? now.getDate());
+  return new Date(y, m - 1, d);
+}
 class ListRentalsService {
   rentalRepository;
   constructor(rentalRepository) {
@@ -2529,8 +2580,8 @@ class ListRentalsService {
       ...limit !== void 0 ? { limit, offset } : {}
     });
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
-    const now = /* @__PURE__ */ new Date();
-    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const now = getVietnamTodayDate();
+    const nowNorm = now.getTime();
     return {
       rentals: items.map((r) => {
         const isOverdue = r.isOverdue(now);
@@ -2611,9 +2662,11 @@ class ForbiddenError extends DomainError {
 class CancelRentalService {
   rentalRepository;
   customerRepository;
-  constructor(rentalRepository, customerRepository) {
+  voucherRepository;
+  constructor(rentalRepository, customerRepository, voucherRepository) {
     this.rentalRepository = rentalRepository;
     this.customerRepository = customerRepository;
+    this.voucherRepository = voucherRepository;
   }
   async execute(request) {
     if (!request.rentalId || request.rentalId.trim().length === 0) {
@@ -2635,6 +2688,7 @@ class CancelRentalService {
       }
       rental.assertCustomerCancellationAllowed(cancelledAt);
     }
+    const originalNote = rental.note ?? "";
     rental.cancel(cancelledAt, request.note);
     const customer = await this.customerRepository.findById(rental.customerId);
     if (customer) {
@@ -2642,6 +2696,12 @@ class CancelRentalService {
       await this.customerRepository.save(customer);
     }
     await this.rentalRepository.save(rental);
+    if (this.voucherRepository) {
+      const match = originalNote.match(/Voucher\s+([A-Za-z0-9_-]+)\s+-\d+%/i);
+      if (match) {
+        await this.voucherRepository.decrementUsedCount(match[1].toUpperCase());
+      }
+    }
     return {
       rentalId: rental.id,
       customerId: rental.customerId,
@@ -2668,6 +2728,18 @@ function resolveVoucher(rawCode) {
     throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
   }
   return found;
+}
+function getVietnamTodayYmd$1(now = /* @__PURE__ */ new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === "year")?.value ?? String(now.getFullYear());
+  const m = parts.find((p) => p.type === "month")?.value ?? String(now.getMonth() + 1).padStart(2, "0");
+  const d = parts.find((p) => p.type === "day")?.value ?? String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 class CreateRentalService {
   customerRepository;
@@ -2697,8 +2769,7 @@ class CreateRentalService {
       if (this.voucherRepository) {
         const normalized = trimmedCode.toUpperCase();
         const v = await this.voucherRepository.findByCode(normalized);
-        const now = /* @__PURE__ */ new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const todayStr = getVietnamTodayYmd$1();
         const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
         if (!isValid) {
           throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
@@ -2753,7 +2824,13 @@ class CreateRentalService {
         tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
       }
       const tag = `[Ưu đãi: ${tagParts.join(", ")}]`;
-      noteText = noteText ? `${noteText} ${tag}` : tag;
+      if (noteText) {
+        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
+        const safePrefix = noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
+        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
+      } else {
+        noteText = tag;
+      }
     }
     const rental = new Rental({
       id: this.idGenerator.next(),
@@ -3354,8 +3431,10 @@ class UpdateCustomerAdminService {
 }
 class DeleteRentalAdminService {
   rentals;
-  constructor(rentals) {
+  voucherRepository;
+  constructor(rentals, voucherRepository) {
     this.rentals = rentals;
+    this.voucherRepository = voucherRepository;
   }
   async execute(request) {
     const rentalId = request.rentalId?.trim() ?? "";
@@ -3365,6 +3444,12 @@ class DeleteRentalAdminService {
     const existing = await this.rentals.findById(rentalId);
     if (!existing) {
       throw new NotFoundError("Rental", rentalId);
+    }
+    if (this.voucherRepository && (existing.status === "RESERVED" || existing.status === "ACTIVE")) {
+      const match = (existing.note ?? "").match(/Voucher\s+([A-Za-z0-9_-]+)\s+-\d+%/i);
+      if (match) {
+        await this.voucherRepository.decrementUsedCount(match[1].toUpperCase());
+      }
     }
     await this.rentals.deleteById(rentalId);
   }
@@ -3571,7 +3656,7 @@ class MysqlContainer {
       this.transactionManager,
       this.rentalPaymentRepository,
       this.rentalRepository,
-      new CancelRentalService(this.rentalRepository, this.customerRepository)
+      new CancelRentalService(this.rentalRepository, this.customerRepository, this.voucherRepository)
     );
     this.wishlistRepository = new MysqlWishlistRepository(this.pool);
     this.accessTokenService = new JoseAccessTokenService(
@@ -3645,7 +3730,11 @@ class MysqlContainer {
     return new ActivateRentalService(this.rentalRepository);
   }
   getCancelRentalUseCase() {
-    return new CancelRentalService(this.rentalRepository, this.customerRepository);
+    return new CancelRentalService(
+      this.rentalRepository,
+      this.customerRepository,
+      this.voucherRepository
+    );
   }
   getRegisterCustomerUseCase() {
     return this.registerCustomer;
@@ -3687,7 +3776,7 @@ class MysqlContainer {
     );
   }
   getDeleteRentalAdminUseCase() {
-    return new DeleteRentalAdminService(this.rentalRepository);
+    return new DeleteRentalAdminService(this.rentalRepository, this.voucherRepository);
   }
   getDeleteCustomerAdminUseCase() {
     return new DeleteCustomerAdminService(
@@ -4263,6 +4352,18 @@ const ListMyRentalsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional()
 });
+function getVietnamTodayYmd(now = /* @__PURE__ */ new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === "year")?.value ?? String(now.getFullYear());
+  const m = parts.find((p) => p.type === "month")?.value ?? String(now.getMonth() + 1).padStart(2, "0");
+  const d = parts.find((p) => p.type === "day")?.value ?? String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
 class RentalController {
   createRental;
   activateRental;
@@ -4480,8 +4581,7 @@ class RentalController {
     if (this.voucherRepository) {
       const normalized = code.toUpperCase();
       const v = await this.voucherRepository.findByCode(normalized);
-      const now = /* @__PURE__ */ new Date();
-      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const todayStr = getVietnamTodayYmd();
       const isValid = v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses);
       if (!isValid) {
         throw new ValidationError("Mã giảm giá không hợp lệ hoặc đã hết hạn.");
@@ -4506,8 +4606,7 @@ class RentalController {
     });
   }
   async listActiveVouchers(_req, res) {
-    const now = /* @__PURE__ */ new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const todayStr = getVietnamTodayYmd();
     const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
     res.json({ vouchers });
   }
@@ -5266,14 +5365,14 @@ const CreateVoucherSchema = z.object({
   description: z.string().trim().min(1).max(255),
   isActive: z.boolean().optional().default(true),
   maxUses: z.number().int().min(1).nullable().optional(),
-  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").nullable().optional()
+  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").transform((s) => s.slice(0, 10)).nullable().optional()
 });
 const UpdateVoucherSchema = z.object({
   discountPercent: z.number().int().min(1).max(50).optional(),
   description: z.string().trim().min(1).max(255).optional(),
   isActive: z.boolean().optional(),
   maxUses: z.number().int().min(1).nullable().optional(),
-  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").nullable().optional()
+  expiresAt: z.string().regex(/^\d{4}-\d{2}-\d{2}/, "Ngày hết hạn phải theo định dạng YYYY-MM-DD.").transform((s) => s.slice(0, 10)).nullable().optional()
 });
 class VoucherController {
   voucherRepo;
@@ -5295,6 +5394,10 @@ class VoucherController {
   async create(req, res) {
     const body = CreateVoucherSchema.parse(req.body);
     const code = body.code.toUpperCase();
+    const existing = await this.voucherRepo.findByCode(code);
+    if (existing) {
+      throw new ValidationError(`Mã voucher ${code} đã tồn tại.`);
+    }
     const saved = await this.voucherRepo.save({
       code,
       discountPercent: body.discountPercent,
@@ -5312,6 +5415,11 @@ class VoucherController {
       throw new NotFoundError("Voucher", rawCode);
     }
     const body = UpdateVoucherSchema.parse(req.body);
+    if (body.maxUses !== void 0 && body.maxUses !== null && body.maxUses < existing.usedCount) {
+      throw new ValidationError(
+        `Giới hạn lượt dùng (${body.maxUses}) không thể nhỏ hơn số lượt đã dùng (${existing.usedCount}).`
+      );
+    }
     const updated = await this.voucherRepo.save({
       code: existing.code,
       discountPercent: body.discountPercent ?? existing.discountPercent,

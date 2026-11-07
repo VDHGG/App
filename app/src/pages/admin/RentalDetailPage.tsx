@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {  getRental,  activateRental,  returnRental,  cancelRental} from '../../lib/rentals.api'
 import { getCustomer } from '../../lib/customers.api'
@@ -7,14 +7,19 @@ import { RentalStatusBadge } from '../../components/admin/RentalStatusBadge'
 import { formatDate, formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
 
-function confirmRentalAction(action: 'activate' | 'return' | 'cancel'): boolean {
+function confirmRentalAction(action: 'activate' | 'cancel'): boolean {
   const msg =
     action === 'activate'
       ? 'Activate this rental? The reservation will become active.'
-      : action === 'return'
-        ? 'Mark this rental as returned?'
-        : 'Cancel this reservation? This cannot be undone.'
+      : 'Cancel this reservation? This cannot be undone.'
   return window.confirm(msg)
+}
+
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 export function RentalDetailPage() {
@@ -25,6 +30,12 @@ export function RentalDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const [returnModalOpen, setReturnModalOpen] = useState(false)
+  const [returnDate, setReturnDate] = useState('')
+  const [returnNote, setReturnNote] = useState('')
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnError, setReturnError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -42,14 +53,65 @@ export function RentalDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const handleAction = async (action: 'activate' | 'return' | 'cancel') => {
+  const openReturn = () => {
+    setReturnDate(toDateString(new Date()))
+    setReturnNote('')
+    setReturnError(null)
+    setReturnModalOpen(true)
+  }
+
+  const closeReturn = () => {
+    setReturnModalOpen(false)
+    setReturnError(null)
+  }
+
+  const returnCalculation = useMemo(() => {
+    if (!rental || !returnDate) {
+      return { overdueDays: 0, lateFee: 0, totalPayable: 0 }
+    }
+    const startD = new Date(rental.startDate)
+    const endD = new Date(rental.endDate)
+    const retD = new Date(`${returnDate}T00:00:00`)
+
+    const startNorm = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime()
+    const endNorm = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime()
+    const retNorm = new Date(retD.getFullYear(), retD.getMonth(), retD.getDate()).getTime()
+
+    const overdueDays = Math.max(0, Math.round((retNorm - endNorm) / 86400000))
+    const rentalDays = Math.max(1, Math.round((endNorm - startNorm) / 86400000) + 1)
+    const dailyRate = rental.basePrice / rentalDays
+    const lateFee = Math.round(overdueDays * dailyRate * 0.5)
+    const totalPayable = rental.basePrice + lateFee
+
+    return { overdueDays, lateFee, totalPayable }
+  }, [rental, returnDate])
+
+  const confirmReturn = async () => {
+    if (!id || !returnDate) return
+    setReturnLoading(true)
+    setReturnError(null)
+    try {
+      await returnRental(id, {
+        returnedAt: returnDate,
+        note: returnNote.trim() || undefined,
+      })
+      closeReturn()
+      const r = await getRental(id)
+      setRental(r)
+    } catch (err: unknown) {
+      setReturnError(getApiErrorMessage(err))
+    } finally {
+      setReturnLoading(false)
+    }
+  }
+
+  const handleAction = async (action: 'activate' | 'cancel') => {
     if (!id) return
     if (!confirmRentalAction(action)) return
     setActionLoading(action)
     setActionError(null)
     try {
       if (action === 'activate') await activateRental(id)
-      else if (action === 'return') await returnRental(id)
       else await cancelRental(id)
       const r = await getRental(id)
       setRental(r)
@@ -130,8 +192,8 @@ export function RentalDetailPage() {
               {canReturn && (
                 <button
                   type="button"
-                  onClick={() => handleAction('return')}
-                  disabled={!!actionLoading}
+                  onClick={openReturn}
+                  disabled={!!actionLoading || returnLoading}
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold disabled:opacity-50"
                 >
                   Mark Returned
@@ -165,6 +227,11 @@ export function RentalDetailPage() {
               </h3>
               <p className="text-sm">
                 {formatDate(rental.startDate)} → {formatDate(rental.endDate)}
+                {rental.isOverdue && (rental.overdueDays ?? 0) > 0 && (
+                  <span className="ml-2 inline-block px-2.5 py-0.5 rounded text-xs font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                    Quá hạn {rental.overdueDays} ngày (Dự kiến phạt +{formatCurrency(rental.estimatedLateFee ?? 0)})
+                  </span>
+                )}
               </p>
             </div>
 
@@ -210,6 +277,12 @@ export function RentalDetailPage() {
                   <span>{formatCurrency(rental.lateFee)}</span>
                 </div>
               )}
+              {rental.status !== 'RETURNED' && rental.isOverdue && (rental.estimatedLateFee ?? 0) > 0 && (
+                <div className="flex justify-between text-sm mb-1 text-rose-600 dark:text-rose-400 font-semibold">
+                  <span>Phí trễ hạn dự kiến (50%/ngày)</span>
+                  <span>+{formatCurrency(rental.estimatedLateFee ?? 0)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-lg mt-2">
                 <span>Total</span>
                 <span>{formatCurrency(rental.totalAmount)}</span>
@@ -227,6 +300,102 @@ export function RentalDetailPage() {
           </div>
         </div>
       </div>
+
+      {returnModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              Xác nhận trả giày — Đơn {rental.rentalId}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Ngày thuê: <strong>{formatDate(rental.startDate)}</strong> → Hạn trả:{' '}
+              <strong>{formatDate(rental.endDate)}</strong>
+            </p>
+            {returnError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm px-3 py-2">
+                {returnError}
+              </div>
+            )}
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ngày trả thực tế
+                </label>
+                <input
+                  type="date"
+                  value={returnDate}
+                  onChange={(e) => setReturnDate(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                  required
+                />
+              </div>
+
+              <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-200 dark:border-slate-700 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Giá thuê gốc (Base price)</span>
+                  <span className="font-semibold">{formatCurrency(rental.basePrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Số ngày quá hạn (Overdue days)</span>
+                  <span className={`font-semibold ${returnCalculation.overdueDays > 0 ? 'text-rose-600 dark:text-rose-400 font-bold' : ''}`}>
+                    {returnCalculation.overdueDays} ngày
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phí phạt trễ hạn (50%/ngày)</span>
+                  <span className={`font-semibold ${returnCalculation.lateFee > 0 ? 'text-rose-600 dark:text-rose-400' : ''}`}>
+                    +{formatCurrency(returnCalculation.lateFee)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-base">
+                  <span>Tổng cộng thanh toán</span>
+                  <span className="text-primary">{formatCurrency(returnCalculation.totalPayable)}</span>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-500 dark:text-slate-400 italic">
+                * Hệ thống sẽ tự động cộng tích lũy và nâng hạng thành viên cho khách nếu đạt cột mốc.
+              </p>
+
+              <div>
+                <label htmlFor="detail-return-note" className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ghi chú (tùy chọn)
+                </label>
+                <textarea
+                  id="detail-return-note"
+                  value={returnNote}
+                  onChange={(e) => setReturnNote(e.target.value)}
+                  maxLength={255}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  placeholder="Ghi chú tình trạng giày khi trả…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeReturn}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={returnLoading || !returnDate}
+                onClick={() => void confirmReturn()}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {returnLoading ? 'Đang xử lý…' : 'Xác nhận trả'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

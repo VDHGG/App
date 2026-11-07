@@ -23,6 +23,19 @@ import { asyncRoute, transactionalRoute } from './middleware/routeMiddleware';
 import { ValidationError } from '@domain/errors/ValidationError';
 import { resolveVoucher } from '@domain/Voucher.vo';
 
+function getVietnamTodayYmd(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === 'year')?.value ?? String(now.getFullYear());
+  const m = parts.find((p) => p.type === 'month')?.value ?? String(now.getMonth() + 1).padStart(2, '0');
+  const d = parts.find((p) => p.type === 'day')?.value ?? String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export type RouteGuards = {
   admin?: RequestHandler[];
   createRental?: RequestHandler[];
@@ -277,8 +290,7 @@ export class RentalController {
     if (this.voucherRepository) {
       const normalized = code.toUpperCase();
       const v = await this.voucherRepository.findByCode(normalized);
-      const now = new Date();
-      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const todayStr = getVietnamTodayYmd();
       const isValid =
         v &&
         v.isActive &&
@@ -310,8 +322,7 @@ export class RentalController {
   }
 
   private async listActiveVouchers(_req: Request, res: Response): Promise<void> {
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const todayStr = getVietnamTodayYmd();
     const vouchers = this.voucherRepository ? await this.voucherRepository.listActive(todayStr) : [];
     res.json({ vouchers });
   }

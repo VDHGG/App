@@ -4,6 +4,19 @@ import type { ListRentalsRequest } from './ListRentalsRequest.dto';
 import type { ListRentalsResponse } from './ListRentalsResponse.dto';
 import type { ListRentalsUseCase } from '@usecase/ListRentalsUseCase.port';
 
+function getVietnamTodayDate(now: Date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === 'year')?.value ?? now.getFullYear());
+  const m = Number(parts.find((p) => p.type === 'month')?.value ?? now.getMonth() + 1);
+  const d = Number(parts.find((p) => p.type === 'day')?.value ?? now.getDate());
+  return new Date(y, m - 1, d);
+}
+
 export class ListRentalsService implements ListRentalsUseCase {
   private readonly rentalRepository: RentalRepository;
 
@@ -30,8 +43,8 @@ export class ListRentalsService implements ListRentalsUseCase {
     });
 
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
-    const now = new Date();
-    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const now = getVietnamTodayDate();
+    const nowNorm = now.getTime();
 
     return {
       rentals: items.map((r) => {

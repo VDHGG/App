@@ -3,6 +3,7 @@ import type {
   VoucherRecord,
   VoucherRepository,
 } from '@port/VoucherRepository.port';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 export class InMemoryVoucherRepository implements VoucherRepository {
   private readonly store = new Map<string, VoucherRecord>();
@@ -77,8 +78,21 @@ export class InMemoryVoucherRepository implements VoucherRepository {
   async incrementUsedCount(code: string): Promise<void> {
     const key = code.trim().toUpperCase();
     const existing = this.store.get(key);
-    if (existing) {
-      existing.usedCount += 1;
+    if (
+      !existing ||
+      !existing.isActive ||
+      (existing.maxUses !== null && existing.usedCount >= existing.maxUses)
+    ) {
+      throw new ValidationError('Mã giảm giá đã hết lượt sử dụng hoặc không còn hiệu lực.');
+    }
+    existing.usedCount += 1;
+  }
+
+  async decrementUsedCount(code: string): Promise<void> {
+    const key = code.trim().toUpperCase();
+    const existing = this.store.get(key);
+    if (existing && existing.usedCount > 0) {
+      existing.usedCount -= 1;
     }
   }
 

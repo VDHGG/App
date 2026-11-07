@@ -24,5 +24,6 @@ export interface VoucherRepository {
   listActive(todayDateStr: string): Promise<VoucherRecord[]>;
   save(input: SaveVoucherInput): Promise<VoucherRecord>;
   incrementUsedCount(code: string): Promise<void>;
+  decrementUsedCount(code: string): Promise<void>;
   deleteByCode(code: string): Promise<boolean>;
 }

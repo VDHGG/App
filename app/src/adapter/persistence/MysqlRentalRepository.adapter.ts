@@ -177,11 +177,25 @@ export class MysqlRentalRepository implements RentalRepository {
 
     const [rentalRows] = await conn.query<RentalRow[]>(listSql, listParams);
 
-    const rentals: Rental[] = [];
-    for (const row of rentalRows) {
-      const [itemRows] = await conn.query<RentalItemRow[]>(ITEMS_SQL, [row.rental_id]);
-      rentals.push(toRental(row, itemRows));
+    if (rentalRows.length === 0) {
+      return { items: [], total };
     }
+
+    const rentalIds = rentalRows.map((r) => r.rental_id);
+    const placeholders = rentalIds.map(() => '?').join(', ');
+    const [allItemRows] = await conn.query<(RentalItemRow & { rental_id: string })[]>(
+      `SELECT rental_id, variant_id, quantity, price_per_day, shoe_id, shoe_name, size, color
+       FROM rental_items
+       WHERE rental_id IN (${placeholders})`,
+      rentalIds
+    );
+    const itemsByRentalId = new Map<string, RentalItemRow[]>();
+    for (const itemRow of allItemRows) {
+      const list = itemsByRentalId.get(itemRow.rental_id) ?? [];
+      list.push(itemRow);
+      itemsByRentalId.set(itemRow.rental_id, list);
+    }
+    const rentals = rentalRows.map((row) => toRental(row, itemsByRentalId.get(row.rental_id) ?? []));
     return { items: rentals, total };
   }
 

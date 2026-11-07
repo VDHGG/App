@@ -72,8 +72,12 @@ export function AdminDashboardPage() {
       if (action === 'activate') await activateRental(rentalId)
       else if (action === 'return') await returnRental(rentalId)
       else await cancelRental(rentalId)
-      const res = await listRentals()
+      const [res, statsRes] = await Promise.all([
+        listRentals(),
+        fetchAdminStatsOverview().catch(() => null),
+      ])
       setRentals(res.rentals)
+      setStats(statsRes)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {
@@ -389,7 +393,12 @@ function RentalRow({
       <td className="px-6 py-4 text-sm">{rental.totalItems} item(s)</td>
       <td className="px-6 py-4 text-sm text-slate-500">{formatDate(rental.startDate)}</td>
       <td className="px-6 py-4 text-sm text-slate-500">
-        {formatDurationDays(rental.startDate, rental.endDate)}
+        <div>{formatDurationDays(rental.startDate, rental.endDate)}</div>
+        {rental.isOverdue && (rental.overdueDays ?? 0) > 0 && (
+          <span className="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+            Quá hạn {rental.overdueDays}d (+{formatCurrency(rental.estimatedLateFee ?? 0)})
+          </span>
+        )}
       </td>
       <td className="px-6 py-4">
         <RentalStatusBadge status={rental.status} />

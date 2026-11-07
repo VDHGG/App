@@ -5,6 +5,19 @@ import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import { ValidationError } from '@domain/errors/ValidationError';
 
+function getVietnamTodayDate(now: Date = new Date()): Date {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = Number(parts.find((p) => p.type === 'year')?.value ?? now.getFullYear());
+  const m = Number(parts.find((p) => p.type === 'month')?.value ?? now.getMonth() + 1);
+  const d = Number(parts.find((p) => p.type === 'day')?.value ?? now.getDate());
+  return new Date(y, m - 1, d);
+}
+
 export class GetRentalService implements GetRentalUseCase {
   private readonly rentalRepository: RentalRepository;
 
@@ -30,14 +43,14 @@ export class GetRentalService implements GetRentalUseCase {
       }
     }
 
-    const now = new Date();
+    const now = getVietnamTodayDate();
     const isOverdue = rental.isOverdue(now);
     const endNorm = new Date(
       rental.period.endDate.getFullYear(),
       rental.period.endDate.getMonth(),
       rental.period.endDate.getDate()
     ).getTime();
-    const nowNorm = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const nowNorm = now.getTime();
     const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 86400000)) : 0;
     const dailyRate = rental.basePrice / rental.period.durationInDays;
     const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : rental.lateFee;

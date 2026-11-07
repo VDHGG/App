@@ -113,7 +113,7 @@ export class MysqlContainer {
       this.transactionManager,
       this.rentalPaymentRepository,
       this.rentalRepository,
-      new CancelRentalService(this.rentalRepository, this.customerRepository)
+      new CancelRentalService(this.rentalRepository, this.customerRepository, this.voucherRepository)
     );
     this.wishlistRepository = new MysqlWishlistRepository(this.pool);
 
@@ -207,7 +207,11 @@ export class MysqlContainer {
   }
 
   getCancelRentalUseCase(): CancelRentalUseCase {
-    return new CancelRentalService(this.rentalRepository, this.customerRepository);
+    return new CancelRentalService(
+      this.rentalRepository,
+      this.customerRepository,
+      this.voucherRepository
+    );
   }
 
   getRegisterCustomerUseCase(): RegisterCustomerUseCase {
@@ -260,7 +264,7 @@ export class MysqlContainer {
   }
 
   getDeleteRentalAdminUseCase(): DeleteRentalAdminUseCase {
-    return new DeleteRentalAdminService(this.rentalRepository);
+    return new DeleteRentalAdminService(this.rentalRepository, this.voucherRepository);
   }
 
   getDeleteCustomerAdminUseCase(): DeleteCustomerAdminUseCase {

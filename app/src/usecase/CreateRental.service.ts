@@ -15,6 +15,19 @@ import type { VoucherRepository } from '@port/VoucherRepository.port';
 import { NotFoundError } from '@domain/errors/NotFoundError';
 import { ValidationError } from '@domain/errors/ValidationError';
 
+function getVietnamTodayYmd(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const y = parts.find((p) => p.type === 'year')?.value ?? String(now.getFullYear());
+  const m = parts.find((p) => p.type === 'month')?.value ?? String(now.getMonth() + 1).padStart(2, '0');
+  const d = parts.find((p) => p.type === 'day')?.value ?? String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export class CreateRentalService implements CreateRentalUseCase {
   private readonly customerRepository: CustomerRepository;
   private readonly shoeRepository: ShoeRepository;
@@ -55,8 +68,7 @@ export class CreateRentalService implements CreateRentalUseCase {
       if (this.voucherRepository) {
         const normalized = trimmedCode.toUpperCase();
         const v = await this.voucherRepository.findByCode(normalized);
-        const now = new Date();
-        const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        const todayStr = getVietnamTodayYmd();
         const isValid =
           v &&
           v.isActive &&
@@ -128,7 +140,14 @@ export class CreateRentalService implements CreateRentalUseCase {
         tagParts.push(`Voucher ${appliedVoucherCode} -${voucherDiscountPercent}%`);
       }
       const tag = `[Ưu đãi: ${tagParts.join(', ')}]`;
-      noteText = noteText ? `${noteText} ${tag}` : tag;
+      if (noteText) {
+        const maxPrefixLen = Math.max(0, 255 - tag.length - 1);
+        const safePrefix =
+          noteText.length > maxPrefixLen ? noteText.slice(0, maxPrefixLen).trimEnd() : noteText;
+        noteText = safePrefix ? `${safePrefix} ${tag}` : tag;
+      } else {
+        noteText = tag;
+      }
     }
 
     const rental = new Rental({

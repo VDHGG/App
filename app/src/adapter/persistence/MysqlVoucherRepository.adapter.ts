@@ -5,6 +5,7 @@ import type {
   VoucherRepository,
 } from '@port/VoucherRepository.port';
 import { transactionContext } from '@infra/db/transactionContext';
+import { ValidationError } from '@domain/errors/ValidationError';
 
 function toYmd(val: unknown): string | null {
   if (!val) return null;
@@ -108,8 +109,23 @@ export class MysqlVoucherRepository implements VoucherRepository {
 
   async incrementUsedCount(code: string): Promise<void> {
     const key = code.trim().toUpperCase();
+    const [result] = await this.conn().query<ResultSetHeader>(
+      `UPDATE vouchers
+       SET used_count = used_count + 1
+       WHERE code = ?
+         AND is_active = 1
+         AND (max_uses IS NULL OR used_count < max_uses)`,
+      [key]
+    );
+    if (result.affectedRows === 0) {
+      throw new ValidationError('Mã giảm giá đã hết lượt sử dụng hoặc không còn hiệu lực.');
+    }
+  }
+
+  async decrementUsedCount(code: string): Promise<void> {
+    const key = code.trim().toUpperCase();
     await this.conn().query(
-      `UPDATE vouchers SET used_count = used_count + 1 WHERE code = ?`,
+      `UPDATE vouchers SET used_count = GREATEST(0, used_count - 1) WHERE code = ?`,
       [key]
     );
   }

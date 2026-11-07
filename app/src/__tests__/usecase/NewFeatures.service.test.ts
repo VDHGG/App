@@ -21,6 +21,8 @@ import { InMemoryVoucherRepository } from '@adapter/persistence/InMemoryVoucherR
 import { ShortIdGenerator } from '@adapter/persistence/ShortIdGenerator.adapter';
 import { CreateRentalService } from '@usecase/CreateRental.service';
 import { ReturnRentalService } from '@usecase/ReturnRental.service';
+import { CancelRentalService } from '@usecase/CancelRental.service';
+import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
 import { ExtendRentalService } from '@usecase/ExtendRental.service';
 import { ListRentalsService } from '@usecase/ListRentals.service';
 import { GetRentalService } from '@usecase/GetRental.service';
@@ -990,6 +992,96 @@ describe('New Features - Unit Tests', () => {
           voucherCode: 'DISABLED15',
         })
       ).rejects.toThrow(/Mã giảm giá không hợp lệ hoặc đã hết hạn/);
+    });
+
+    it('throws ValidationError when incrementUsedCount is called after maxUses is reached', async () => {
+      await voucherRepo.save({
+        code: 'LIMIT1',
+        discountPercent: 15,
+        description: '1 use only',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: null,
+      });
+
+      await voucherRepo.incrementUsedCount('LIMIT1');
+      await expect(voucherRepo.incrementUsedCount('LIMIT1')).rejects.toThrow(
+        /Mã giảm giá đã hết lượt sử dụng hoặc không còn hiệu lực/
+      );
+    });
+
+    it('restores voucher usedCount when a RESERVED rental is cancelled or deleted so maxUses: 1 voucher can be reused', async () => {
+      await voucherRepo.save({
+        code: 'REUSE25',
+        discountPercent: 25,
+        description: 'Reusable after cancel',
+        isActive: true,
+        maxUses: 1,
+        expiresAt: null,
+      });
+
+      // 1. Create rental using REUSE25 -> usedCount becomes 1
+      const first = await service.execute({
+        customerId: 'C_BRONZE',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2099-06-10'),
+        endDate: new Date('2099-06-11'),
+        voucherCode: 'REUSE25',
+      });
+      expect((await voucherRepo.findByCode('REUSE25'))?.usedCount).toBe(1);
+
+      // 2. Cancel the rental -> usedCount decrements back to 0
+      const cancelService = new CancelRentalService(rentalRepo, customerRepo, voucherRepo);
+      await cancelService.execute({
+        rentalId: first.rentalId,
+        cancelledAt: new Date('2099-06-01'),
+        note: 'Changed mind',
+      });
+      expect((await voucherRepo.findByCode('REUSE25'))?.usedCount).toBe(0);
+
+      // 3. Reuse REUSE25 on a new rental -> succeeds!
+      const second = await service.execute({
+        customerId: 'C_BRONZE',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2099-06-15'),
+        endDate: new Date('2099-06-16'),
+        voucherCode: 'REUSE25',
+      });
+      expect(second.appliedVoucher).toBe('REUSE25');
+      expect((await voucherRepo.findByCode('REUSE25'))?.usedCount).toBe(1);
+
+      // 4. Admin deletes the active/reserved rental -> usedCount decrements back to 0
+      const deleteService = new DeleteRentalAdminService(rentalRepo, voucherRepo);
+      await deleteService.execute({ rentalId: second.rentalId });
+      expect((await voucherRepo.findByCode('REUSE25'))?.usedCount).toBe(0);
+    });
+
+    it('truncates long customer note cleanly to <= 255 characters when appending discount tag', async () => {
+      await customerRepo.save(
+        new Customer({
+          id: 'C_GOLD_NT',
+          fullName: 'Gold Note User',
+          email: 'goldnote@test.com',
+          rank: CustomerRank.GOLD,
+        })
+      );
+
+      const longNote = 'Ghi chú của khách hàng rất dài '.repeat(9).slice(0, 250);
+      expect(longNote.length).toBe(250);
+
+      const res = await service.execute({
+        customerId: 'C_GOLD_NT',
+        items: [{ variantId: 'V001', quantity: 1 }],
+        startDate: new Date('2026-06-01'),
+        endDate: new Date('2026-06-01'),
+        voucherCode: 'WELCOME10',
+        note: longNote,
+      });
+
+      const savedRental = await rentalRepo.findById(res.rentalId);
+      expect(savedRental?.note).toBeTruthy();
+      expect(savedRental!.note!.length).toBeLessThanOrEqual(255);
+      expect(savedRental!.note).toContain('[Ưu đãi: Hạng GOLD -10%, Voucher WELCOME10 -10%]');
     });
   });
 

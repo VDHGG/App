@@ -1,5 +1,6 @@
 import type { CustomerRepository } from '@port/CustomerRepository.port';
 import type { RentalRepository } from '@port/RentalRepository.port';
+import type { VoucherRepository } from '@port/VoucherRepository.port';
 import type { CancelRentalRequest } from './CancelRentalRequest.dto';
 import type { CancelRentalResponse } from './CancelRentalResponse.dto';
 import type { CancelRentalUseCase } from '@usecase/CancelRentalUseCase.port';
@@ -10,10 +11,16 @@ import { ForbiddenError } from '@domain/errors/ForbiddenError';
 export class CancelRentalService implements CancelRentalUseCase {
   private readonly rentalRepository: RentalRepository;
   private readonly customerRepository: CustomerRepository;
+  private readonly voucherRepository?: VoucherRepository;
 
-  constructor(rentalRepository: RentalRepository, customerRepository: CustomerRepository) {
+  constructor(
+    rentalRepository: RentalRepository,
+    customerRepository: CustomerRepository,
+    voucherRepository?: VoucherRepository
+  ) {
     this.rentalRepository = rentalRepository;
     this.customerRepository = customerRepository;
+    this.voucherRepository = voucherRepository;
   }
 
   async execute(request: CancelRentalRequest): Promise<CancelRentalResponse> {
@@ -41,6 +48,7 @@ export class CancelRentalService implements CancelRentalUseCase {
       rental.assertCustomerCancellationAllowed(cancelledAt);
     }
 
+    const originalNote = rental.note ?? '';
     rental.cancel(cancelledAt, request.note);
 
     const customer = await this.customerRepository.findById(rental.customerId);
@@ -51,6 +59,13 @@ export class CancelRentalService implements CancelRentalUseCase {
     }
 
     await this.rentalRepository.save(rental);
+
+    if (this.voucherRepository) {
+      const match = originalNote.match(/Voucher\s+([A-Za-z0-9_-]+)\s+-\d+%/i);
+      if (match) {
+        await this.voucherRepository.decrementUsedCount(match[1].toUpperCase());
+      }
+    }
 
     return {
       rentalId: rental.id,
