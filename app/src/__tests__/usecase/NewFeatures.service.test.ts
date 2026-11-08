@@ -2288,6 +2288,33 @@ describe('New Features - Unit Tests', () => {
       );
       expect(smartCompare.reply).toContain('So sánh chi tiết');
       expect(smartCompare.cards).toHaveLength(2);
+
+      // Quote with explicit date range when currentShoeId is active (must NOT be hijacked by availability check)
+      const dateQuote = await ctrl.buildSmartReply(
+        'Báo giá thuê Jordan 1 từ 2026-11-10 đến 2026-11-12',
+        'CUST004',
+        { currentShoeId: 'SHOE005', currentPath: '/shoes/SHOE005' }
+      );
+      expect(dateQuote.quote).toBeDefined();
+      expect(dateQuote.quote?.days).toBe(3);
+      expect(dateQuote.quote?.actionUrl).toBe(
+        '/shoes/SHOE005?startDate=2026-11-10&endDate=2026-11-12'
+      );
+
+      // Quote with invalid voucher code warns user while preserving rank discount
+      const invalidVoucherQuote = await ctrl.buildSmartReply(
+        'Báo giá thuê đôi này 3 ngày áp mã INVALID99',
+        'CUST004',
+        { currentShoeId: 'SHOE005', currentPath: '/shoes/SHOE005' }
+      );
+      expect(invalidVoucherQuote.quote?.rankDiscountPercent).toBe(15);
+      expect(invalidVoucherQuote.quote?.voucherDiscountPercent).toBe(0);
+      expect(invalidVoucherQuote.reply).toContain('INVALID99');
+
+      // Unauthorized / non-existent rental detail lookup returns security/not-found note instead of generic greeting
+      const missingOrder = await ctrl.buildSmartReply('Chi tiết đơn REN999', 'CUST004');
+      expect(missingOrder.reply).toContain('#REN999');
+      expect(missingOrder.reply).toContain('Không tìm thấy đơn thuê');
     });
   });
 });

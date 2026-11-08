@@ -7069,16 +7069,17 @@ class ChatController {
     }
     const contextShoeId = await this.resolveContextualShoeId(lastUserText, contextOptions);
     const rentalIdMatch = lastUserText.match(/\b(REN\d{2,}|R[A-Z0-9]{4,9})\b/i);
-    if (rentalIdMatch && /đơn|chi tiết|order|rental|trạng thái|status|mã đơn/i.test(q)) {
+    if (rentalIdMatch && /đơn|don|chi tiết|chi tiet|order|rental|trạng thái|trang thai|status|mã đơn|ma don/i.test(q)) {
       if (!customerId) {
         return {
           reply: "🔑 Bạn cần **đăng nhập tài khoản khách hàng** để mình tra cứu chi tiết đơn thuê của bạn nhé!",
           suggestions: ["Tìm giày Nike dưới 350.000₫", "Shop đang có mã giảm giá nào?"]
         };
       }
+      const targetRid = rentalIdMatch[1].toUpperCase();
       const detailRes = await this.runTool(
         "get_rental_detail",
-        { rental_id: rentalIdMatch[1].toUpperCase() },
+        { rental_id: targetRid },
         customerId
       );
       if (detailRes.ok && detailRes.rentalId) {
@@ -7102,8 +7103,16 @@ class ChatController {
           ]
         };
       }
+      return {
+        reply: `🔒 Không tìm thấy đơn thuê **#${targetRid}** thuộc tài khoản của bạn (hoặc bạn không có quyền truy cập đơn của khách hàng khác). Bạn vui lòng kiểm tra lại danh sách đơn của mình nhé!`,
+        suggestions: [
+          "Kiểm tra đơn thuê của tôi",
+          "Shop đang có mã giảm giá nào?",
+          "Tìm giày thể thao dưới 350.000₫"
+        ]
+      };
     }
-    if (/so sánh|khác nhau|compare|chọn đôi nào giữa/i.test(q)) {
+    if (/so sánh|so sanh|khác nhau|khac nhau|compare|chọn đôi nào giữa|chon doi nao giua/i.test(q)) {
       const allShoes = await this.loadAllStoreShoes();
       const matchedShoes = [];
       for (const s of allShoes) {
@@ -7151,10 +7160,70 @@ class ChatController {
       }
     }
     const dateRange = this.extractDateRangeFromText(lastUserText);
-    const hasAvailKeywords = /trống|lịch|available|availability|còn hàng ngày|thuê từ ngày|kiểm tra ngày/i.test(q) || Boolean(
+    const daysMatch = q.match(/(\d+)\s*(ngày|ngay|day|hôm|hom)/i);
+    const isQuoteIntent = /tính tiền|tinh tien|báo giá|bao gia|hết bao nhiêu|het bao nhieu|tổng tiền|tong tien|chi phí|chi phi|ước tính|uoc tinh|quote|tổng cộng bao nhiêu/i.test(
+      q
+    ) || Boolean(daysMatch) && /thuê|thue|giá|gia|tiền|tien|cọc|coc|mã|ma|voucher/i.test(q);
+    if (isQuoteIntent) {
+      const explicitShoeId = lastUserText.match(/\b(SHOE\d{3,})\b/i)?.[1]?.toUpperCase();
+      const matchedShoe = explicitShoeId ? await this.resolveShoeByIdOrName(explicitShoeId, void 0) : await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
+      const days = daysMatch ? Math.max(1, Math.min(30, Number(daysMatch[1]))) : 3;
+      const qtyMatch = q.match(/(\d+)\s*(?:đôi|doi)/i);
+      const quantity = qtyMatch ? Math.max(1, Math.min(5, Number(qtyMatch[1]))) : 1;
+      const knownVoucherMatch = lastUserText.match(
+        /\b(WELCOME10|SHOE20|GIAM5|SUMMER\d+|VIP\d+|FLASH\d+)\b/i
+      );
+      const customCodeMatch = lastUserText.match(/(?:áp mã|ap ma|dùng mã|dung ma|mã|ma|voucher|code)\s+([A-Za-z0-9_-]{3,20})/i);
+      const ignoredWords = /* @__PURE__ */ new Set(["GIẢM", "GIAM", "KHUYẾN", "KHUYEN", "NÀO", "NAO", "GÌ", "GI", "TỐT", "TOT", "CHO", "CỦA", "CUA", "ĐƠN", "DON"]);
+      let voucherCode = knownVoucherMatch ? knownVoucherMatch[1].toUpperCase() : customCodeMatch && !ignoredWords.has(customCodeMatch[1].toUpperCase()) ? customCodeMatch[1].toUpperCase() : void 0;
+      if (!voucherCode && /áp mã|ap ma|dùng mã|dung ma|voucher|kèm mã|kem ma/i.test(q) && this.voucherRepository) {
+        const activeVouchers = await this.voucherRepository.listActive(getVietnamTodayYmd());
+        if (activeVouchers.length > 0) {
+          const best = [...activeVouchers].sort((a, b) => b.discountPercent - a.discountPercent)[0];
+          voucherCode = best.code;
+        }
+      }
+      const quoteRes = await this.runTool(
+        "estimate_rental_quote",
+        {
+          shoe_id: matchedShoe?.shoeId ?? explicitShoeId,
+          shoe_name: matchedShoe?.name,
+          days,
+          ...dateRange ? { start_date: dateRange.startDate, end_date: dateRange.endDate } : {},
+          quantity,
+          ...voucherCode ? { voucher_code: voucherCode } : {}
+        },
+        customerId
+      );
+      if (quoteRes.ok && quoteRes.quote) {
+        const qt = quoteRes.quote;
+        const discountNote = qt.effectiveDiscountPercent > 0 ? `Giảm **-${qt.effectiveDiscountPercent}%** (Hạng ${qt.rank} -${qt.rankDiscountPercent}%${qt.voucherCode ? ` + Voucher ${qt.voucherCode} -${qt.voucherDiscountPercent}%` : ""})` : `0% (Hạng ${qt.rank})`;
+        const invalidNote = quoteRes.invalidVoucherCode ? `
+• ⚠️ *Lưu ý: Mã giảm giá "${quoteRes.invalidVoucherCode}" không tồn tại hoặc đã hết hạn nên chưa được áp dụng.*` : "";
+        return {
+          reply: [
+            `🧾 **Báo giá dự kiến thuê ${qt.shoeName} (${qt.quantity} đôi × ${qt.days} ngày):**`,
+            `• **Đơn giá gốc:** ${qt.pricePerDay.toLocaleString("vi-VN")}₫/ngày → Tạm tính: **${qt.rawBasePrice.toLocaleString("vi-VN")}₫**`,
+            `• **Ưu đãi áp dụng:** ${discountNote}${invalidNote}`,
+            `• **Tiền thuê sau giảm:** **${qt.finalRentalPrice.toLocaleString("vi-VN")}₫**`,
+            `• **Tiền đặt cọc bảo đảm:** **${qt.depositAmount.toLocaleString("vi-VN")}₫** *(hoàn lại 100% khi trả giày nguyên vẹn)*`,
+            `👉 **Tổng thanh toán ban đầu:** **${qt.grandTotal.toLocaleString("vi-VN")}₫**`
+          ].join("\n"),
+          quote: qt,
+          suggestions: [
+            `Kiểm tra lịch trống ${qt.shoeName} ngày mai`,
+            "Shop đang có mã giảm giá nào?",
+            "So sánh với mẫu giày khác"
+          ]
+        };
+      }
+    }
+    const hasAvailKeywords = /trống|trong lich|lịch|available|availability|còn hàng ngày|con hang ngay|thuê từ ngày|kiểm tra ngày|kiem tra ngay|còn size nào trống|con size nao trong/i.test(
+      q
+    ) || Boolean(
       lastUserText.match(/\b(SHOE\d{3,})\b.*?\b(\d{4}-\d{2}-\d{2})\b.*?\b(\d{4}-\d{2}-\d{2})\b/i)
     );
-    if (dateRange && (hasAvailKeywords || contextShoeId)) {
+    if (dateRange && hasAvailKeywords) {
       const explicitShoeId = lastUserText.match(/\b(SHOE\d{3,})\b/i)?.[1]?.toUpperCase();
       const matchedShoe = explicitShoeId ? await this.resolveShoeByIdOrName(explicitShoeId, void 0) : await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
       const targetShoeId = explicitShoeId ?? matchedShoe?.shoeId;
@@ -7187,57 +7256,7 @@ class ChatController {
         }
       }
     }
-    const daysMatch = q.match(/(\d+)\s*(ngày|day|hôm)/i);
-    const isQuoteIntent = /tính tiền|báo giá|hết bao nhiêu|tổng tiền|chi phí|ước tính|quote|tổng cộng bao nhiêu/i.test(q) || Boolean(daysMatch) && /thuê|giá|tiền|cọc|mã|voucher/i.test(q);
-    if (isQuoteIntent) {
-      const explicitShoeId = lastUserText.match(/\b(SHOE\d{3,})\b/i)?.[1]?.toUpperCase();
-      const matchedShoe = explicitShoeId ? await this.resolveShoeByIdOrName(explicitShoeId, void 0) : await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
-      const days = daysMatch ? Math.max(1, Math.min(30, Number(daysMatch[1]))) : 3;
-      const qtyMatch = q.match(/(\d+)\s*đôi/i);
-      const quantity = qtyMatch ? Math.max(1, Math.min(5, Number(qtyMatch[1]))) : 1;
-      const voucherMatch = lastUserText.match(/\b(WELCOME10|SHOE20|GIAM5|SUMMER\d+|VIP\d+|FLASH\d+)\b/i);
-      let voucherCode = voucherMatch ? voucherMatch[1].toUpperCase() : void 0;
-      if (!voucherCode && /áp mã|dùng mã|voucher/i.test(q) && this.voucherRepository) {
-        const activeVouchers = await this.voucherRepository.listActive(getVietnamTodayYmd());
-        if (activeVouchers.length > 0) {
-          const best = [...activeVouchers].sort((a, b) => b.discountPercent - a.discountPercent)[0];
-          voucherCode = best.code;
-        }
-      }
-      const quoteRes = await this.runTool(
-        "estimate_rental_quote",
-        {
-          shoe_id: matchedShoe?.shoeId ?? explicitShoeId,
-          shoe_name: matchedShoe?.name,
-          days,
-          ...dateRange ? { start_date: dateRange.startDate, end_date: dateRange.endDate } : {},
-          quantity,
-          ...voucherCode ? { voucher_code: voucherCode } : {}
-        },
-        customerId
-      );
-      if (quoteRes.ok && quoteRes.quote) {
-        const qt = quoteRes.quote;
-        const discountNote = qt.effectiveDiscountPercent > 0 ? `Giảm **-${qt.effectiveDiscountPercent}%** (Hạng ${qt.rank} -${qt.rankDiscountPercent}%${qt.voucherCode ? ` + Voucher ${qt.voucherCode} -${qt.voucherDiscountPercent}%` : ""})` : `0% (Hạng ${qt.rank})`;
-        return {
-          reply: [
-            `🧾 **Báo giá dự kiến thuê ${qt.shoeName} (${qt.quantity} đôi × ${qt.days} ngày):**`,
-            `• **Đơn giá gốc:** ${qt.pricePerDay.toLocaleString("vi-VN")}₫/ngày → Tạm tính: **${qt.rawBasePrice.toLocaleString("vi-VN")}₫**`,
-            `• **Ưu đãi áp dụng:** ${discountNote}`,
-            `• **Tiền thuê sau giảm:** **${qt.finalRentalPrice.toLocaleString("vi-VN")}₫**`,
-            `• **Tiền đặt cọc bảo đảm:** **${qt.depositAmount.toLocaleString("vi-VN")}₫** *(hoàn lại 100% khi trả giày nguyên vẹn)*`,
-            `👉 **Tổng thanh toán ban đầu:** **${qt.grandTotal.toLocaleString("vi-VN")}₫**`
-          ].join("\n"),
-          quote: qt,
-          suggestions: [
-            `Kiểm tra lịch trống ${qt.shoeName} ngày mai`,
-            "Shop đang có mã giảm giá nào?",
-            "So sánh với mẫu giày khác"
-          ]
-        };
-      }
-    }
-    if (/đánh giá|review|nhận xét|mấy sao|tốt nhất|yêu thích nhất/i.test(q)) {
+    if (/đánh giá|danh gia|review|nhận xét|nhan xet|mấy sao|may sao|tốt nhất|tot nhat|yêu thích nhất|yeu thich nhat/i.test(q)) {
       const matchedShoe = await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
       const revRes = await this.runTool(
         "get_shoe_reviews_summary",
@@ -7278,7 +7297,7 @@ class ChatController {
         }
       }
     }
-    if (/voucher|mã giảm|khuyến mãi|ưu đãi/.test(q)) {
+    if (/voucher|mã giảm|ma giam|khuyến mãi|khuyen mai|ưu đãi|uu dai/.test(q)) {
       const vRes = await this.runTool("list_active_vouchers", {}, customerId);
       const vouchers = vRes.vouchers ?? [];
       if (vouchers.length === 0) {
@@ -7307,7 +7326,7 @@ class ChatController {
         ]
       };
     }
-    if (/hạng|rank|thành viên|đơn thuê|đơn của tôi|đơn hàng|quá hạn|trễ hạn/.test(q)) {
+    if (/hạng|hang thanh vien|rank|thành viên|thanh vien|đơn thuê|don thue|đơn của tôi|don cua toi|đơn hàng|don hang|quá hạn|qua han|trễ hạn|tre han/.test(q)) {
       if (!customerId) {
         return {
           reply: "🔑 Bạn cần **đăng nhập tài khoản khách hàng** để mình tra cứu hạng thành viên, mức ưu đãi và danh sách đơn thuê của bạn nhé!",
@@ -7349,7 +7368,7 @@ ${top.join("\n")}`);
         ]
       };
     }
-    if (/giày|shoe|giá|tìm|mẫu|size|cỡ|màu|nike|adidas|converse|vans|puma|new balance|jordan|chạy bộ|bóng rổ|sneaker|lifestyle|dưới|còn hàng/i.test(
+    if (/giày|giay|shoe|giá|gia|tìm|tim|mẫu|mau|size|cỡ|co|màu|nike|adidas|converse|vans|puma|new balance|jordan|chạy bộ|chay bo|bóng rổ|bong ro|sneaker|lifestyle|dưới|duoi|còn hàng|con hang/i.test(
       q
     )) {
       const filters = this.extractSearchFiltersFromText(lastUserText, dateRange);
@@ -7384,7 +7403,7 @@ ${top.join("\n")}`);
         ]
       };
     }
-    if (/cọc|đặt cọc|deposit|phí phạt|phạt trễ|chính sách|policy|momo|thanh toán/i.test(q)) {
+    if (/cọc|đặt cọc|dat coc|deposit|phí phạt|phi phat|phạt trễ|phat tre|chính sách|chinh sach|policy|momo|thanh toán|thanh toan/i.test(q)) {
       return {
         reply: [
           "📜 **Chính sách Thuê Giày & Thanh Toán tại Rental Shoes:**",
@@ -7592,7 +7611,16 @@ ${top.join("\n")}`);
         } catch {
         }
       }
-      const cards = shoes.map((s) => toShoeCard(s));
+      const hasValidSearchDates = Boolean(
+        startDateStr && endDateStr && /^\d{4}-\d{2}-\d{2}$/.test(startDateStr) && /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)
+      );
+      const cards = shoes.map((s) => {
+        const card = toShoeCard(s);
+        if (hasValidSearchDates) {
+          card.actionUrl = `/shoes/${s.shoeId}?startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}`;
+        }
+        return card;
+      });
       return {
         ok: true,
         max_price_usd: maxInput,
@@ -7656,7 +7684,7 @@ ${top.join("\n")}`);
           availableColors: Array.from(new Set(availVariants.map((v) => v.color))),
           inStock: totalAvail > 0,
           availableUnits: totalAvail,
-          actionUrl: `/shoes/${shoe.shoeId}`
+          actionUrl: `/shoes/${shoe.shoeId}?startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}`
         };
         return {
           ok: true,
@@ -7706,6 +7734,7 @@ ${top.join("\n")}`);
       }
       let voucherCode = null;
       let voucherDiscountPercent = 0;
+      let invalidVoucherCode;
       const rawVoucher = String(args["voucher_code"] ?? "").trim().toUpperCase();
       if (rawVoucher) {
         if (this.voucherRepository) {
@@ -7714,6 +7743,8 @@ ${top.join("\n")}`);
           if (v && v.isActive && (!v.expiresAt || todayStr <= v.expiresAt) && (v.maxUses === null || v.usedCount < v.maxUses)) {
             voucherCode = v.code;
             voucherDiscountPercent = v.discountPercent;
+          } else {
+            invalidVoucherCode = rawVoucher;
           }
         } else {
           try {
@@ -7721,8 +7752,11 @@ ${top.join("\n")}`);
             if (v) {
               voucherCode = v.code;
               voucherDiscountPercent = v.discountPercent;
+            } else {
+              invalidVoucherCode = rawVoucher;
             }
           } catch {
+            invalidVoucherCode = rawVoucher;
           }
         }
       }
@@ -7753,11 +7787,12 @@ ${top.join("\n")}`);
         finalRentalPrice,
         depositAmount,
         grandTotal,
-        actionUrl: `/shoes/${target.shoeId}`
+        actionUrl: startDateStr && endDateStr ? `/shoes/${target.shoeId}?startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}` : `/shoes/${target.shoeId}`
       };
       return {
         ok: true,
-        quote
+        quote,
+        ...invalidVoucherCode ? { invalidVoucherCode } : {}
       };
     }
     if (name === "get_shoe_reviews_summary") {

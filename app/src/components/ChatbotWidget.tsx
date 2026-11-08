@@ -15,7 +15,7 @@ const STORAGE_KEY = 'rs_smart_chat_v2'
 const DEFAULT_SUGGESTIONS = [
   'Shop đang có mã giảm giá nào?',
   'Hạng thành viên & đơn thuê của tôi',
-  'Tìm giày dưới 200.000₫/ngày',
+  'Tìm giày thể thao dưới 350.000₫/ngày',
   'Quy định đặt cọc & phí trễ hạn',
 ]
 
@@ -51,7 +51,8 @@ function renderFormattedText(
   const lines = text.split('\n')
   return lines.map((line, lineIdx) => {
     // Tokenize bold (**...**) and internal routes (/shoes/SHOE001, /shoes, /checkout, /account)
-    const pattern = /(\*\*[^*]+\*\*|\/shoes\/[A-Za-z0-9_-]+|\/shoes|\/checkout|\/account)/g
+    const pattern =
+      /(\*\*[^*]+\*\*|\/shoes\/[A-Za-z0-9_-]+(?:\?[A-Za-z0-9_=&-]+)?|\/shoes|\/checkout|\/account)/g
     const parts = line.split(pattern)
     return (
       <span key={lineIdx} className="block leading-relaxed">
