@@ -43,7 +43,11 @@ export function ProductDetailPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [variantId, setVariantId] = useState('')
-  const [quantity, setQuantity] = useState(1)
+  const urlQty = Number(searchParams.get('qty') || 0)
+  const urlVoucher = (searchParams.get('voucher') || '').trim().toUpperCase()
+  const [quantity, setQuantity] = useState(() =>
+    urlQty >= 1 ? Math.min(5, Math.max(1, Math.floor(urlQty))) : 1
+  )
 
   // Availability Date Range Checker
   const today = toDateString(new Date())
@@ -55,6 +59,22 @@ export function ProductDetailPage() {
   )
   const [availability, setAvailability] = useState<ShoeAvailabilityResponse | null>(null)
   const [availLoading, setAvailLoading] = useState(false)
+
+  // Sync URL query params when navigating from AI Quote Card while already on /shoes/:id
+  useEffect(() => {
+    const sDate = searchParams.get('startDate')
+    const eDate = searchParams.get('endDate')
+    const qParam = Number(searchParams.get('qty') || 0)
+    if (sDate && /^\d{4}-\d{2}-\d{2}$/.test(sDate)) {
+      setCheckStartDate(sDate)
+    }
+    if (eDate && /^\d{4}-\d{2}-\d{2}$/.test(eDate)) {
+      setCheckEndDate(eDate)
+    }
+    if (qParam >= 1) {
+      setQuantity(Math.min(5, Math.max(1, Math.floor(qParam))))
+    }
+  }, [searchParams])
 
   // Reviews State
   const [reviews, setReviews] = useState<ShoeReviewDto[]>([])
@@ -191,8 +211,9 @@ export function ProductDetailPage() {
     const payload = linePayload(quantity)
     if (!payload || !cartEnabled) return
     addOrMergeLine(payload)
+    const voucherQuery = urlVoucher ? `&voucher=${encodeURIComponent(urlVoucher)}` : ''
     navigate(
-      `/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`
+      `/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}${voucherQuery}`
     )
   }
 
@@ -372,11 +393,16 @@ export function ProductDetailPage() {
           )}
 
           <div className="mt-8 flex flex-col gap-3">
+            {urlVoucher && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/25 border border-emerald-200 dark:border-emerald-800 text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                🎁 Mã ưu đãi từ Trợ lý AI: <strong>{urlVoucher}</strong> — sẽ tự động áp dụng khi bạn bấm &ldquo;Thuê ngay&rdquo;.
+              </div>
+            )}
             {canRentOnline ? (
               variantInCart ? (
                 <>
                   <Link
-                    to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`}
+                    to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}${urlVoucher ? `&voucher=${encodeURIComponent(urlVoucher)}` : ''}`}
                     className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-opacity flex items-center justify-center text-center"
                   >
                     View cart &amp; checkout
@@ -384,7 +410,7 @@ export function ProductDetailPage() {
                   <p className="text-sm text-slate-500 text-center">
                     This variant is already in your cart. Adjust quantity on the{' '}
                     <Link
-                      to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`}
+                      to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}${urlVoucher ? `&voucher=${encodeURIComponent(urlVoucher)}` : ''}`}
                       className="text-primary font-semibold underline"
                     >
                       checkout

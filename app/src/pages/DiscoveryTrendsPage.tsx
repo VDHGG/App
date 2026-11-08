@@ -1,4 +1,8 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { listShoes, type ShoeSummary } from '../lib/shoes.api'
+import { formatCurrency } from '../lib/format'
+import { ShoeImage } from '../components/ShoeImage'
 
 function FullBleed({ children }: { children: React.ReactNode }) {
   return (
@@ -9,6 +13,27 @@ function FullBleed({ children }: { children: React.ReactNode }) {
 }
 
 export function DiscoveryTrendsPage() {
+  const [liveShoes, setLiveShoes] = useState<ShoeSummary[]>([])
+  const [loadingShoes, setLoadingShoes] = useState(true)
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL')
+
+  useEffect(() => {
+    listShoes({ pageSize: 12 })
+      .then((res) => setLiveShoes(res.shoes.filter((s) => s.isActive)))
+      .catch(() => setLiveShoes([]))
+      .finally(() => setLoadingShoes(false))
+  }, [])
+
+  const categories = useMemo(() => {
+    const s = new Set(liveShoes.map((x) => x.category).filter(Boolean))
+    return ['ALL', ...Array.from(s).sort((a, b) => a.localeCompare(b))]
+  }, [liveShoes])
+
+  const filteredLiveShoes = useMemo(() => {
+    if (selectedCategory === 'ALL') return liveShoes
+    return liveShoes.filter((s) => s.category === selectedCategory)
+  }, [liveShoes, selectedCategory])
+
   return (
     <div className="discovery-trends pb-16 -mt-2">
       <FullBleed>
@@ -51,6 +76,122 @@ export function DiscoveryTrendsPage() {
           </div>
         </section>
       </FullBleed>
+
+      <section className="py-16 sm:py-20 max-w-7xl mx-auto px-0 border-b border-slate-200 dark:border-slate-800">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+          <div>
+            <span className="text-[11px] font-black uppercase tracking-[0.25em] text-primary block mb-1">
+              Live Catalog Spotlight
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+              🔥 Kệ Giày Thịnh Hành Thực Tế (Live Catalog Spotlight)
+            </h2>
+            <p className="text-slate-600 dark:text-slate-400 font-medium text-sm mt-1">
+              Kết nối trực tiếp với kho giày hiện tại — bấm chọn mẫu giày để kiểm tra lịch trống &amp; đặt thuê ngay.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Lọc danh mục giày thịnh hành">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  selectedCategory === cat
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                {cat === 'ALL' ? 'Tất cả' : cat}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {loadingShoes ? (
+          <div className="py-12 text-center text-sm text-slate-500">
+            Đang tải danh sách giày thịnh hành…
+          </div>
+        ) : filteredLiveShoes.length === 0 ? (
+          <div className="py-12 text-center text-sm text-slate-500">
+            Chưa có mẫu giày nào trong danh mục này.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {filteredLiveShoes.slice(0, 8).map((shoe) => {
+              const sizes = [
+                ...new Set(
+                  (shoe.variants ?? [])
+                    .filter((v) => v.totalQuantity > 0)
+                    .map((v) => v.size)
+                ),
+              ].sort((a, b) => a - b)
+
+              return (
+                <div
+                  key={shoe.shoeId}
+                  className="group rounded-2xl overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-xl transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="aspect-square relative overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <Link to={`/shoes/${shoe.shoeId}`} className="block absolute inset-0">
+                        <ShoeImage
+                          src={shoe.imageUrl}
+                          alt={shoe.name}
+                          imgClassName="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                        />
+                      </Link>
+                      <span className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-white/90 dark:bg-slate-900/90 text-slate-900 dark:text-white">
+                        {shoe.category}
+                      </span>
+                      <span
+                        className={`absolute bottom-3 left-3 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                          shoe.unitsInStock > 0
+                            ? 'bg-emerald-600/95 text-white'
+                            : 'bg-rose-600/95 text-white'
+                        }`}
+                      >
+                        {shoe.unitsInStock > 0
+                          ? `Còn ${shoe.unitsInStock} đôi trống`
+                          : 'Tạm hết hàng'}
+                      </span>
+                    </div>
+
+                    <div className="p-4 space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link to={`/shoes/${shoe.shoeId}`}>
+                          <h3 className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
+                            {shoe.name}
+                          </h3>
+                        </Link>
+                        <span className="text-primary font-black text-sm shrink-0">
+                          {formatCurrency(shoe.pricePerDay)}
+                          <span className="text-[10px] text-slate-500 font-normal">/ngày</span>
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">{shoe.brand}</p>
+                      {sizes.length > 0 && (
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                          Size EU: <strong>{sizes.join(', ')}</strong>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-4 pt-0">
+                    <Link
+                      to={`/shoes/${shoe.shoeId}`}
+                      className="w-full py-2.5 px-4 rounded-xl bg-slate-900 dark:bg-primary text-white text-xs font-bold hover:opacity-90 transition-opacity flex items-center justify-center"
+                    >
+                      Xem &amp; Thuê ngay →
+                    </Link>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="py-16 sm:py-24 max-w-7xl mx-auto px-0">
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4 mb-10">

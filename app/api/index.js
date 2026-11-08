@@ -7168,8 +7168,9 @@ class ChatController {
       const explicitShoeId = lastUserText.match(/\b(SHOE\d{3,})\b/i)?.[1]?.toUpperCase();
       const matchedShoe = explicitShoeId ? await this.resolveShoeByIdOrName(explicitShoeId, void 0) : await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
       const days = daysMatch ? Math.max(1, Math.min(30, Number(daysMatch[1]))) : 3;
-      const qtyMatch = q.match(/(\d+)\s*(?:đôi|doi)/i);
-      const quantity = qtyMatch ? Math.max(1, Math.min(5, Number(qtyMatch[1]))) : 1;
+      const qtyMatch = q.match(/(?:(\d+)\s*(?:đôi|doi)|(?:số lượng|so luong|sl)\s*(\d+))/i);
+      const rawQty = qtyMatch ? Number(qtyMatch[1] ?? qtyMatch[2]) : 1;
+      const quantity = Math.max(1, Math.min(5, rawQty || 1));
       const knownVoucherMatch = lastUserText.match(
         /\b(WELCOME10|SHOE20|GIAM5|SUMMER\d+|VIP\d+|FLASH\d+)\b/i
       );
@@ -7769,6 +7770,18 @@ ${top.join("\n")}`);
       const finalRentalPrice = discountedUnitPrice * quantity * days;
       const depositAmount = 5e5 * quantity;
       const grandTotal = finalRentalPrice + depositAmount;
+      const queryParts = [];
+      if (startDateStr && endDateStr) {
+        queryParts.push(`startDate=${encodeURIComponent(startDateStr)}`);
+        queryParts.push(`endDate=${encodeURIComponent(endDateStr)}`);
+      }
+      if (quantity > 1) {
+        queryParts.push(`qty=${quantity}`);
+      }
+      if (voucherCode) {
+        queryParts.push(`voucher=${encodeURIComponent(voucherCode)}`);
+      }
+      const actionUrl = queryParts.length > 0 ? `/shoes/${target.shoeId}?${queryParts.join("&")}` : `/shoes/${target.shoeId}`;
       const quote = {
         shoeId: target.shoeId,
         shoeName: target.name,
@@ -7787,7 +7800,7 @@ ${top.join("\n")}`);
         finalRentalPrice,
         depositAmount,
         grandTotal,
-        actionUrl: startDateStr && endDateStr ? `/shoes/${target.shoeId}?startDate=${encodeURIComponent(startDateStr)}&endDate=${encodeURIComponent(endDateStr)}` : `/shoes/${target.shoeId}`
+        actionUrl
       };
       return {
         ok: true,

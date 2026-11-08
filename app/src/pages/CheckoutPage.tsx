@@ -66,11 +66,39 @@ export function CheckoutPage() {
   const [endDate, setEndDate] = useState(initialEndDate)
 
   // Voucher state
-  const [voucherInput, setVoucherInput] = useState('')
+  const urlVoucher = (searchParams.get('voucher') || '').trim().toUpperCase()
+  const [voucherInput, setVoucherInput] = useState(urlVoucher)
   const [voucherLoading, setVoucherLoading] = useState(false)
   const [voucherError, setVoucherError] = useState<string | null>(null)
   const [appliedVoucher, setAppliedVoucher] = useState<ValidateVoucherResponse | null>(null)
   const [activeVoucherPills, setActiveVoucherPills] = useState<Array<{ code: string; label: string }>>([])
+
+  useEffect(() => {
+    if (!urlVoucher) return
+    let cancelled = false
+    setVoucherInput(urlVoucher)
+    setVoucherLoading(true)
+    setVoucherError(null)
+    validateVoucher(urlVoucher)
+      .then((res) => {
+        if (cancelled) return
+        if (res.valid) {
+          setAppliedVoucher(res)
+          setVoucherInput(res.code)
+        } else {
+          setVoucherError('Mã giảm giá không hợp lệ hoặc đã hết hạn.')
+        }
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setVoucherError(getApiErrorMessage(err))
+      })
+      .finally(() => {
+        if (!cancelled) setVoucherLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [urlVoucher])
 
   useEffect(() => {
     let cancelled = false

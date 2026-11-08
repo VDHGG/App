@@ -2316,5 +2316,73 @@ describe('New Features - Unit Tests', () => {
       expect(missingOrder.reply).toContain('#REN999');
       expect(missingOrder.reply).toContain('Không tìm thấy đơn thuê');
     });
+
+    it('Phase Z: propagates startDate, endDate, qty (>1), and valid voucher in quote.actionUrl for 1-click checkout bridge', async () => {
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const custRepo = new InMemoryCustomerRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+
+      const shoe = new Shoe({
+        id: 'SHOE005',
+        name: 'Jordan 1 Retro High',
+        brand: 'Nike',
+        category: 'Basketball',
+        pricePerDay: 400000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V_J1_42',
+          size: 42,
+          color: 'Red',
+          totalQuantity: 5,
+          availableQuantity: 5,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      await custRepo.save(
+        new Customer({
+          id: 'CUST004',
+          fullName: 'Diamond User',
+          email: 'diamond@example.com',
+          rank: CustomerRank.DIAMOND,
+        })
+      );
+
+      const ctrl = new ChatController(
+        new ListRentalsService(rentalRepo),
+        new GetRentalService(rentalRepo),
+        new ListShoesService(shoeRepo, new NoopShoeImageService()),
+        new GetShoeService(shoeRepo, new NoopShoeImageService(), {} as never),
+        new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo),
+        voucherRepo,
+        custRepo
+      );
+
+      // Quote with "số lượng 2", explicit dates, and valid voucher WELCOME10
+      const fullBridgeQuote = await ctrl.buildSmartReply(
+        'Báo giá thuê Jordan 1 số lượng 2 từ 2026-12-01 đến 2026-12-03 áp mã WELCOME10',
+        'CUST004'
+      );
+      expect(fullBridgeQuote.quote).toBeDefined();
+      expect(fullBridgeQuote.quote?.quantity).toBe(2);
+      expect(fullBridgeQuote.quote?.days).toBe(3);
+      expect(fullBridgeQuote.quote?.voucherCode).toBe('WELCOME10');
+      expect(fullBridgeQuote.quote?.actionUrl).toBe(
+        '/shoes/SHOE005?startDate=2026-12-01&endDate=2026-12-03&qty=2&voucher=WELCOME10'
+      );
+
+      // Quote with invalid voucher must NOT append voucher param to actionUrl
+      const invalidVoucherBridge = await ctrl.buildSmartReply(
+        'Báo giá thuê Jordan 1 2 đôi từ 2026-12-01 đến 2026-12-03 áp mã BOGUS99',
+        'CUST004'
+      );
+      expect(invalidVoucherBridge.quote?.quantity).toBe(2);
+      expect(invalidVoucherBridge.quote?.voucherCode).toBeNull();
+      expect(invalidVoucherBridge.quote?.actionUrl).toBe(
+        '/shoes/SHOE005?startDate=2026-12-01&endDate=2026-12-03&qty=2'
+      );
+    });
   });
 });
