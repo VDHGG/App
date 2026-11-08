@@ -44,6 +44,12 @@ export function AdminSidebar() {
           </span>
           <span className="text-sm font-medium">Rentals</span>
         </NavLink>
+        <NavLink to="/admin/payments" className={navClass}>
+          <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
+            payments
+          </span>
+          <span className="text-sm font-medium">MoMo Payments</span>
+        </NavLink>
         <NavLink to="/admin/customers" className={navClass}>
           <span className="material-symbols-outlined text-[20px] leading-none w-6 shrink-0 flex items-center justify-center">
             group

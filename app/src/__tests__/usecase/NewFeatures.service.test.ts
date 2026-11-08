@@ -30,6 +30,10 @@ import { GetRentalService } from '@usecase/GetRental.service';
 import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
 import { ListRentalsQuerySchema } from '@adapter/http/rental.schema';
+import { ListShoesQuerySchema } from '@adapter/http/shoe.schema';
+import { ShoeController } from '@adapter/http/ShoeController.adapter';
+import { RentalController } from '@adapter/http/RentalController.adapter';
+import { MomoPaymentController } from '@adapter/http/MomoPaymentController.adapter';
 import { ChatController } from '@adapter/http/ChatController.adapter';
 import type { RentalPaymentRepository, RentalPaymentRecord, RentalPaymentStatus } from '@port/RentalPaymentRepository.port';
 import { transactionalRoute } from '@adapter/http/middleware/routeMiddleware';
@@ -1914,6 +1918,214 @@ describe('New Features - Unit Tests', () => {
       const resultB = await listRentals.execute({ customerId: 'CUST_B' });
       expect(resultB.total).toBe(1);
       expect(resultB.rentals.map((r) => r.rentalId)).toEqual(['R_CUST_2']);
+    });
+  });
+
+  describe('Phases Q, R, S — Batch Date-Range Availability, Daily Dispatch Schedule & Admin MoMo Reconciliation', () => {
+    it('Phase Q: enriches shoes with availableUnitsInRange & availableQuantity and rejects partial/reversed dates', async () => {
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const shoe = new Shoe({
+        id: 'SHOE_Q1',
+        name: 'Jordan 1 High',
+        brand: 'Nike',
+        category: 'Sneaker',
+        pricePerDay: 300000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'VQ_41',
+          size: 41,
+          color: 'Red',
+          totalQuantity: 3,
+          availableQuantity: 3,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      await rentalRepo.save(
+        new Rental({
+          id: 'RQ_1',
+          customerId: 'CUST001',
+          items: [
+            new RentalItem({
+              shoeId: 'SHOE_Q1',
+              variantId: 'VQ_41',
+              shoeName: 'Jordan 1 High',
+              size: 41,
+              color: 'Red',
+              pricePerDay: 300000,
+              quantity: 2,
+            }),
+          ],
+          period: new RentalPeriod(new Date('2026-09-10'), new Date('2026-09-12')),
+          status: RentalStatus.RESERVED,
+        })
+      );
+
+      const listShoes = new ListShoesService(shoeRepo, new NoopShoeImageService());
+      const availChecker = new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo);
+      const ctrl = new ShoeController(
+        {} as never,
+        {} as never,
+        {} as never,
+        listShoes,
+        {} as never,
+        {} as never,
+        availChecker
+      );
+      const callList = (ctrl as unknown as { list: (req: Request, res: Response) => Promise<void> }).list.bind(ctrl);
+
+      let jsonPayload: unknown = null;
+      const mockRes = {
+        json(data: unknown) {
+          jsonPayload = data;
+          return this;
+        },
+      } as unknown as Response;
+
+      const parsed = ListShoesQuerySchema.parse({
+        startDate: '2026-09-10',
+        endDate: '2026-09-12',
+      });
+      expect(parsed.startDate).toBe('2026-09-10');
+
+      await callList(
+        { query: { startDate: '2026-09-10', endDate: '2026-09-12' } } as unknown as Request,
+        mockRes
+      );
+      const body = jsonPayload as {
+        shoes: Array<{
+          availableUnitsInRange?: number;
+          variants: Array<{ reservedQuantity?: number; availableQuantity?: number }>;
+        }>;
+      };
+      expect(body.shoes[0].availableUnitsInRange).toBe(1);
+      expect(body.shoes[0].variants[0].reservedQuantity).toBe(2);
+      expect(body.shoes[0].variants[0].availableQuantity).toBe(1);
+
+      await expect(
+        callList({ query: { startDate: '2026-09-10' } } as unknown as Request, mockRes)
+      ).rejects.toThrow(/Both startDate and endDate/);
+
+      await expect(
+        callList(
+          { query: { startDate: '2026-09-15', endDate: '2026-09-10' } } as unknown as Request,
+          mockRes
+        )
+      ).rejects.toThrow();
+    });
+
+    it('Phase R: classifies pickupsDue, returnsDue, and overdueActive for target schedule date', async () => {
+      const rentalRepo = new InMemoryRentalRepository();
+      const item = new RentalItem({
+        shoeId: 'S1',
+        variantId: 'V1',
+        shoeName: 'Air Force 1',
+        size: 42,
+        color: 'White',
+        pricePerDay: 200000,
+        quantity: 1,
+      });
+
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_PICKUP',
+          customerId: 'CUST_1',
+          items: [item],
+          period: new RentalPeriod(new Date('2026-10-10'), new Date('2026-10-12')),
+          status: RentalStatus.RESERVED,
+        })
+      );
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_RETDUE',
+          customerId: 'CUST_2',
+          items: [item],
+          period: new RentalPeriod(new Date('2026-10-08'), new Date('2026-10-10')),
+          status: RentalStatus.ACTIVE,
+          activatedAt: new Date('2026-10-08'),
+        })
+      );
+      await rentalRepo.save(
+        new Rental({
+          id: 'R_OVERDUE',
+          customerId: 'CUST_3',
+          items: [item],
+          period: new RentalPeriod(new Date('2026-10-05'), new Date('2026-10-07')),
+          status: RentalStatus.ACTIVE,
+          activatedAt: new Date('2026-10-05'),
+        })
+      );
+
+      const ctrl = new RentalController(
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        new ListRentalsService(rentalRepo),
+        {} as never,
+        {} as never
+      );
+      const callSchedule = (
+        ctrl as unknown as { getSchedule: (req: Request, res: Response) => Promise<void> }
+      ).getSchedule.bind(ctrl);
+
+      let scheduleOut: Record<string, unknown> = {};
+      const mockRes = {
+        json(data: Record<string, unknown>) {
+          scheduleOut = data;
+          return this;
+        },
+      } as unknown as Response;
+
+      await callSchedule({ query: { date: '2026-10-10' } } as unknown as Request, mockRes);
+
+      expect(scheduleOut['date']).toBe('2026-10-10');
+      expect((scheduleOut['pickupsDue'] as Array<{ rentalId: string }>).map((x) => x.rentalId)).toEqual([
+        'R_PICKUP',
+      ]);
+      expect((scheduleOut['returnsDue'] as Array<{ rentalId: string }>).map((x) => x.rentalId)).toEqual([
+        'R_RETDUE',
+      ]);
+      const overdueList = scheduleOut['overdueActive'] as Array<{
+        rentalId: string;
+        overdueDays: number;
+        estimatedLateFee: number;
+      }>;
+      expect(overdueList).toHaveLength(1);
+      expect(overdueList[0].rentalId).toBe('R_OVERDUE');
+      expect(overdueList[0].overdueDays).toBe(3);
+      expect(overdueList[0].estimatedLateFee).toBe(900000);
+
+      await expect(
+        callSchedule({ query: { date: 'invalid-date' } } as unknown as Request, mockRes)
+      ).rejects.toThrow(/Invalid date format/);
+    });
+
+    it('Phase S: validates status filter in MomoPaymentController.listAdmin and returns reconciliation summary', async () => {
+      const ctrl = new MomoPaymentController({} as never, {} as never);
+      const callListAdmin = (
+        ctrl as unknown as { listAdmin: (req: Request, res: Response) => Promise<void> }
+      ).listAdmin.bind(ctrl);
+
+      let out: Record<string, unknown> = {};
+      const mockRes = {
+        json(data: Record<string, unknown>) {
+          out = data;
+          return this;
+        },
+      } as unknown as Response;
+
+      await callListAdmin({ query: { status: 'PAID', search: 'RS123' } } as unknown as Request, mockRes);
+      expect(out['status']).toBe('PAID');
+      expect(out['search']).toBe('RS123');
+      expect(out['payments']).toEqual([]);
+      expect((out['summary'] as Record<string, number>)['totalPaidVnd']).toBe(0);
+
+      await expect(
+        callListAdmin({ query: { status: 'BOGUS' } } as unknown as Request, mockRes)
+      ).rejects.toThrow(/Invalid payment status filter/);
     });
   });
 });

@@ -11,6 +11,7 @@ import { CheckoutPage } from './pages/CheckoutPage'
 import { AdminDashboardPage } from './pages/admin/AdminDashboardPage'
 import { RentalsListPage } from './pages/admin/RentalsListPage'
 import { RentalDetailPage } from './pages/admin/RentalDetailPage'
+import { AdminPaymentsPage } from './pages/admin/AdminPaymentsPage'
 import { CustomersListPage } from './pages/admin/CustomersListPage'
 import { CustomerDetailPage } from './pages/admin/CustomerDetailPage'
 import { AdminShoesPage } from './pages/admin/AdminShoesPage'
@@ -66,6 +67,7 @@ export function App() {
               <Route path="rentals" element={<RentalsListPage />} />
               <Route path="rentals/new" element={<WalkInRentalPage />} />
               <Route path="rentals/:id" element={<RentalDetailPage />} />
+              <Route path="payments" element={<AdminPaymentsPage />} />
               <Route path="customers" element={<CustomersListPage />} />
               <Route path="customers/:id" element={<CustomerDetailPage />} />
               <Route path="system-users" element={<AdminSystemUsersPage />} />

@@ -6,16 +6,22 @@ import { ShoeImage } from './ShoeImage'
 
 type ProductCardProps = {
   shoe: ShoeSummary
+  startDate?: string
+  endDate?: string
 }
 
-export function ProductCard({ shoe }: ProductCardProps) {
+export function ProductCard({ shoe, startDate, endDate }: ProductCardProps) {
   const { isCustomer, isInWishlist, toggle } = useWishlist()
   const filled = isInWishlist(shoe.shoeId)
+  const detailUrl =
+    startDate && endDate
+      ? `/shoes/${shoe.shoeId}?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
+      : `/shoes/${shoe.shoeId}`
 
   return (
     <div className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden transition-all hover:shadow-xl hover:-translate-y-1">
       <div className="relative aspect-square overflow-hidden bg-slate-100 dark:bg-slate-800">
-        <Link to={`/shoes/${shoe.shoeId}`} className="block absolute inset-0">
+        <Link to={detailUrl} className="block absolute inset-0">
           <ShoeImage
             src={shoe.imageUrl}
             alt={shoe.name}
@@ -25,6 +31,11 @@ export function ProductCard({ shoe }: ProductCardProps) {
         <div className="absolute top-3 left-3 px-2 py-1 bg-white/90 dark:bg-slate-900/90 rounded text-[10px] font-bold uppercase tracking-wider pointer-events-none z-[1]">
           {shoe.category}
         </div>
+        {shoe.availableUnitsInRange !== undefined && (
+          <div className="absolute bottom-3 left-3 px-2.5 py-1 bg-emerald-600/95 text-white rounded-full text-[11px] font-bold shadow-sm pointer-events-none z-[1]">
+            Còn {shoe.availableUnitsInRange} đôi trống lịch
+          </div>
+        )}
         {isCustomer && (
           <button
             type="button"
@@ -47,7 +58,7 @@ export function ProductCard({ shoe }: ProductCardProps) {
       </div>
       <div className="p-4">
         <div className="flex justify-between items-start mb-1">
-          <Link to={`/shoes/${shoe.shoeId}`}>
+          <Link to={detailUrl}>
             <h3 className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
               {shoe.name}
             </h3>
@@ -59,7 +70,7 @@ export function ProductCard({ shoe }: ProductCardProps) {
         </div>
         <p className="text-sm text-slate-500 mb-4 line-clamp-1">{shoe.brand}</p>
         <Link
-          to={`/shoes/${shoe.shoeId}`}
+          to={detailUrl}
           className="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center"
         >
           Rent Now

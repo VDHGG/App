@@ -9,6 +9,7 @@ export type ShoeSummary = {
   variantCount: number
   isActive: boolean
   unitsInStock: number
+  availableUnitsInRange?: number
   imagePublicId: string | null
   imageUrl: string | null
   variants?: Array<{
@@ -16,6 +17,8 @@ export type ShoeSummary = {
     size: number
     color: string
     totalQuantity: number
+    reservedQuantity?: number
+    availableQuantity?: number
   }>
 }
 
@@ -55,6 +58,8 @@ export type ListShoesResponse = {
 export type ListShoesQuery = {
   priceBucket?: 'all' | 'lt10' | '10to20' | '20to50' | 'gt50'
   stockBucket?: 'all' | '0' | '1to5' | '6plus'
+  startDate?: string
+  endDate?: string
   page?: number
   pageSize?: number
 }

@@ -97,13 +97,91 @@ export class ShoeController {
 
   private async list(req: Request, res: Response): Promise<void> {
     const query = ListShoesQuerySchema.parse(req.query);
+    const startDateStr = query.startDate?.trim() ?? '';
+    const endDateStr = query.endDate?.trim() ?? '';
+
+    if (Boolean(startDateStr) !== Boolean(endDateStr)) {
+      throw new ValidationError('Both startDate and endDate query parameters are required together.');
+    }
+
+    let period: RentalPeriod | null = null;
+    if (startDateStr && endDateStr) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) ||
+        Number.isNaN(new Date(startDateStr).getTime()) ||
+        Number.isNaN(new Date(endDateStr).getTime())
+      ) {
+        throw new ValidationError('Invalid startDate or endDate format. Expected YYYY-MM-DD.');
+      }
+      period = new RentalPeriod(new Date(startDateStr), new Date(endDateStr));
+    }
+
     const result = await this.listShoes.execute({
       ...(query.priceBucket !== undefined ? { priceBucket: query.priceBucket } : {}),
       ...(query.stockBucket !== undefined ? { stockBucket: query.stockBucket } : {}),
       ...(query.page !== undefined ? { page: query.page } : {}),
       ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
     });
-    res.json(result);
+
+    if (!period) {
+      res.json(result);
+      return;
+    }
+
+    const reservedByVariantId: Record<string, number> = {};
+    if (this.pool) {
+      try {
+        const [rows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT ri.variant_id, COALESCE(SUM(ri.quantity), 0) AS reserved_qty
+           FROM rental_items ri
+           JOIN rentals r ON r.rental_id = ri.rental_id
+           WHERE r.status IN ('RESERVED', 'ACTIVE')
+             AND r.start_date <= ?
+             AND (r.expected_return_date >= ? OR (r.status = 'ACTIVE' AND ? <= CURDATE()))
+           GROUP BY ri.variant_id`,
+          [endDateStr, startDateStr, startDateStr]
+        );
+        for (const r of rows) {
+          reservedByVariantId[String(r['variant_id'])] = Number(r['reserved_qty'] ?? 0);
+        }
+      } catch {
+        // ignore fallback
+      }
+    } else if (this.availabilityChecker) {
+      for (const shoe of result.shoes) {
+        for (const v of shoe.variants) {
+          reservedByVariantId[v.variantId] =
+            await this.availabilityChecker.getReservedQuantityForVariant(v.variantId, period);
+        }
+      }
+    }
+
+    const shoes = result.shoes.map((shoe) => {
+      const variants = shoe.variants.map((v) => {
+        const reservedQuantity = reservedByVariantId[v.variantId] ?? 0;
+        const availableQuantity = Math.max(0, v.totalQuantity - reservedQuantity);
+        return {
+          ...v,
+          reservedQuantity,
+          availableQuantity,
+        };
+      });
+      const availableUnitsInRange = variants.reduce(
+        (sum, v) => sum + (v.availableQuantity ?? v.totalQuantity),
+        0
+      );
+      return {
+        ...shoe,
+        availableUnitsInRange,
+        variants,
+      };
+    });
+
+    res.json({
+      ...result,
+      shoes,
+    });
   }
 
   private async getById(req: Request, res: Response): Promise<void> {

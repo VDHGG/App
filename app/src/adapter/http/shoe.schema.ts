@@ -3,6 +3,8 @@ import { z } from 'zod';
 export const ListShoesQuerySchema = z.object({
   priceBucket: z.enum(['all', 'lt10', '10to20', '20to50', 'gt50']).optional(),
   stockBucket: z.enum(['all', '0', '1to5', '6plus']).optional(),
+  startDate: z.string().trim().optional(),
+  endDate: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
 });

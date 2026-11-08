@@ -126,6 +126,7 @@ export class RentalController {
     router.get('/notifications', ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get('/stats/overview', ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get('/activity-feed', ...admin, asyncRoute(this.getActivityFeed.bind(this)));
+    router.get('/schedule', ...admin, asyncRoute(this.getSchedule.bind(this)));
     router.post('/sweep-expired-momo', ...admin, asyncRoute(this.sweepExpiredMomo.bind(this)));
     router.get('/me', ...customer, asyncRoute(this.listMine.bind(this)));
     router.get('/me/:id', ...customer, asyncRoute(this.getMine.bind(this)));
@@ -1068,6 +1069,130 @@ export class RentalController {
       type: rawType,
       events: sliced,
       total: filtered.length,
+    });
+  }
+
+  private async getSchedule(req: Request, res: Response): Promise<void> {
+    const rawDate = String(req.query['date'] ?? '').trim();
+    const targetDate = rawDate || getVietnamTodayYmd();
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(targetDate) ||
+      Number.isNaN(new Date(`${targetDate}T00:00:00Z`).getTime())
+    ) {
+      throw new ValidationError('Invalid date format. Expected YYYY-MM-DD.');
+    }
+
+    await this.lazySweepExpiredMomo();
+    const allRentals = await this.listRentals.execute({});
+
+    const customerMap: Record<string, { name: string; phone: string }> = {};
+    const paymentStatusMap: Record<string, string> = {};
+
+    if (this.pool) {
+      try {
+        const [custRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT customer_id, full_name, phone FROM customers`
+        );
+        for (const row of custRows) {
+          const cid = String(row['customer_id']);
+          customerMap[cid] = {
+            name: String(row['full_name'] ?? cid),
+            phone: row['phone'] ? String(row['phone']) : '',
+          };
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const [payRows] = await this.pool.query<RowDataPacket[]>(
+          `SELECT rental_id, status FROM rental_payments ORDER BY id ASC`
+        );
+        for (const row of payRows) {
+          const rid = String(row['rental_id']);
+          const st = String(row['status']);
+          if (paymentStatusMap[rid] === 'PAID') continue;
+          paymentStatusMap[rid] = st;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    type ScheduleItem = {
+      rentalId: string;
+      customerId: string;
+      customerName: string;
+      customerPhone: string;
+      status: string;
+      startDate: string;
+      endDate: string;
+      totalItems: number;
+      totalAmount: number;
+      depositAmount: number;
+      overdueDays: number;
+      estimatedLateFee: number;
+      paymentStatus: string | null;
+    };
+
+    const pickupsDue: ScheduleItem[] = [];
+    const returnsDue: ScheduleItem[] = [];
+    const overdueActive: ScheduleItem[] = [];
+    const targetMs = new Date(`${targetDate}T00:00:00Z`).getTime();
+
+    for (const r of allRentals.rentals) {
+      const startYmd = toRentalYmd(r.startDate);
+      const endYmd = toRentalYmd(r.endDate);
+      const startMs = new Date(`${startYmd}T00:00:00Z`).getTime();
+      const endMs = new Date(`${endYmd}T00:00:00Z`).getTime();
+      const durationDays = Math.max(1, Math.round((endMs - startMs) / 86400000) + 1);
+      const isOverdueOnTarget = r.status === 'ACTIVE' && endYmd < targetDate;
+      const overdueDaysForTargetDate = isOverdueOnTarget
+        ? Math.max(1, Math.round((targetMs - endMs) / 86400000))
+        : 0;
+      const estimatedLateFeeForTargetDate =
+        overdueDaysForTargetDate > 0
+          ? Math.round((r.basePrice / durationDays) * 1.5 * overdueDaysForTargetDate)
+          : 0;
+
+      const item: ScheduleItem = {
+        rentalId: r.rentalId,
+        customerId: r.customerId,
+        customerName: customerMap[r.customerId]?.name ?? r.customerId,
+        customerPhone: customerMap[r.customerId]?.phone ?? '',
+        status: r.status,
+        startDate: startYmd,
+        endDate: endYmd,
+        totalItems: r.totalItems,
+        totalAmount: r.totalAmount,
+        depositAmount: r.depositAmount ?? r.totalItems * 500000,
+        overdueDays: overdueDaysForTargetDate,
+        estimatedLateFee: estimatedLateFeeForTargetDate,
+        paymentStatus: paymentStatusMap[r.rentalId] ?? null,
+      };
+
+      if (r.status === 'RESERVED' && startYmd === targetDate) {
+        pickupsDue.push(item);
+      } else if (r.status === 'ACTIVE' && endYmd === targetDate) {
+        returnsDue.push(item);
+      } else if (isOverdueOnTarget) {
+        overdueActive.push(item);
+      }
+    }
+
+    overdueActive.sort((a, b) => b.overdueDays - a.overdueDays);
+
+    res.json({
+      date: targetDate,
+      pickupsDue,
+      returnsDue,
+      overdueActive,
+      summary: {
+        pickupsCount: pickupsDue.length,
+        returnsCount: returnsDue.length,
+        overdueCount: overdueActive.length,
+      },
     });
   }
 }

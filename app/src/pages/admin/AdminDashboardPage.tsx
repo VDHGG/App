@@ -7,6 +7,7 @@ import {
   fetchAdminStatsOverview,
   sweepExpiredMomoRentals,
   fetchActivityFeed,
+  fetchRentalSchedule,
   exportRentalsToCsv,
   type RentalSummary,
   type AdminStatsOverviewResponse,
@@ -14,6 +15,7 @@ import {
   type LowStockVariantDto,
   type ActivityFeedFilterType,
   type ActivityFeedItem,
+  type DailyScheduleResponse,
 } from '../../lib/rentals.api'
 import { updateShoe } from '../../lib/shoes.api'
 import { listCustomers } from '../../lib/customers.api'
@@ -42,6 +44,12 @@ function toDateString(d: Date): string {
   return `${y}-${m}-${day}`
 }
 
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d)
+  out.setDate(out.getDate() + days)
+  return out
+}
+
 export function AdminDashboardPage() {
   const navigate = useNavigate()
   const [rentals, setRentals] = useState<RentalSummary[]>([])
@@ -54,6 +62,9 @@ export function AdminDashboardPage() {
   const [feedFilter, setFeedFilter] = useState<ActivityFeedFilterType>('ALL')
   const [feedEvents, setFeedEvents] = useState<ActivityFeedItem[]>([])
   const [feedLoading, setFeedLoading] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState<string>(() => toDateString(new Date()))
+  const [scheduleData, setScheduleData] = useState<DailyScheduleResponse | null>(null)
+  const [scheduleLoading, setScheduleLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -81,6 +92,39 @@ export function AdminDashboardPage() {
       .catch((err) => setError(err.message ?? 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (!scheduleDate) return
+    setScheduleLoading(true)
+    fetchRentalSchedule(scheduleDate)
+      .then((res) => setScheduleData(res))
+      .catch(() => setScheduleData(null))
+      .finally(() => setScheduleLoading(false))
+  }, [scheduleDate])
+
+  const handleDispatchActivate = async (rentalId: string) => {
+    setActionLoading(rentalId)
+    setActionError(null)
+    setSweepMessage(null)
+    try {
+      await activateRental(rentalId)
+      const [res, statsRes, feedRes, schedRes] = await Promise.all([
+        listRentals(),
+        fetchAdminStatsOverview(period).catch(() => null),
+        fetchActivityFeed({ type: feedFilter, limit: 20 }).catch(() => null),
+        fetchRentalSchedule(scheduleDate).catch(() => null),
+      ])
+      setRentals(res.rentals)
+      setStats(statsRes)
+      if (feedRes) setFeedEvents(feedRes.events)
+      if (schedRes) setScheduleData(schedRes)
+      setSweepMessage(`Đã kích hoạt giao giày cho đơn #${rentalId}.`)
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err))
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   const handlePeriodChange = async (nextPeriod: StatsPeriod) => {
     setPeriod(nextPeriod)
@@ -569,6 +613,238 @@ export function AdminDashboardPage() {
               <span className="font-black text-slate-900 dark:text-white text-sm">
                 {stats?.totalRentals ?? totalRentals} đơn
               </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Phase R: Bảng Điều phối Giao / Trả Giày Theo Ngày (Daily Dispatch & Return Board) */}
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">event_note</span>
+                Bảng Điều phối Giao / Trả Giày Theo Ngày
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Danh sách đơn cần giao giày, đơn đến hạn nhận trả và đơn đang quá hạn cần thu hồi
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setScheduleDate(toDateString(new Date()))}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  scheduleDate === toDateString(new Date())
+                    ? 'bg-primary text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                Hôm nay
+              </button>
+              <button
+                type="button"
+                onClick={() => setScheduleDate(toDateString(addDays(new Date(), 1)))}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                  scheduleDate === toDateString(addDays(new Date(), 1))
+                    ? 'bg-primary text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                }`}
+              >
+                Ngày mai
+              </button>
+              <input
+                type="date"
+                aria-label="Ngày điều phối"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                className="h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold"
+              />
+            </div>
+          </div>
+
+          <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Column 1: Cần giao giày */}
+            <div className="rounded-xl border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/30 dark:bg-amber-950/10 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-amber-500" />
+                  Cần giao giày ({scheduleData?.summary.pickupsCount ?? 0})
+                </h4>
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                  RESERVED · {scheduleDate}
+                </span>
+              </div>
+
+              {scheduleLoading ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Đang tải lịch giao…</p>
+              ) : (scheduleData?.pickupsDue.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">
+                  Không có đơn cần giao trong ngày này.
+                </p>
+              ) : (
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {(scheduleData?.pickupsDue ?? []).map((item) => (
+                    <div
+                      key={item.rentalId}
+                      className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="font-mono text-xs font-bold text-primary hover:underline"
+                        >
+                          #{item.rentalId}
+                        </Link>
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            item.paymentStatus === 'PAID'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                              : item.paymentStatus === 'PENDING'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {item.paymentStatus ? `MoMo ${item.paymentStatus}` : 'COD / Tại quầy'}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-700 dark:text-slate-300">
+                        <p className="font-semibold">{item.customerName}</p>
+                        <p className="text-slate-500">
+                          SĐT: {item.customerPhone || '—'} · {item.totalItems} đôi
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          type="button"
+                          disabled={actionLoading === item.rentalId}
+                          onClick={() => void handleDispatchActivate(item.rentalId)}
+                          className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-50"
+                        >
+                          {actionLoading === item.rentalId ? 'Đang xử lý…' : 'Giao giày'}
+                        </button>
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="text-xs font-semibold text-primary hover:underline"
+                        >
+                          Chi tiết →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Column 2: Đến hạn nhận trả */}
+            <div className="rounded-xl border border-blue-200/70 dark:border-blue-900/40 bg-blue-50/30 dark:bg-blue-950/10 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-blue-500" />
+                  Đến hạn nhận trả ({scheduleData?.summary.returnsCount ?? 0})
+                </h4>
+                <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300">
+                  ACTIVE · {scheduleDate}
+                </span>
+              </div>
+
+              {scheduleLoading ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Đang tải lịch trả…</p>
+              ) : (scheduleData?.returnsDue.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">
+                  Không có đơn đến hạn trả trong ngày này.
+                </p>
+              ) : (
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {(scheduleData?.returnsDue ?? []).map((item) => (
+                    <div
+                      key={item.rentalId}
+                      className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="font-mono text-xs font-bold text-primary hover:underline"
+                        >
+                          #{item.rentalId}
+                        </Link>
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-400">
+                          Cọc: {formatCurrency(item.depositAmount)}
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-700 dark:text-slate-300">
+                        <p className="font-semibold">{item.customerName}</p>
+                        <p className="text-slate-500">
+                          SĐT: {item.customerPhone || '—'} · {item.totalItems} đôi
+                        </p>
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          Kiểm định &amp; Nhận trả →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Column 3: Đang quá hạn */}
+            <div className="rounded-xl border border-rose-200/70 dark:border-rose-900/40 bg-rose-50/30 dark:bg-rose-950/10 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span className="size-2.5 rounded-full bg-rose-500" />
+                  Đang quá hạn ({scheduleData?.summary.overdueCount ?? 0})
+                </h4>
+                <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                  Cần thu hồi gấp
+                </span>
+              </div>
+
+              {scheduleLoading ? (
+                <p className="text-xs text-slate-400 py-6 text-center">Đang tải danh sách…</p>
+              ) : (scheduleData?.overdueActive.length ?? 0) === 0 ? (
+                <p className="text-xs text-slate-400 py-6 text-center">
+                  Không có đơn thuê nào đang quá hạn.
+                </p>
+              ) : (
+                <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                  {(scheduleData?.overdueActive ?? []).map((item) => (
+                    <div
+                      key={item.rentalId}
+                      className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 shadow-xs space-y-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="font-mono text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
+                        >
+                          #{item.rentalId}
+                        </Link>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                          Quá hạn {item.overdueDays} ngày (+{formatCurrency(item.estimatedLateFee)})
+                        </span>
+                      </div>
+                      <div className="text-xs text-slate-700 dark:text-slate-300">
+                        <p className="font-semibold">{item.customerName}</p>
+                        <p className="text-slate-500">
+                          SĐT: {item.customerPhone || '—'} · Hạn trả: {item.endDate}
+                        </p>
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <Link
+                          to={`/admin/rentals/${item.rentalId}`}
+                          className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline"
+                        >
+                          Xử lý thu hồi →
+                        </Link>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

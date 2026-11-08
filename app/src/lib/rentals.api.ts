@@ -300,6 +300,41 @@ export async function fetchActivityFeed(params?: {
   return data
 }
 
+export type DailyScheduleItemDto = {
+  rentalId: string
+  customerId: string
+  customerName: string
+  customerPhone: string
+  status: RentalStatus
+  startDate: string
+  endDate: string
+  totalItems: number
+  totalAmount: number
+  depositAmount: number
+  overdueDays: number
+  estimatedLateFee: number
+  paymentStatus: string | null
+}
+
+export type DailyScheduleResponse = {
+  date: string
+  pickupsDue: DailyScheduleItemDto[]
+  returnsDue: DailyScheduleItemDto[]
+  overdueActive: DailyScheduleItemDto[]
+  summary: {
+    pickupsCount: number
+    returnsCount: number
+    overdueCount: number
+  }
+}
+
+export async function fetchRentalSchedule(date?: string): Promise<DailyScheduleResponse> {
+  const { data } = await api.get<DailyScheduleResponse>('/rentals/schedule', {
+    ...(date ? { params: { date } } : {}),
+  })
+  return data
+}
+
 export async function fetchAdminStatsOverview(
   period?: StatsPeriod
 ): Promise<AdminStatsOverviewResponse> {

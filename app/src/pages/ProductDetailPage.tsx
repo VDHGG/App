@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   getShoe,
   fetchShoeAvailability,
@@ -32,6 +32,7 @@ function addDays(d: Date, days: number): Date {
 
 export function ProductDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user } = useAuth()
   const { isCustomer, isInWishlist, toggle } = useWishlist()
@@ -46,8 +47,12 @@ export function ProductDetailPage() {
 
   // Availability Date Range Checker
   const today = toDateString(new Date())
-  const [checkStartDate, setCheckStartDate] = useState(today)
-  const [checkEndDate, setCheckEndDate] = useState(toDateString(addDays(new Date(), 2)))
+  const [checkStartDate, setCheckStartDate] = useState(
+    () => searchParams.get('startDate') || today
+  )
+  const [checkEndDate, setCheckEndDate] = useState(
+    () => searchParams.get('endDate') || toDateString(addDays(new Date(), 2))
+  )
   const [availability, setAvailability] = useState<ShoeAvailabilityResponse | null>(null)
   const [availLoading, setAvailLoading] = useState(false)
 
@@ -364,14 +369,17 @@ export function ProductDetailPage() {
               variantInCart ? (
                 <>
                   <Link
-                    to="/checkout"
+                    to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`}
                     className="w-full py-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg transition-opacity flex items-center justify-center text-center"
                   >
                     View cart &amp; checkout
                   </Link>
                   <p className="text-sm text-slate-500 text-center">
                     This variant is already in your cart. Adjust quantity on the{' '}
-                    <Link to="/checkout" className="text-primary font-semibold underline">
+                    <Link
+                      to={`/checkout?startDate=${encodeURIComponent(checkStartDate)}&endDate=${encodeURIComponent(checkEndDate)}`}
+                      className="text-primary font-semibold underline"
+                    >
                       checkout
                     </Link>{' '}
                     page or add another variant from this page.

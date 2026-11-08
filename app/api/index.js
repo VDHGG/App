@@ -4086,6 +4086,8 @@ class CustomerController {
 const ListShoesQuerySchema = z.object({
   priceBucket: z.enum(["all", "lt10", "10to20", "20to50", "gt50"]).optional(),
   stockBucket: z.enum(["all", "0", "1to5", "6plus"]).optional(),
+  startDate: z.string().trim().optional(),
+  endDate: z.string().trim().optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional()
 });
@@ -4181,13 +4183,77 @@ class ShoeController {
   }
   async list(req, res) {
     const query = ListShoesQuerySchema.parse(req.query);
+    const startDateStr = query.startDate?.trim() ?? "";
+    const endDateStr = query.endDate?.trim() ?? "";
+    if (Boolean(startDateStr) !== Boolean(endDateStr)) {
+      throw new ValidationError("Both startDate and endDate query parameters are required together.");
+    }
+    let period = null;
+    if (startDateStr && endDateStr) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) || Number.isNaN(new Date(startDateStr).getTime()) || Number.isNaN(new Date(endDateStr).getTime())) {
+        throw new ValidationError("Invalid startDate or endDate format. Expected YYYY-MM-DD.");
+      }
+      period = new RentalPeriod(new Date(startDateStr), new Date(endDateStr));
+    }
     const result = await this.listShoes.execute({
       ...query.priceBucket !== void 0 ? { priceBucket: query.priceBucket } : {},
       ...query.stockBucket !== void 0 ? { stockBucket: query.stockBucket } : {},
       ...query.page !== void 0 ? { page: query.page } : {},
       ...query.pageSize !== void 0 ? { pageSize: query.pageSize } : {}
     });
-    res.json(result);
+    if (!period) {
+      res.json(result);
+      return;
+    }
+    const reservedByVariantId = {};
+    if (this.pool) {
+      try {
+        const [rows] = await this.pool.query(
+          `SELECT ri.variant_id, COALESCE(SUM(ri.quantity), 0) AS reserved_qty
+           FROM rental_items ri
+           JOIN rentals r ON r.rental_id = ri.rental_id
+           WHERE r.status IN ('RESERVED', 'ACTIVE')
+             AND r.start_date <= ?
+             AND (r.expected_return_date >= ? OR (r.status = 'ACTIVE' AND ? <= CURDATE()))
+           GROUP BY ri.variant_id`,
+          [endDateStr, startDateStr, startDateStr]
+        );
+        for (const r of rows) {
+          reservedByVariantId[String(r["variant_id"])] = Number(r["reserved_qty"] ?? 0);
+        }
+      } catch {
+      }
+    } else if (this.availabilityChecker) {
+      for (const shoe of result.shoes) {
+        for (const v of shoe.variants) {
+          reservedByVariantId[v.variantId] = await this.availabilityChecker.getReservedQuantityForVariant(v.variantId, period);
+        }
+      }
+    }
+    const shoes = result.shoes.map((shoe) => {
+      const variants = shoe.variants.map((v) => {
+        const reservedQuantity = reservedByVariantId[v.variantId] ?? 0;
+        const availableQuantity = Math.max(0, v.totalQuantity - reservedQuantity);
+        return {
+          ...v,
+          reservedQuantity,
+          availableQuantity
+        };
+      });
+      const availableUnitsInRange = variants.reduce(
+        (sum, v) => sum + (v.availableQuantity ?? v.totalQuantity),
+        0
+      );
+      return {
+        ...shoe,
+        availableUnitsInRange,
+        variants
+      };
+    });
+    res.json({
+      ...result,
+      shoes
+    });
   }
   async getById(req, res) {
     const result = await this.getShoe.execute({ shoeId: req.params["id"] });
@@ -4654,6 +4720,7 @@ class RentalController {
     router.get("/notifications", ...createRental, asyncRoute(this.getNotifications.bind(this)));
     router.get("/stats/overview", ...admin, asyncRoute(this.getStatsOverview.bind(this)));
     router.get("/activity-feed", ...admin, asyncRoute(this.getActivityFeed.bind(this)));
+    router.get("/schedule", ...admin, asyncRoute(this.getSchedule.bind(this)));
     router.post("/sweep-expired-momo", ...admin, asyncRoute(this.sweepExpiredMomo.bind(this)));
     router.get("/me", ...customer, asyncRoute(this.listMine.bind(this)));
     router.get("/me/:id", ...customer, asyncRoute(this.getMine.bind(this)));
@@ -5441,6 +5508,92 @@ class RentalController {
       total: filtered.length
     });
   }
+  async getSchedule(req, res) {
+    const rawDate = String(req.query["date"] ?? "").trim();
+    const targetDate = rawDate || getVietnamTodayYmd$1();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || Number.isNaN((/* @__PURE__ */ new Date(`${targetDate}T00:00:00Z`)).getTime())) {
+      throw new ValidationError("Invalid date format. Expected YYYY-MM-DD.");
+    }
+    await this.lazySweepExpiredMomo();
+    const allRentals = await this.listRentals.execute({});
+    const customerMap = {};
+    const paymentStatusMap = {};
+    if (this.pool) {
+      try {
+        const [custRows] = await this.pool.query(
+          `SELECT customer_id, full_name, phone FROM customers`
+        );
+        for (const row of custRows) {
+          const cid = String(row["customer_id"]);
+          customerMap[cid] = {
+            name: String(row["full_name"] ?? cid),
+            phone: row["phone"] ? String(row["phone"]) : ""
+          };
+        }
+      } catch {
+      }
+      try {
+        const [payRows] = await this.pool.query(
+          `SELECT rental_id, status FROM rental_payments ORDER BY id ASC`
+        );
+        for (const row of payRows) {
+          const rid = String(row["rental_id"]);
+          const st = String(row["status"]);
+          if (paymentStatusMap[rid] === "PAID") continue;
+          paymentStatusMap[rid] = st;
+        }
+      } catch {
+      }
+    }
+    const pickupsDue = [];
+    const returnsDue = [];
+    const overdueActive = [];
+    const targetMs = (/* @__PURE__ */ new Date(`${targetDate}T00:00:00Z`)).getTime();
+    for (const r of allRentals.rentals) {
+      const startYmd = toRentalYmd(r.startDate);
+      const endYmd = toRentalYmd(r.endDate);
+      const startMs = (/* @__PURE__ */ new Date(`${startYmd}T00:00:00Z`)).getTime();
+      const endMs = (/* @__PURE__ */ new Date(`${endYmd}T00:00:00Z`)).getTime();
+      const durationDays = Math.max(1, Math.round((endMs - startMs) / 864e5) + 1);
+      const isOverdueOnTarget = r.status === "ACTIVE" && endYmd < targetDate;
+      const overdueDaysForTargetDate = isOverdueOnTarget ? Math.max(1, Math.round((targetMs - endMs) / 864e5)) : 0;
+      const estimatedLateFeeForTargetDate = overdueDaysForTargetDate > 0 ? Math.round(r.basePrice / durationDays * 1.5 * overdueDaysForTargetDate) : 0;
+      const item = {
+        rentalId: r.rentalId,
+        customerId: r.customerId,
+        customerName: customerMap[r.customerId]?.name ?? r.customerId,
+        customerPhone: customerMap[r.customerId]?.phone ?? "",
+        status: r.status,
+        startDate: startYmd,
+        endDate: endYmd,
+        totalItems: r.totalItems,
+        totalAmount: r.totalAmount,
+        depositAmount: r.depositAmount ?? r.totalItems * 5e5,
+        overdueDays: overdueDaysForTargetDate,
+        estimatedLateFee: estimatedLateFeeForTargetDate,
+        paymentStatus: paymentStatusMap[r.rentalId] ?? null
+      };
+      if (r.status === "RESERVED" && startYmd === targetDate) {
+        pickupsDue.push(item);
+      } else if (r.status === "ACTIVE" && endYmd === targetDate) {
+        returnsDue.push(item);
+      } else if (isOverdueOnTarget) {
+        overdueActive.push(item);
+      }
+    }
+    overdueActive.sort((a, b) => b.overdueDays - a.overdueDays);
+    res.json({
+      date: targetDate,
+      pickupsDue,
+      returnsDue,
+      overdueActive,
+      summary: {
+        pickupsCount: pickupsDue.length,
+        returnsCount: returnsDue.length,
+        overdueCount: overdueActive.length
+      }
+    });
+  }
 }
 const LoginBodySchema = z.object({
   email: z.string().min(1, "Email is required.").max(255),
@@ -5935,17 +6088,149 @@ class MomoPaymentController {
   getRental;
   rentalPayments;
   expirePendingOnlinePayments;
-  constructor(getRental, rentalPayments, expirePendingOnlinePayments) {
+  pool;
+  constructor(getRental, rentalPayments, expirePendingOnlinePayments, pool) {
     this.getRental = getRental;
     this.rentalPayments = rentalPayments;
     this.expirePendingOnlinePayments = expirePendingOnlinePayments;
+    this.pool = pool;
   }
-  routes(createGuards, statusGuards = createGuards) {
+  routes(createGuards, statusGuards = createGuards, adminGuards = statusGuards) {
     const router = Router();
+    router.get("/payments/momo", ...adminGuards, asyncRoute(this.listAdmin.bind(this)));
     router.post("/payments/momo/create", ...createGuards, asyncRoute(this.create.bind(this)));
     router.get("/payments/momo/status", ...statusGuards, asyncRoute(this.getStatus.bind(this)));
     router.post("/payments/momo/ipn", asyncRoute(this.ipn.bind(this)));
     return router;
+  }
+  async listAdmin(req, res) {
+    if (this.expirePendingOnlinePayments) {
+      await this.expirePendingOnlinePayments.execute().catch(() => void 0);
+    }
+    const rawStatus = String(req.query["status"] ?? "ALL").trim().toUpperCase();
+    const allowedStatuses = /* @__PURE__ */ new Set(["ALL", "PAID", "PENDING", "FAILED", "EXPIRED", "CANCELLED"]);
+    if (!allowedStatuses.has(rawStatus)) {
+      throw new ValidationError("Invalid payment status filter.");
+    }
+    const search = String(req.query["search"] ?? "").trim();
+    const limit = Math.min(200, Math.max(1, Number(req.query["limit"] ?? 100) || 100));
+    if (!this.pool) {
+      res.json({
+        status: rawStatus,
+        search: search || null,
+        payments: [],
+        total: 0,
+        summary: {
+          totalTransactions: 0,
+          totalPaidAmount: 0,
+          totalPaidVnd: 0,
+          totalPendingVnd: 0,
+          paidCount: 0,
+          pendingCount: 0,
+          failedCount: 0,
+          expiredCount: 0,
+          cancelledCount: 0,
+          expiredOrFailedCount: 0
+        }
+      });
+      return;
+    }
+    const conditions = [];
+    const params = [];
+    if (rawStatus !== "ALL") {
+      conditions.push("rp.status = ?");
+      params.push(rawStatus);
+    }
+    if (search) {
+      const escaped = search.replace(/[\\%_]/g, "\\$&");
+      const like = `%${escaped}%`;
+      conditions.push(
+        "(rp.gateway_order_id LIKE ? OR rp.gateway_trans_id LIKE ? OR rp.rental_id LIKE ? OR rp.customer_id LIKE ? OR c.full_name LIKE ?)"
+      );
+      params.push(like, like, like, like, like);
+    }
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    params.push(limit);
+    const [rows] = await this.pool.query(
+      `SELECT rp.*,
+              c.full_name AS customer_name,
+              c.phone AS customer_phone,
+              r.status AS rental_status
+       FROM rental_payments rp
+       LEFT JOIN customers c ON c.customer_id = rp.customer_id
+       LEFT JOIN rentals r ON r.rental_id = rp.rental_id
+       ${whereClause}
+       ORDER BY rp.created_at DESC, rp.id DESC
+       LIMIT ?`,
+      params
+    );
+    const payments = rows.map((row) => ({
+      id: Number(row["id"]),
+      paymentId: Number(row["id"]),
+      rentalId: String(row["rental_id"]),
+      rentalStatus: row["rental_status"] ? String(row["rental_status"]) : "RESERVED",
+      customerId: String(row["customer_id"]),
+      customerName: String(row["customer_name"] ?? row["customer_id"]),
+      customerPhone: String(row["customer_phone"] ?? ""),
+      provider: String(row["provider"] ?? "momo"),
+      gatewayOrderId: String(row["gateway_order_id"]),
+      gatewayRequestId: row["gateway_request_id"] ? String(row["gateway_request_id"]) : "",
+      gatewayTransId: row["gateway_trans_id"] ? String(row["gateway_trans_id"]) : null,
+      payUrl: null,
+      amountVnd: Number(row["amount_vnd"] ?? 0),
+      status: String(row["status"]),
+      gatewayResultCode: row["gateway_result_code"] ? String(row["gateway_result_code"]) : null,
+      gatewayMessage: row["gateway_message"] ? String(row["gateway_message"]) : null,
+      createdAt: new Date(row["created_at"]).toISOString(),
+      paidAt: row["paid_at"] ? new Date(row["paid_at"]).toISOString() : null,
+      expiresAt: new Date(row["expires_at"]).toISOString()
+    }));
+    const summary = {
+      totalTransactions: 0,
+      totalPaidAmount: 0,
+      totalPaidVnd: 0,
+      totalPendingVnd: 0,
+      paidCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      expiredCount: 0,
+      cancelledCount: 0,
+      expiredOrFailedCount: 0
+    };
+    try {
+      const [sumRows] = await this.pool.query(
+        `SELECT COUNT(*) AS total_tx,
+                COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount_vnd ELSE 0 END), 0) AS total_paid_vnd,
+                COALESCE(SUM(CASE WHEN status = 'PENDING' THEN amount_vnd ELSE 0 END), 0) AS total_pending_vnd,
+                COALESCE(SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END), 0) AS paid_cnt,
+                COALESCE(SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_cnt,
+                COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_cnt,
+                COALESCE(SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END), 0) AS expired_cnt,
+                COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_cnt
+         FROM rental_payments`
+      );
+      if (sumRows.length > 0) {
+        const s = sumRows[0];
+        summary.totalTransactions = Number(s["total_tx"] ?? 0);
+        summary.totalPaidAmount = Number(s["total_paid_vnd"] ?? 0);
+        summary.totalPaidVnd = summary.totalPaidAmount;
+        summary.totalPendingVnd = Number(s["total_pending_vnd"] ?? 0);
+        summary.paidCount = Number(s["paid_cnt"] ?? 0);
+        summary.pendingCount = Number(s["pending_cnt"] ?? 0);
+        summary.failedCount = Number(s["failed_cnt"] ?? 0);
+        summary.expiredCount = Number(s["expired_cnt"] ?? 0);
+        summary.cancelledCount = Number(s["cancelled_cnt"] ?? 0);
+        summary.expiredOrFailedCount = summary.failedCount + summary.expiredCount + summary.cancelledCount;
+      }
+    } catch {
+    }
+    res.json({
+      status: rawStatus,
+      search: search || null,
+      payments,
+      total: payments.length,
+      summary
+    });
   }
   async getStatus(req, res) {
     const rawIds = String(req.query.rentalIds ?? "").trim();
@@ -6969,7 +7254,8 @@ function createRouter(container2) {
   const momoPaymentCtrl = new MomoPaymentController(
     container2.getGetRentalUseCase(),
     container2.getRentalPaymentRepository(),
-    container2.getExpirePendingOnlinePaymentsService()
+    container2.getExpirePendingOnlinePaymentsService(),
+    container2.getPool()
   );
   const optionalBearer = createOptionalBearerAuthMiddleware(accessTokenService);
   const chatRateLimit = rateLimit({
@@ -7009,7 +7295,7 @@ function createRouter(container2) {
     })
   );
   router.use("/wishlist", wishlistCtrl.routes({ customer: customerOnlyAuth }));
-  router.use("/", momoPaymentCtrl.routes(customerOnlyAuth, storefrontAuth));
+  router.use("/", momoPaymentCtrl.routes(customerOnlyAuth, storefrontAuth, adminGuard));
   router.use("/", chatCtrl.routes([chatRateLimit, optionalBearer]));
   return router;
 }

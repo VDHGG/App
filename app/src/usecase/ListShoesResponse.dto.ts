@@ -7,9 +7,17 @@ export type ShoeSummary = {
   variantCount: number;
   isActive: boolean;
   unitsInStock: number;
+  availableUnitsInRange?: number;
   imagePublicId: string | null;
   imageUrl: string | null;
-  variants: Array<{ variantId: string; size: number; color: string; totalQuantity: number }>;
+  variants: Array<{
+    variantId: string;
+    size: number;
+    color: string;
+    totalQuantity: number;
+    reservedQuantity?: number;
+    availableQuantity?: number;
+  }>;
 };
 
 export type ListShoesResponse = {

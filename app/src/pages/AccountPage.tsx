@@ -1,8 +1,10 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ContentPageShell } from '../components/content/ContentPageShell'
 import { RentalStatusBadge } from '../components/admin/RentalStatusBadge'
 import { RentalTimeline } from '../components/RentalTimeline'
 import { useAuth } from '../auth/AuthContext'
+import { useRentalCart } from '../cart/RentalCartContext'
 import { changePassword, updateProfile } from '../lib/auth.api'
 import { getApiErrorMessage } from '../lib/api'
 import {
@@ -36,6 +38,8 @@ function nextDayDateString(isoDate: string): string {
 
 export function AccountPage() {
   const { user, refreshUser } = useAuth()
+  const navigate = useNavigate()
+  const { addOrMergeLine, clearCart } = useRentalCart()
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -68,6 +72,7 @@ export function AccountPage() {
   // MoMo Payment & Extend State
   const [paymentMap, setPaymentMap] = useState<Record<string, MomoPaymentStatusRecord>>({})
   const [momoLoadingId, setMomoLoadingId] = useState<string | null>(null)
+  const [reRentLoadingId, setReRentLoadingId] = useState<string | null>(null)
 
   const [extendRentalTarget, setExtendRentalTarget] = useState<RentalSummary | null>(null)
   const [extendNewEndDate, setExtendNewEndDate] = useState('')
@@ -214,6 +219,50 @@ export function AccountPage() {
       setRentalsError(getApiErrorMessage(e))
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  async function openInvoiceDirect(rentalId: string) {
+    setDetailId(rentalId)
+    setDetailLoading(true)
+    try {
+      const d = detail?.rentalId === rentalId ? detail : await getMyRental(rentalId)
+      setDetail(d)
+      setInvoiceOpen(true)
+    } catch (e) {
+      setRentalsError(getApiErrorMessage(e))
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  async function handleReRent(rentalId: string) {
+    setReRentLoadingId(rentalId)
+    setRentalsError(null)
+    try {
+      const r = detail?.rentalId === rentalId ? detail : await getMyRental(rentalId)
+      if (!r.items || r.items.length === 0) return
+      clearCart()
+      for (const it of r.items) {
+        addOrMergeLine({
+          variantId: it.variantId,
+          shoeId: it.shoeId,
+          shoeName: it.shoeName,
+          brand: '',
+          size: it.size,
+          color: it.color,
+          pricePerDay: it.pricePerDay,
+          quantity: it.quantity,
+          availableQuantity: Math.max(it.quantity, 10),
+        })
+      }
+      navigate(
+        `/checkout?shoeId=${encodeURIComponent(r.items[0].shoeId)}&variantId=${encodeURIComponent(r.items[0].variantId)}&quantity=${r.items[0].quantity}`
+      )
+    } catch (e) {
+      setRentalsError(getApiErrorMessage(e))
+    } finally {
+      setReRentLoadingId(null)
     }
   }
 
@@ -464,6 +513,21 @@ export function AccountPage() {
                         >
                           Details
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => void openInvoiceDirect(r.rentalId)}
+                          className="text-slate-600 dark:text-slate-300 font-semibold hover:underline"
+                        >
+                          In biên nhận
+                        </button>
+                        <button
+                          type="button"
+                          disabled={reRentLoadingId === r.rentalId}
+                          onClick={() => void handleReRent(r.rentalId)}
+                          className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {reRentLoadingId === r.rentalId ? 'Đang tải…' : 'Thuê lại'}
+                        </button>
                         {r.status === 'RESERVED' && paymentMap[r.rentalId]?.status !== 'PAID' && (
                           <button
                             type="button"
@@ -665,14 +729,25 @@ export function AccountPage() {
             ) : null}
             <div className="mt-6 flex flex-col sm:flex-row gap-2.5">
               {detail && (
-                <button
-                  type="button"
-                  onClick={() => setInvoiceOpen(true)}
-                  className="flex-1 py-2.5 px-4 rounded-lg bg-primary text-white font-semibold text-sm inline-flex items-center justify-center gap-1.5 hover:opacity-90"
-                >
-                  <span className="material-symbols-outlined text-lg">print</span>
-                  In hóa đơn / Biên nhận
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceOpen(true)}
+                    className="flex-1 py-2.5 px-4 rounded-lg bg-primary text-white font-semibold text-sm inline-flex items-center justify-center gap-1.5 hover:opacity-90"
+                  >
+                    <span className="material-symbols-outlined text-lg">print</span>
+                    In hóa đơn / Biên nhận
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reRentLoadingId === detail.rentalId}
+                    onClick={() => void handleReRent(detail.rentalId)}
+                    className="flex-1 py-2.5 px-4 rounded-lg bg-emerald-600 text-white font-semibold text-sm inline-flex items-center justify-center gap-1.5 hover:opacity-90 disabled:opacity-50"
+                  >
+                    <span className="material-symbols-outlined text-lg">replay</span>
+                    {reRentLoadingId === detail.rentalId ? 'Đang tải…' : 'Thuê lại đơn này'}
+                  </button>
+                </>
               )}
               <button
                 type="button"

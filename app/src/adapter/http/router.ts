@@ -131,7 +131,8 @@ export function createRouter(container: MysqlContainer): Router {
   const momoPaymentCtrl = new MomoPaymentController(
     container.getGetRentalUseCase(),
     container.getRentalPaymentRepository(),
-    container.getExpirePendingOnlinePaymentsService()
+    container.getExpirePendingOnlinePaymentsService(),
+    container.getPool()
   );
   const optionalBearer = createOptionalBearerAuthMiddleware(accessTokenService);
   const chatRateLimit = rateLimit({
@@ -172,7 +173,7 @@ export function createRouter(container: MysqlContainer): Router {
     })
   );
   router.use('/wishlist', wishlistCtrl.routes({ customer: customerOnlyAuth }));
-  router.use('/', momoPaymentCtrl.routes(customerOnlyAuth, storefrontAuth));
+  router.use('/', momoPaymentCtrl.routes(customerOnlyAuth, storefrontAuth, adminGuard));
   router.use('/', chatCtrl.routes([chatRateLimit, optionalBearer]));
 
   return router;

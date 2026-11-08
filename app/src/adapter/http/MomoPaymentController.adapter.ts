@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { Request, Response, RequestHandler } from 'express';
 import { z } from 'zod';
+import type { Pool, RowDataPacket } from 'mysql2/promise';
 import type { GetRentalUseCase } from '@usecase/GetRentalUseCase.port';
 import type { RentalPaymentRepository } from '@port/RentalPaymentRepository.port';
 import type { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
@@ -73,23 +74,175 @@ export class MomoPaymentController {
   private readonly getRental: GetRentalUseCase;
   private readonly rentalPayments: RentalPaymentRepository;
   private readonly expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService;
+  private readonly pool?: Pool;
 
   constructor(
     getRental: GetRentalUseCase,
     rentalPayments: RentalPaymentRepository,
-    expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService
+    expirePendingOnlinePayments?: ExpirePendingOnlinePaymentsService,
+    pool?: Pool
   ) {
     this.getRental = getRental;
     this.rentalPayments = rentalPayments;
     this.expirePendingOnlinePayments = expirePendingOnlinePayments;
+    this.pool = pool;
   }
 
-  routes(createGuards: RequestHandler[], statusGuards: RequestHandler[] = createGuards): Router {
+  routes(
+    createGuards: RequestHandler[],
+    statusGuards: RequestHandler[] = createGuards,
+    adminGuards: RequestHandler[] = statusGuards
+  ): Router {
     const router = Router();
+    router.get('/payments/momo', ...adminGuards, asyncRoute(this.listAdmin.bind(this)));
     router.post('/payments/momo/create', ...createGuards, asyncRoute(this.create.bind(this)));
     router.get('/payments/momo/status', ...statusGuards, asyncRoute(this.getStatus.bind(this)));
     router.post('/payments/momo/ipn', asyncRoute(this.ipn.bind(this)));
     return router;
+  }
+
+  private async listAdmin(req: Request, res: Response): Promise<void> {
+    if (this.expirePendingOnlinePayments) {
+      await this.expirePendingOnlinePayments.execute().catch(() => undefined);
+    }
+
+    const rawStatus = String(req.query['status'] ?? 'ALL').trim().toUpperCase();
+    const allowedStatuses = new Set(['ALL', 'PAID', 'PENDING', 'FAILED', 'EXPIRED', 'CANCELLED']);
+    if (!allowedStatuses.has(rawStatus)) {
+      throw new ValidationError('Invalid payment status filter.');
+    }
+
+    const search = String(req.query['search'] ?? '').trim();
+    const limit = Math.min(200, Math.max(1, Number(req.query['limit'] ?? 100) || 100));
+
+    if (!this.pool) {
+      res.json({
+        status: rawStatus,
+        search: search || null,
+        payments: [],
+        total: 0,
+        summary: {
+          totalTransactions: 0,
+          totalPaidAmount: 0,
+          totalPaidVnd: 0,
+          totalPendingVnd: 0,
+          paidCount: 0,
+          pendingCount: 0,
+          failedCount: 0,
+          expiredCount: 0,
+          cancelledCount: 0,
+          expiredOrFailedCount: 0,
+        },
+      });
+      return;
+    }
+
+    const conditions: string[] = [];
+    const params: Array<string | number> = [];
+
+    if (rawStatus !== 'ALL') {
+      conditions.push('rp.status = ?');
+      params.push(rawStatus);
+    }
+
+    if (search) {
+      const escaped = search.replace(/[\\%_]/g, '\\$&');
+      const like = `%${escaped}%`;
+      conditions.push(
+        '(rp.gateway_order_id LIKE ? OR rp.gateway_trans_id LIKE ? OR rp.rental_id LIKE ? OR rp.customer_id LIKE ? OR c.full_name LIKE ?)'
+      );
+      params.push(like, like, like, like, like);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    params.push(limit);
+
+    const [rows] = await this.pool.query<RowDataPacket[]>(
+      `SELECT rp.*,
+              c.full_name AS customer_name,
+              c.phone AS customer_phone,
+              r.status AS rental_status
+       FROM rental_payments rp
+       LEFT JOIN customers c ON c.customer_id = rp.customer_id
+       LEFT JOIN rentals r ON r.rental_id = rp.rental_id
+       ${whereClause}
+       ORDER BY rp.created_at DESC, rp.id DESC
+       LIMIT ?`,
+      params
+    );
+
+    const payments = rows.map((row) => ({
+      id: Number(row['id']),
+      paymentId: Number(row['id']),
+      rentalId: String(row['rental_id']),
+      rentalStatus: row['rental_status'] ? String(row['rental_status']) : 'RESERVED',
+      customerId: String(row['customer_id']),
+      customerName: String(row['customer_name'] ?? row['customer_id']),
+      customerPhone: String(row['customer_phone'] ?? ''),
+      provider: String(row['provider'] ?? 'momo'),
+      gatewayOrderId: String(row['gateway_order_id']),
+      gatewayRequestId: row['gateway_request_id'] ? String(row['gateway_request_id']) : '',
+      gatewayTransId: row['gateway_trans_id'] ? String(row['gateway_trans_id']) : null,
+      payUrl: null,
+      amountVnd: Number(row['amount_vnd'] ?? 0),
+      status: String(row['status']),
+      gatewayResultCode: row['gateway_result_code'] ? String(row['gateway_result_code']) : null,
+      gatewayMessage: row['gateway_message'] ? String(row['gateway_message']) : null,
+      createdAt: new Date(row['created_at']).toISOString(),
+      paidAt: row['paid_at'] ? new Date(row['paid_at']).toISOString() : null,
+      expiresAt: new Date(row['expires_at']).toISOString(),
+    }));
+
+    const summary = {
+      totalTransactions: 0,
+      totalPaidAmount: 0,
+      totalPaidVnd: 0,
+      totalPendingVnd: 0,
+      paidCount: 0,
+      pendingCount: 0,
+      failedCount: 0,
+      expiredCount: 0,
+      cancelledCount: 0,
+      expiredOrFailedCount: 0,
+    };
+
+    try {
+      const [sumRows] = await this.pool.query<RowDataPacket[]>(
+        `SELECT COUNT(*) AS total_tx,
+                COALESCE(SUM(CASE WHEN status = 'PAID' THEN amount_vnd ELSE 0 END), 0) AS total_paid_vnd,
+                COALESCE(SUM(CASE WHEN status = 'PENDING' THEN amount_vnd ELSE 0 END), 0) AS total_pending_vnd,
+                COALESCE(SUM(CASE WHEN status = 'PAID' THEN 1 ELSE 0 END), 0) AS paid_cnt,
+                COALESCE(SUM(CASE WHEN status = 'PENDING' THEN 1 ELSE 0 END), 0) AS pending_cnt,
+                COALESCE(SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END), 0) AS failed_cnt,
+                COALESCE(SUM(CASE WHEN status = 'EXPIRED' THEN 1 ELSE 0 END), 0) AS expired_cnt,
+                COALESCE(SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END), 0) AS cancelled_cnt
+         FROM rental_payments`
+      );
+      if (sumRows.length > 0) {
+        const s = sumRows[0];
+        summary.totalTransactions = Number(s['total_tx'] ?? 0);
+        summary.totalPaidAmount = Number(s['total_paid_vnd'] ?? 0);
+        summary.totalPaidVnd = summary.totalPaidAmount;
+        summary.totalPendingVnd = Number(s['total_pending_vnd'] ?? 0);
+        summary.paidCount = Number(s['paid_cnt'] ?? 0);
+        summary.pendingCount = Number(s['pending_cnt'] ?? 0);
+        summary.failedCount = Number(s['failed_cnt'] ?? 0);
+        summary.expiredCount = Number(s['expired_cnt'] ?? 0);
+        summary.cancelledCount = Number(s['cancelled_cnt'] ?? 0);
+        summary.expiredOrFailedCount =
+          summary.failedCount + summary.expiredCount + summary.cancelledCount;
+      }
+    } catch {
+      // ignore
+    }
+
+    res.json({
+      status: rawStatus,
+      search: search || null,
+      payments,
+      total: payments.length,
+      summary,
+    });
   }
 
   private async getStatus(req: Request, res: Response): Promise<void> {

@@ -15,6 +15,19 @@ function toggleSet<T>(set: Set<T>, value: T): Set<T> {
   return next
 }
 
+function toDateString(d: Date): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function addDays(d: Date, days: number): Date {
+  const out = new Date(d)
+  out.setDate(out.getDate() + days)
+  return out
+}
+
 export function StorefrontPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const qFromUrl = (searchParams.get('q') ?? '').trim()
@@ -28,21 +41,43 @@ export function StorefrontPage() {
   const [brands, setBrands] = useState<Set<string>>(new Set())
   const [selectedSizes, setSelectedSizes] = useState<Set<number>>(new Set())
   const [selectedColors, setSelectedColors] = useState<Set<string>>(new Set())
+  const [availStartDate, setAvailStartDate] = useState<string>('')
+  const [availEndDate, setAvailEndDate] = useState<string>('')
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null)
   const [priceMin, setPriceMin] = useState<string>('')
   const [priceMax, setPriceMax] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortOption>('featured')
   const [page, setPage] = useState(1)
+
+  const hasValidDateFilter = Boolean(
+    availStartDate && availEndDate && availEndDate >= availStartDate
+  )
 
   useEffect(() => {
     setLocalSearch(qFromUrl)
   }, [qFromUrl])
 
   useEffect(() => {
-    listShoes()
-      .then((res) => setShoes(res.shoes.filter((s) => s.isActive)))
-      .catch((err) => setError(err.message ?? 'Failed to load shoes'))
-      .finally(() => setLoading(false))
-  }, [])
+    if (availStartDate && availEndDate) {
+      if (availEndDate < availStartDate) {
+        setDateRangeError('Ngày trả phải sau hoặc bằng ngày nhận giày.')
+        return
+      }
+      setDateRangeError(null)
+      listShoes({ startDate: availStartDate, endDate: availEndDate })
+        .then((res) => setShoes(res.shoes.filter((s) => s.isActive)))
+        .catch((err) => setError(err.message ?? 'Failed to load shoes'))
+        .finally(() => setLoading(false))
+      return
+    }
+    setDateRangeError(null)
+    if (!availStartDate && !availEndDate) {
+      listShoes()
+        .then((res) => setShoes(res.shoes.filter((s) => s.isActive)))
+        .catch((err) => setError(err.message ?? 'Failed to load shoes'))
+        .finally(() => setLoading(false))
+    }
+  }, [availStartDate, availEndDate])
 
   const uniqueCategories = useMemo(() => {
     const s = new Set(shoes.map((x) => x.category).filter(Boolean))
@@ -93,6 +128,10 @@ export function StorefrontPage() {
       )
     }
 
+    if (hasValidDateFilter) {
+      list = list.filter((s) => (s.availableUnitsInRange ?? s.unitsInStock) > 0)
+    }
+
     if (categories.size > 0) {
       list = list.filter((s) => categories.has(s.category))
     }
@@ -104,7 +143,9 @@ export function StorefrontPage() {
       list = list.filter((s) =>
         (s.variants ?? []).some(
           (v) =>
-            v.totalQuantity > 0 &&
+            (hasValidDateFilter
+              ? (v.availableQuantity ?? v.totalQuantity) > 0
+              : v.totalQuantity > 0) &&
             (selectedSizes.size === 0 || selectedSizes.has(v.size)) &&
             (selectedColors.size === 0 || selectedColors.has(v.color)),
         ),
@@ -143,6 +184,7 @@ export function StorefrontPage() {
   }, [
     shoes,
     qFromUrl,
+    hasValidDateFilter,
     categories,
     brands,
     selectedSizes,
@@ -162,7 +204,18 @@ export function StorefrontPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [qFromUrl, categories, brands, selectedSizes, selectedColors, priceMin, priceMax, sortBy])
+  }, [
+    qFromUrl,
+    availStartDate,
+    availEndDate,
+    categories,
+    brands,
+    selectedSizes,
+    selectedColors,
+    priceMin,
+    priceMax,
+    sortBy,
+  ])
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages)
@@ -185,6 +238,9 @@ export function StorefrontPage() {
     setBrands(new Set())
     setSelectedSizes(new Set())
     setSelectedColors(new Set())
+    setAvailStartDate('')
+    setAvailEndDate('')
+    setDateRangeError(null)
     setPriceMin('')
     setPriceMax('')
     setSortBy('featured')
@@ -324,6 +380,76 @@ export function StorefrontPage() {
               <option value="name-asc">Name: A–Z</option>
               <option value="name-desc">Name: Z–A</option>
             </select>
+          </div>
+
+          <div className="border-t border-slate-200 dark:border-slate-800 pt-4 space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="font-semibold text-xs uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <span className="material-symbols-outlined text-sm text-primary">
+                  event_available
+                </span>
+                Lịch trống theo ngày thuê
+              </h4>
+              {(availStartDate || availEndDate) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvailStartDate('')
+                    setAvailEndDate('')
+                    setDateRangeError(null)
+                  }}
+                  className="text-[11px] font-bold text-rose-600 hover:underline"
+                >
+                  Xóa lịch
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-0.5">Từ ngày</label>
+                <input
+                  type="date"
+                  aria-label="Từ ngày"
+                  value={availStartDate}
+                  onChange={(e) => {
+                    const v = e.target.value
+                    setAvailStartDate(v)
+                    if (v && !availEndDate) {
+                      setAvailEndDate(toDateString(addDays(new Date(`${v}T00:00:00`), 2)))
+                    }
+                  }}
+                  className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-0.5">Đến ngày</label>
+                <input
+                  type="date"
+                  aria-label="Đến ngày"
+                  value={availEndDate}
+                  min={availStartDate || undefined}
+                  onChange={(e) => setAvailEndDate(e.target.value)}
+                  className="w-full h-9 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs"
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                const now = new Date()
+                setAvailStartDate(toDateString(now))
+                setAvailEndDate(toDateString(addDays(now, 2)))
+              }}
+              className="w-full py-1.5 px-3 rounded-lg text-xs font-bold border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 transition-colors"
+            >
+              3 ngày tới
+            </button>
+
+            {dateRangeError && (
+              <p className="text-[11px] font-semibold text-rose-600">{dateRangeError}</p>
+            )}
           </div>
 
           <div className="border-t border-slate-200 dark:border-slate-800 pt-4">
@@ -518,7 +644,8 @@ export function StorefrontPage() {
             </div>
           </div>
 
-          {(selectedSizes.size > 0 ||
+          {(hasValidDateFilter ||
+            selectedSizes.size > 0 ||
             selectedColors.size > 0 ||
             categories.size > 0 ||
             brands.size > 0 ||
@@ -527,6 +654,19 @@ export function StorefrontPage() {
             Boolean(qFromUrl)) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-semibold text-slate-500">Đang lọc:</span>
+              {hasValidDateFilter && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAvailStartDate('')
+                    setAvailEndDate('')
+                    setDateRangeError(null)
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                >
+                  Lịch trống: {availStartDate} → {availEndDate} ×
+                </button>
+              )}
               {Boolean(qFromUrl) && (
                 <button
                   type="button"
@@ -609,7 +749,14 @@ export function StorefrontPage() {
                 No shoes match your filters. Try clearing filters or widening the price range.
               </div>
             ) : (
-              pageSlice.map((shoe) => <ProductCard key={shoe.shoeId} shoe={shoe} />)
+              pageSlice.map((shoe) => (
+                <ProductCard
+                  key={shoe.shoeId}
+                  shoe={shoe}
+                  startDate={hasValidDateFilter ? availStartDate : undefined}
+                  endDate={hasValidDateFilter ? availEndDate : undefined}
+                />
+              ))
             )}
           </div>
 
