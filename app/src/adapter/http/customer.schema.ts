@@ -13,6 +13,8 @@ export const ListCustomersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
   search: z.string().max(200).optional(),
+  rank: z.enum(['BRONZE', 'SILVER', 'GOLD', 'DIAMOND']).optional(),
+  isActive: z.enum(['true', 'false']).optional(),
 });
 
 export type ListCustomersQueryInput = z.infer<typeof ListCustomersQuerySchema>;

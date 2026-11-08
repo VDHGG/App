@@ -49,6 +49,8 @@ export type ListCustomersQuery = {
   page?: number
   pageSize?: number
   search?: string
+  rank?: CustomerRank
+  isActive?: 'true' | 'false' | boolean
 }
 
 export async function listCustomers(query?: ListCustomersQuery): Promise<ListCustomersResponse> {

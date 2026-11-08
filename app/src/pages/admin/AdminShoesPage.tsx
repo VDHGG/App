@@ -6,6 +6,7 @@ import {
   type ListShoesQuery,
   type ShoeSummary,
 } from '../../lib/shoes.api'
+import { sanitizeCsvCell } from '../../lib/rentals.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { formatCurrency } from '../../lib/format'
 import { getApiErrorMessage } from '../../lib/api'
@@ -102,6 +103,54 @@ export function AdminShoesPage() {
     }
   }
 
+  const handleExportInventoryCsv = () => {
+    if (filtered.length === 0) return
+    const headers = [
+      'Mã Giày',
+      'Tên Giày',
+      'Thương Hiệu',
+      'Danh Mục',
+      'Giá Thuê/Ngày (VND)',
+      'Tổng Tồn Kho',
+      'Chi Tiết Size/Màu',
+      'Trạng Thái',
+    ]
+    const rows = filtered.map((s) => {
+      const variantDetails = (s.variants ?? [])
+        .map((v) => {
+          const avail = v.availableQuantity ?? v.totalQuantity
+          return `EU ${v.size} ${v.color} (${avail}/${v.totalQuantity})`
+        })
+        .join(' | ')
+      return [
+        s.shoeId,
+        s.name,
+        s.brand,
+        s.category,
+        s.pricePerDay,
+        s.unitsInStock,
+        variantDetails || `${s.variantCount} variants`,
+        s.isActive ? 'Active' : 'Inactive',
+      ]
+    })
+    const csvContent =
+      '\uFEFF' +
+      [
+        headers.map(sanitizeCsvCell).join(','),
+        ...rows.map((r) => r.map(sanitizeCsvCell).join(',')),
+      ].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const dateStr = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `ton-kho-giay-${dateStr}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
   if (loading) {
     return (
       <>
@@ -134,13 +183,23 @@ export function AdminShoesPage() {
               Add, edit, or deactivate shoes and variants (stock is per variant).
             </p>
           </div>
-          <Link
-            to="/admin/shoes/new"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90"
-          >
-            <span className="material-symbols-outlined text-lg">add</span>
-            Add shoe
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={filtered.length === 0}
+              onClick={handleExportInventoryCsv}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+            >
+              📥 Xuất Tồn Kho (CSV)
+            </button>
+            <Link
+              to="/admin/shoes/new"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90"
+            >
+              <span className="material-symbols-outlined text-lg">add</span>
+              Add shoe
+            </Link>
+          </div>
         </div>
 
         {actionError && (
@@ -270,8 +329,33 @@ export function AdminShoesPage() {
                             {s.category}
                           </span>
                         </td>
-                        <td className="px-6 py-4 font-semibold text-slate-700 dark:text-slate-200">
-                          {String(s.unitsInStock).padStart(2, '0')} units
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-700 dark:text-slate-200">
+                            {String(s.unitsInStock).padStart(2, '0')} units
+                          </div>
+                          {s.variants && s.variants.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5 max-w-xs">
+                              {s.variants.map((v) => {
+                                const avail = v.availableQuantity ?? v.totalQuantity
+                                const isZero = avail <= 0
+                                const isLow = avail === 1
+                                return (
+                                  <span
+                                    key={v.variantId}
+                                    className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                      isZero
+                                        ? 'bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
+                                        : isLow
+                                          ? 'bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300'
+                                          : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                                    }`}
+                                  >
+                                    EU {v.size} · {v.color}: {avail}/{v.totalQuantity}
+                                  </span>
+                                )
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td className="px-6 py-4">
                           <span className="font-bold text-primary">{formatCurrency(s.pricePerDay)}</span>

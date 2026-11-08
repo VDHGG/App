@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import {  getRental,  activateRental,  returnRental,  cancelRental} from '../../lib/rentals.api'
+import {
+  getRental,
+  activateRental,
+  returnRental,
+  cancelRental,
+  extendRentalAdmin,
+} from '../../lib/rentals.api'
 import { fetchMomoPaymentStatuses, type MomoPaymentStatusRecord } from '../../lib/payments.api'
 import { getCustomer } from '../../lib/customers.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
@@ -40,6 +46,11 @@ export function RentalDetailPage() {
   const [customDamageFee, setCustomDamageFee] = useState('0')
   const [returnLoading, setReturnLoading] = useState(false)
   const [returnError, setReturnError] = useState<string | null>(null)
+  const [extendModalOpen, setExtendModalOpen] = useState(false)
+  const [newEndDate, setNewEndDate] = useState('')
+  const [extendNote, setExtendNote] = useState('')
+  const [extendLoading, setExtendLoading] = useState(false)
+  const [extendError, setExtendError] = useState<string | null>(null)
   const [invoiceOpen, setInvoiceOpen] = useState(false)
   const [paymentRecord, setPaymentRecord] = useState<MomoPaymentStatusRecord | null>(null)
 
@@ -77,6 +88,77 @@ export function RentalDetailPage() {
   const closeReturn = () => {
     setReturnModalOpen(false)
     setReturnError(null)
+  }
+
+  const openExtend = () => {
+    if (!rental) return
+    const endD = new Date(rental.endDate)
+    endD.setDate(endD.getDate() + 2)
+    setNewEndDate(toDateString(endD))
+    setExtendNote('')
+    setExtendError(null)
+    setExtendModalOpen(true)
+  }
+
+  const closeExtend = () => {
+    setExtendModalOpen(false)
+    setExtendError(null)
+  }
+
+  const extendCalculation = useMemo(() => {
+    if (!rental || !newEndDate) {
+      return {
+        currentDays: 1,
+        extraDays: 0,
+        dailyRate: 0,
+        extraFee: 0,
+        newBasePrice: rental?.basePrice ?? 0,
+      }
+    }
+    const startD = new Date(rental.startDate)
+    const endD = new Date(rental.endDate)
+    const newEndD = new Date(`${newEndDate}T00:00:00`)
+
+    const startNorm = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime()
+    const endNorm = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime()
+    const newEndNorm = new Date(
+      newEndD.getFullYear(),
+      newEndD.getMonth(),
+      newEndD.getDate()
+    ).getTime()
+
+    const currentDays = Math.max(1, Math.round((endNorm - startNorm) / 86400000) + 1)
+    const extraDays = Math.max(0, Math.round((newEndNorm - endNorm) / 86400000))
+    const dailyRate = rental.basePrice / currentDays
+    const extraFee = Math.round(dailyRate * extraDays)
+    const newBasePrice = rental.basePrice + extraFee
+
+    return {
+      currentDays,
+      extraDays,
+      dailyRate,
+      extraFee,
+      newBasePrice,
+    }
+  }, [rental, newEndDate])
+
+  const confirmExtend = async () => {
+    if (!id || !newEndDate) return
+    setExtendLoading(true)
+    setExtendError(null)
+    try {
+      await extendRentalAdmin(id, {
+        newEndDate,
+        note: extendNote.trim() || undefined,
+      })
+      closeExtend()
+      const r = await getRental(id)
+      setRental(r)
+    } catch (err: unknown) {
+      setExtendError(getApiErrorMessage(err))
+    } finally {
+      setExtendLoading(false)
+    }
   }
 
   const damageFee = useMemo(() => {
@@ -192,6 +274,7 @@ export function RentalDetailPage() {
   const canActivate = rental.status === 'RESERVED'
   const canReturn = rental.status === 'ACTIVE'
   const canCancel = rental.status === 'RESERVED'
+  const canExtend = rental.status === 'RESERVED' || rental.status === 'ACTIVE'
 
   return (
     <>
@@ -229,6 +312,16 @@ export function RentalDetailPage() {
                 <span className="material-symbols-outlined text-base">print</span>
                 In hóa đơn / Biên nhận
               </button>
+              {canExtend && (
+                <button
+                  type="button"
+                  onClick={openExtend}
+                  disabled={!!actionLoading || extendLoading}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold disabled:opacity-50"
+                >
+                  📅 Gia hạn đơn thuê
+                </button>
+              )}
               {canActivate && (
                 <button
                   type="button"
@@ -502,6 +595,114 @@ export function RentalDetailPage() {
                 className="px-4 py-2 rounded-lg text-sm font-bold bg-primary text-white hover:opacity-90 disabled:opacity-50"
               >
                 {returnLoading ? 'Đang xử lý…' : 'Xác nhận trả'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {extendModalOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-xl max-w-md w-full shadow-xl border border-slate-200 dark:border-slate-800 p-6">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+              📅 Gia hạn đơn thuê — {rental.rentalId}
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Kỳ thuê hiện tại: <strong>{formatDate(rental.startDate)}</strong> →{' '}
+              <strong>{formatDate(rental.endDate)}</strong> ({extendCalculation.currentDays} ngày)
+            </p>
+            {extendError && (
+              <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 text-sm px-3 py-2">
+                {extendError}
+              </div>
+            )}
+            <div className="space-y-4 mb-4">
+              <div>
+                <label className="block text-xs font-bold uppercase text-slate-500 mb-1.5">
+                  Ngày hẹn trả mới
+                </label>
+                <input
+                  type="date"
+                  value={newEndDate}
+                  min={(() => {
+                    const d = new Date(rental.endDate)
+                    d.setDate(d.getDate() + 1)
+                    return toDateString(d)
+                  })()}
+                  onChange={(e) => setNewEndDate(e.target.value)}
+                  className="w-full h-11 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm"
+                  required
+                />
+              </div>
+
+              <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 p-3.5 border border-slate-200 dark:border-slate-700 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Giá thuê hiện tại ({extendCalculation.currentDays} ngày)</span>
+                  <span className="font-semibold">{formatCurrency(rental.basePrice)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Đơn giá trung bình / ngày</span>
+                  <span className="font-semibold">
+                    {formatCurrency(Math.round(extendCalculation.dailyRate))}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Số ngày gia hạn thêm</span>
+                  <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                    +{extendCalculation.extraDays} ngày
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Phí thuê cộng thêm dự kiến</span>
+                  <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                    +{formatCurrency(extendCalculation.extraFee)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex justify-between font-bold text-base">
+                  <span>Tổng giá thuê gốc mới</span>
+                  <span className="text-primary">
+                    {formatCurrency(extendCalculation.newBasePrice)}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="detail-extend-note"
+                  className="block text-xs font-bold uppercase text-slate-500 mb-1.5"
+                >
+                  Ghi chú gia hạn (tùy chọn)
+                </label>
+                <textarea
+                  id="detail-extend-note"
+                  value={extendNote}
+                  onChange={(e) => setExtendNote(e.target.value)}
+                  maxLength={255}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm"
+                  placeholder="Ghi chú lý do hoặc thỏa thuận gia hạn với khách…"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={closeExtend}
+                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                disabled={extendLoading || !newEndDate || extendCalculation.extraDays <= 0}
+                onClick={() => void confirmExtend()}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {extendLoading ? 'Đang gia hạn…' : 'Xác nhận gia hạn'}
               </button>
             </div>
           </div>

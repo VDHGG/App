@@ -2648,8 +2648,36 @@ class ListCustomersService {
     const pageSize = normalizePageSize(request?.pageSize);
     const limit = paginate ? pageSize : void 0;
     const offset = paginate ? (page - 1) * pageSize : void 0;
-    const { search } = request ?? {};
+    const { search, rank, isActive } = request ?? {};
     const searchOpt = search !== void 0 && search.trim() !== "" ? { search: search.trim() } : {};
+    if (rank !== void 0 || isActive !== void 0) {
+      const { items: items2 } = await this.customerRepository.findAll(
+        Object.keys(searchOpt).length > 0 ? { ...searchOpt } : void 0
+      );
+      const filtered = items2.filter((c) => {
+        if (rank !== void 0 && c.rank !== rank) return false;
+        if (isActive !== void 0 && c.isActive !== isActive) return false;
+        return true;
+      });
+      const filteredTotal = filtered.length;
+      const pagedItems = paginate ? filtered.slice(offset ?? 0, (offset ?? 0) + pageSize) : filtered;
+      const effectivePageSize2 = paginate ? pageSize : Math.max(filteredTotal, 1);
+      return {
+        customers: pagedItems.map((c) => ({
+          customerId: c.id,
+          fullName: c.fullName,
+          email: c.email,
+          phone: c.phone,
+          rank: c.rank,
+          isActive: c.isActive,
+          currentRentedItems: c.currentRentedItems
+        })),
+        total: filteredTotal,
+        page: paginate ? page : 1,
+        pageSize: effectivePageSize2,
+        totalPages: totalPages(filteredTotal, effectivePageSize2)
+      };
+    }
     const { items, total } = await this.customerRepository.findAll(
       limit !== void 0 ? { limit, offset, ...searchOpt } : Object.keys(searchOpt).length > 0 ? { ...searchOpt } : void 0
     );
@@ -3977,7 +4005,9 @@ const RegisterCustomerSchema = z.object({
 const ListCustomersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
-  search: z.string().max(200).optional()
+  search: z.string().max(200).optional(),
+  rank: z.enum(["BRONZE", "SILVER", "GOLD", "DIAMOND"]).optional(),
+  isActive: z.enum(["true", "false"]).optional()
 });
 const UpdateCustomerAdminSchema = z.object({
   fullName: z.string().min(1).max(100),
@@ -4050,10 +4080,13 @@ class CustomerController {
   }
   async list(req, res) {
     const query = ListCustomersQuerySchema.parse(req.query);
+    const isActive = query.isActive === "true" ? true : query.isActive === "false" ? false : void 0;
     const result = await this.listCustomers.execute({
       ...query.page !== void 0 ? { page: query.page } : {},
       ...query.pageSize !== void 0 ? { pageSize: query.pageSize } : {},
-      ...query.search !== void 0 && query.search.trim() !== "" ? { search: query.search.trim() } : {}
+      ...query.search !== void 0 && query.search.trim() !== "" ? { search: query.search.trim() } : {},
+      ...query.rank !== void 0 ? { rank: query.rank } : {},
+      ...isActive !== void 0 ? { isActive } : {}
     });
     res.json(result);
   }

@@ -59,10 +59,11 @@ Mở đầu gợi ý: “Chào bạn! Mình hỗ trợ thắc mắc về thuê g
 
 ---
 
-## Đơn của tôi & Tiện ích tại `/account`
+## Đơn của tôi & Tiện ích tại `/account` và `/wishlist`
 
 - Chỉ tra cứu được khi khách đã đăng nhập tài khoản (`customer`). Dùng tool `list_my_rentals` hoặc `get_rental_detail`.
-- Tại trang `/account`, khách hàng có thể bấm **Thuê lại** để nạp lại toàn bộ các đôi giày của đơn cũ vào giỏ hàng chỉ với 1 cú click, hoặc bấm **In biên nhận** để xuất/in phiếu xác nhận thuê giày (PDF).
+- Tại trang `/account`, khách hàng có thể bấm **Thuê lại** để nạp lại toàn bộ các đôi giày của đơn cũ vào giỏ hàng chỉ với 1 cú click, bấm **Gia hạn** để kéo dài ngày thuê, hoặc bấm **In biên nhận** để xuất/in phiếu xác nhận thuê giày (PDF).
+- Tại trang **Yêu thích (`/wishlist`)**, khách hàng có thể xem trạng thái tồn kho thực tế của các mẫu giày đã lưu, chọn trực tiếp Size/Màu ngay trên thẻ, bấm **+ Thêm vào giỏ thuê**, hoặc bấm **🛒 Thuê tất cả mẫu còn hàng** để chuyển toàn bộ danh sách yêu thích sang trang thanh toán `/checkout`.
 
 ---
 

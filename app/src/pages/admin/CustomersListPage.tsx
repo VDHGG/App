@@ -9,6 +9,7 @@ import {
   type CustomerRank,
   type GetCustomerResponse,
 } from '../../lib/customers.api'
+import { sanitizeCsvCell } from '../../lib/rentals.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { DEFAULT_PAGE_SIZE } from '../../lib/pagination'
 import { AdminPagination } from '../../components/admin/AdminPagination'
@@ -34,6 +35,8 @@ export function CustomersListPage() {
   const [page, setPage] = useState(1)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
+  const [rankFilter, setRankFilter] = useState<'ALL' | CustomerRank>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'LOCKED'>('ALL')
   const [listMeta, setListMeta] = useState({
     total: 0,
     totalPages: 1,
@@ -52,13 +55,24 @@ export function CustomersListPage() {
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   useEffect(() => {
-    const t = window.setTimeout(() => setSearch(searchInput), 350)
+    const t = window.setTimeout(() => {
+      setPage(1)
+      setSearch(searchInput)
+    }, 350)
     return () => window.clearTimeout(t)
   }, [searchInput])
 
-  useEffect(() => {
-    setPage(1)
-  }, [search])
+  const buildCustomerQuery = () => ({
+    page,
+    pageSize: DEFAULT_PAGE_SIZE,
+    ...(search.trim() ? { search: search.trim() } : {}),
+    ...(rankFilter !== 'ALL' ? { rank: rankFilter } : {}),
+    ...(statusFilter === 'ACTIVE'
+      ? { isActive: 'true' as const }
+      : statusFilter === 'LOCKED'
+        ? { isActive: 'false' as const }
+        : {}),
+  })
 
   useEffect(() => {
     setLoading(true)
@@ -66,6 +80,12 @@ export function CustomersListPage() {
       page,
       pageSize: DEFAULT_PAGE_SIZE,
       ...(search.trim() ? { search: search.trim() } : {}),
+      ...(rankFilter !== 'ALL' ? { rank: rankFilter } : {}),
+      ...(statusFilter === 'ACTIVE'
+        ? { isActive: 'true' }
+        : statusFilter === 'LOCKED'
+          ? { isActive: 'false' }
+          : {}),
     })
       .then((res) => {
         setCustomers(res.customers)
@@ -77,7 +97,45 @@ export function CustomersListPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false))
-  }, [page, search])
+  }, [page, search, rankFilter, statusFilter])
+
+  const handleExportCustomersCsv = () => {
+    if (customers.length === 0) return
+    const headers = [
+      'Mã Khách Hàng',
+      'Họ Tên',
+      'Email',
+      'Số Điện Thoại',
+      'Hạng Thành Viên',
+      'Trạng Thái',
+      'Đang Thuê (Đôi)',
+    ]
+    const rows = customers.map((c) => [
+      c.customerId,
+      c.fullName,
+      c.email,
+      c.phone ?? '',
+      c.rank,
+      c.isActive ? 'Đang hoạt động' : 'Đã khóa',
+      c.currentRentedItems,
+    ])
+    const csvContent =
+      '\uFEFF' +
+      [
+        headers.map(sanitizeCsvCell).join(','),
+        ...rows.map((r) => r.map(sanitizeCsvCell).join(',')),
+      ].join('\n')
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const dateStr = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `khach-hang-${dateStr}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
 
   const openEdit = (customerId: string) => {
     setEditError(null)
@@ -103,11 +161,7 @@ export function CustomersListPage() {
     try {
       await deleteCustomerAdmin(deleteTarget.customerId)
       setDeleteTarget(null)
-      const res = await listCustomers({
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-        ...(search.trim() ? { search: search.trim() } : {}),
-      })
+      const res = await listCustomers(buildCustomerQuery())
       setCustomers(res.customers)
       setListMeta({
         total: res.total,
@@ -140,11 +194,7 @@ export function CustomersListPage() {
       })
       setConfirmOpen(false)
       closeEdit()
-      const res = await listCustomers({
-        page,
-        pageSize: DEFAULT_PAGE_SIZE,
-        ...(search.trim() ? { search: search.trim() } : {}),
-      })
+      const res = await listCustomers(buildCustomerQuery())
       setCustomers(res.customers)
       setListMeta({
         total: res.total,
@@ -184,20 +234,86 @@ export function CustomersListPage() {
     <>
       <AdminHeader title="Customers" />
       <div className="p-6 lg:p-8">
-        <div className="flex flex-col sm:flex-row gap-4 mb-6 sm:items-end sm:justify-between">
-          <div className="flex flex-col gap-1 max-w-md w-full">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Search (name or email)
-            </label>
-            <input
-              type="search"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search…"
-              className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm"
-            />
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-col sm:flex-row gap-4 sm:items-end sm:justify-between">
+            <div className="flex flex-col gap-1 max-w-md w-full">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Search (name or email)
+              </label>
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search…"
+                className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm text-slate-500 shrink-0">{listMeta.total} customer(s) total</p>
+              <button
+                type="button"
+                disabled={customers.length === 0}
+                onClick={handleExportCustomersCsv}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              >
+                📥 Xuất Khách Hàng (CSV)
+              </button>
+            </div>
           </div>
-          <p className="text-sm text-slate-500 shrink-0">{listMeta.total} customer(s) total</p>
+
+          <div className="flex flex-col lg:flex-row lg:items-center gap-4">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                Hạng thành viên:
+              </span>
+              {(['ALL', 'DIAMOND', 'GOLD', 'SILVER', 'BRONZE'] as const).map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => {
+                    setPage(1)
+                    setRankFilter(r)
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    rankFilter === r
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary'
+                  }`}
+                >
+                  {r === 'ALL' ? 'Tất cả' : r}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
+                Trạng thái:
+              </span>
+              {(
+                [
+                  { id: 'ALL', label: 'Tất cả' },
+                  { id: 'ACTIVE', label: 'Đang hoạt động' },
+                  { id: 'LOCKED', label: 'Đã khóa' },
+                ] as const
+              ).map((st) => (
+                <button
+                  key={st.id}
+                  type="button"
+                  onClick={() => {
+                    setPage(1)
+                    setStatusFilter(st.id)
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                    statusFilter === st.id
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">

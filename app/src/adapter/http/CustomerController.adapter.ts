@@ -55,10 +55,14 @@ export class CustomerController {
 
   private async list(req: Request, res: Response): Promise<void> {
     const query = ListCustomersQuerySchema.parse(req.query);
+    const isActive =
+      query.isActive === 'true' ? true : query.isActive === 'false' ? false : undefined;
     const result = await this.listCustomers.execute({
       ...(query.page !== undefined ? { page: query.page } : {}),
       ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
       ...(query.search !== undefined && query.search.trim() !== '' ? { search: query.search.trim() } : {}),
+      ...(query.rank !== undefined ? { rank: query.rank } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
     });
     res.json(result);
   }
