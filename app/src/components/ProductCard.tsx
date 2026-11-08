@@ -8,9 +8,17 @@ type ProductCardProps = {
   shoe: ShoeSummary
   startDate?: string
   endDate?: string
+  isCompared?: boolean
+  onToggleCompare?: (shoe: ShoeSummary) => void
 }
 
-export function ProductCard({ shoe, startDate, endDate }: ProductCardProps) {
+export function ProductCard({
+  shoe,
+  startDate,
+  endDate,
+  isCompared = false,
+  onToggleCompare,
+}: ProductCardProps) {
   const { isCustomer, isInWishlist, toggle } = useWishlist()
   const filled = isInWishlist(shoe.shoeId)
   const detailUrl =
@@ -69,12 +77,28 @@ export function ProductCard({ shoe, startDate, endDate }: ProductCardProps) {
           </span>
         </div>
         <p className="text-sm text-slate-500 mb-4 line-clamp-1">{shoe.brand}</p>
-        <Link
-          to={detailUrl}
-          className="w-full py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center"
-        >
-          Rent Now
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to={detailUrl}
+            className="flex-1 py-2.5 bg-slate-900 dark:bg-primary text-white text-sm font-bold rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center"
+          >
+            Rent Now
+          </Link>
+          {onToggleCompare && (
+            <button
+              type="button"
+              aria-label="So sánh giày"
+              onClick={() => onToggleCompare(shoe)}
+              className={`px-3 py-2.5 rounded-lg text-xs font-bold border transition-colors shrink-0 ${
+                isCompared
+                  ? 'bg-primary/15 border-primary text-primary'
+                  : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-primary hover:text-primary'
+              }`}
+            >
+              {isCompared ? '✓ Đang so sánh' : '+ So sánh'}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )

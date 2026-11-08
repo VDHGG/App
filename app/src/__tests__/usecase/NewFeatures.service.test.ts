@@ -26,6 +26,7 @@ import { DeleteRentalAdminService } from '@usecase/DeleteRentalAdmin.service';
 import { ExtendRentalService } from '@usecase/ExtendRental.service';
 import { ListRentalsService } from '@usecase/ListRentals.service';
 import { ListShoesService } from '@usecase/ListShoes.service';
+import { GetShoeService } from '@usecase/GetShoe.service';
 import { GetRentalService } from '@usecase/GetRental.service';
 import { ExpirePendingOnlinePaymentsService } from '@usecase/ExpirePendingOnlinePayments.service';
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
@@ -2137,6 +2138,156 @@ describe('New Features - Unit Tests', () => {
       await expect(
         callListAdmin({ query: { status: 'BOGUS' } } as unknown as Request, mockRes)
       ).rejects.toThrow(/Invalid payment status filter/);
+    });
+  });
+
+  describe('Phases U, V, W, X — Smart AI Concierge (Multi-Filter Search, Quote Calculator, Comparison, & Pronoun Context)', () => {
+    it('Phase U: filters shoes by brand, size, color, and max price in search_shoes and returns rich cards', async () => {
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const s1 = new Shoe({
+        id: 'SHOE001',
+        name: 'Nike Air Force 1',
+        brand: 'Nike',
+        category: 'Sneaker',
+        pricePerDay: 220000,
+      });
+      s1.addVariant(
+        new ShoeVariant({
+          id: 'V_AF1_42',
+          size: 42,
+          color: 'White',
+          totalQuantity: 4,
+          availableQuantity: 4,
+        })
+      );
+      const s2 = new Shoe({
+        id: 'SHOE002',
+        name: 'Adidas Ultraboost',
+        brand: 'Adidas',
+        category: 'Running',
+        pricePerDay: 320000,
+      });
+      s2.addVariant(
+        new ShoeVariant({
+          id: 'V_UB_40',
+          size: 40,
+          color: 'Black',
+          totalQuantity: 2,
+          availableQuantity: 2,
+        })
+      );
+      await shoeRepo.save(s1);
+      await shoeRepo.save(s2);
+
+      const ctrl = new ChatController(
+        new ListRentalsService(rentalRepo),
+        new GetRentalService(rentalRepo),
+        new ListShoesService(shoeRepo, new NoopShoeImageService()),
+        new GetShoeService(shoeRepo, new NoopShoeImageService(), {} as never),
+        new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo)
+      );
+
+      const smartSearch = await ctrl.buildSmartReply(
+        'Tìm giày Nike size 42 màu trắng dưới 300k',
+        undefined
+      );
+      expect(smartSearch.reply).toContain('Nike Air Force 1');
+      expect(smartSearch.reply).not.toContain('Adidas Ultraboost');
+      expect(smartSearch.cards).toHaveLength(1);
+      expect(smartSearch.cards?.[0].shoeId).toBe('SHOE001');
+      expect(smartSearch.cards?.[0].availableSizes).toContain(42);
+      expect(smartSearch.suggestions.length).toBeGreaterThan(0);
+    });
+
+    it('Phase U: calculates exact rental quote with customer rank + voucher discount and resolves page context shoeId', async () => {
+      const shoeRepo = new InMemoryShoeRepository();
+      const rentalRepo = new InMemoryRentalRepository();
+      const custRepo = new InMemoryCustomerRepository();
+      const voucherRepo = new InMemoryVoucherRepository();
+
+      const shoe = new Shoe({
+        id: 'SHOE005',
+        name: 'Jordan 1 Retro High',
+        brand: 'Nike',
+        category: 'Basketball',
+        pricePerDay: 400000,
+      });
+      shoe.addVariant(
+        new ShoeVariant({
+          id: 'V_J1_42',
+          size: 42,
+          color: 'Red',
+          totalQuantity: 3,
+          availableQuantity: 3,
+        })
+      );
+      await shoeRepo.save(shoe);
+
+      await custRepo.save(
+        new Customer({
+          id: 'CUST004',
+          fullName: 'Diamond User',
+          email: 'diamond@example.com',
+          rank: CustomerRank.DIAMOND, // -15%
+        })
+      );
+
+      const ctrl = new ChatController(
+        new ListRentalsService(rentalRepo),
+        new GetRentalService(rentalRepo),
+        new ListShoesService(shoeRepo, new NoopShoeImageService()),
+        new GetShoeService(shoeRepo, new NoopShoeImageService(), {} as never),
+        new InMemoryRentalAvailabilityChecker(rentalRepo, shoeRepo),
+        voucherRepo,
+        custRepo
+      );
+
+      // Contextual query on /shoes/SHOE005 ("đôi này") with 3 days + WELCOME10 (-10%) => total -25%
+      const smartQuote = await ctrl.buildSmartReply(
+        'Báo giá thuê đôi này 3 ngày áp mã WELCOME10',
+        'CUST004',
+        { currentShoeId: 'SHOE005', currentPath: '/shoes/SHOE005' }
+      );
+
+      expect(smartQuote.quote).toBeDefined();
+      expect(smartQuote.quote?.shoeId).toBe('SHOE005');
+      expect(smartQuote.quote?.days).toBe(3);
+      expect(smartQuote.quote?.rawBasePrice).toBe(1200000); // 400k * 3
+      expect(smartQuote.quote?.rank).toBe('DIAMOND');
+      expect(smartQuote.quote?.rankDiscountPercent).toBe(15);
+      expect(smartQuote.quote?.voucherCode).toBe('WELCOME10');
+      expect(smartQuote.quote?.voucherDiscountPercent).toBe(10);
+      expect(smartQuote.quote?.effectiveDiscountPercent).toBe(25);
+      expect(smartQuote.quote?.finalRentalPrice).toBe(900000); // 300k * 3
+      expect(smartQuote.quote?.depositAmount).toBe(500000);
+      expect(smartQuote.quote?.grandTotal).toBe(1400000);
+
+      // Compare intent
+      const s2 = new Shoe({
+        id: 'SHOE006',
+        name: 'Converse Chuck 70',
+        brand: 'Converse',
+        category: 'Lifestyle',
+        pricePerDay: 200000,
+      });
+      s2.addVariant(
+        new ShoeVariant({
+          id: 'V_CHUCK_41',
+          size: 41,
+          color: 'Black',
+          totalQuantity: 5,
+          availableQuantity: 5,
+        })
+      );
+      await shoeRepo.save(s2);
+
+      const smartCompare = await ctrl.buildSmartReply(
+        'So sánh Jordan 1 và Chuck 70 giúp mình',
+        'CUST004'
+      );
+      expect(smartCompare.reply).toContain('So sánh chi tiết');
+      expect(smartCompare.cards).toHaveLength(2);
     });
   });
 });

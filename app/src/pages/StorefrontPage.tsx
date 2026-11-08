@@ -48,6 +48,21 @@ export function StorefrontPage() {
   const [priceMax, setPriceMax] = useState<string>('')
   const [sortBy, setSortBy] = useState<SortOption>('featured')
   const [page, setPage] = useState(1)
+  const [compareList, setCompareList] = useState<ShoeSummary[]>([])
+  const [compareOpen, setCompareOpen] = useState(false)
+
+  const handleToggleCompare = useCallback((shoe: ShoeSummary) => {
+    setCompareList((prev) => {
+      const exists = prev.some((x) => x.shoeId === shoe.shoeId)
+      if (exists) {
+        return prev.filter((x) => x.shoeId !== shoe.shoeId)
+      }
+      if (prev.length >= 3) {
+        return [...prev.slice(1), shoe]
+      }
+      return [...prev, shoe]
+    })
+  }, [])
 
   const hasValidDateFilter = Boolean(
     availStartDate && availEndDate && availEndDate >= availStartDate
@@ -760,6 +775,8 @@ export function StorefrontPage() {
                   shoe={shoe}
                   startDate={hasValidDateFilter ? availStartDate : undefined}
                   endDate={hasValidDateFilter ? availEndDate : undefined}
+                  isCompared={compareList.some((c) => c.shoeId === shoe.shoeId)}
+                  onToggleCompare={handleToggleCompare}
                 />
               ))
             )}
@@ -785,6 +802,231 @@ export function StorefrontPage() {
           )}
         </div>
       </div>
+
+      {/* Floating Comparison Bar */}
+      {compareList.length > 0 && (
+        <div className="fixed bottom-4 left-4 right-20 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-[70] bg-white dark:bg-slate-900 border-2 border-primary/40 rounded-2xl shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3 max-w-2xl">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {compareList.map((s) => (
+              <span
+                key={s.shoeId}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+              >
+                <span className="truncate max-w-[120px]">{s.name}</span>
+                <button
+                  type="button"
+                  onClick={() => handleToggleCompare(s)}
+                  className="text-slate-400 hover:text-rose-500 font-black"
+                  aria-label={`Bỏ ${s.name} khỏi so sánh`}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setCompareList([])
+                setCompareOpen(false)
+              }}
+              className="text-xs font-semibold text-slate-500 hover:text-rose-600"
+            >
+              Xóa tất cả
+            </button>
+            <button
+              type="button"
+              onClick={() => setCompareOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl bg-primary text-white text-xs font-bold hover:opacity-90 transition-opacity shadow-sm"
+            >
+              So sánh ngay ({compareList.length}/3)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Side-by-Side Comparison Modal */}
+      {compareOpen && compareList.length > 0 && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60"
+          role="dialog"
+          aria-modal="true"
+          aria-label="So sánh chi tiết các mẫu giày"
+        >
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-4 mb-5">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 dark:text-white">
+                  So Sánh Trực Quan Các Mẫu Giày ({compareList.length}/3)
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Đối chiếu giá thuê, tồn kho trống lịch, dải size EU và màu sắc
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCompareOpen(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500"
+                aria-label="Đóng bảng so sánh"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-200 dark:border-slate-800">
+                    <th className="py-3 px-3 text-left text-xs uppercase tracking-wider text-slate-400 w-40">
+                      Tiêu chí
+                    </th>
+                    {compareList.map((s) => (
+                      <th key={s.shoeId} className="py-3 px-4 text-left min-w-[200px]">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">{s.name}</p>
+                            <p className="text-xs font-mono text-slate-400">#{s.shoeId}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCompare(s)}
+                            className="text-xs text-rose-500 hover:underline"
+                          >
+                            Bỏ
+                          </button>
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Thương hiệu &amp; Loại
+                    </td>
+                    {compareList.map((s) => (
+                      <td key={s.shoeId} className="py-3 px-4 font-medium">
+                        {s.brand} · <span className="text-primary font-semibold">{s.category}</span>
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Giá thuê / ngày
+                    </td>
+                    {compareList.map((s) => (
+                      <td key={s.shoeId} className="py-3 px-4 font-black text-primary text-base">
+                        {formatCurrency(s.pricePerDay)}/ngày
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Tiền cọc bảo đảm
+                    </td>
+                    {compareList.map((s) => (
+                      <td
+                        key={s.shoeId}
+                        className="py-3 px-4 text-xs font-semibold text-amber-700 dark:text-amber-400"
+                      >
+                        500.000₫/đôi (Hoàn lại 100%)
+                      </td>
+                    ))}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Tồn kho / Trống lịch
+                    </td>
+                    {compareList.map((s) => {
+                      const units = s.availableUnitsInRange ?? s.unitsInStock
+                      return (
+                        <td key={s.shoeId} className="py-3 px-4">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              units > 0
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                                : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300'
+                            }`}
+                          >
+                            {units > 0 ? `Còn ${units} đôi sẵn sàng` : 'Hết hàng'}
+                          </span>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Các Size EU hiện có
+                    </td>
+                    {compareList.map((s) => {
+                      const sizes = [
+                        ...new Set(
+                          (s.variants ?? [])
+                            .filter((v) =>
+                              hasValidDateFilter
+                                ? (v.availableQuantity ?? v.totalQuantity) > 0
+                                : v.totalQuantity > 0
+                            )
+                            .map((v) => v.size)
+                        ),
+                      ].sort((a, b) => a - b)
+                      return (
+                        <td key={s.shoeId} className="py-3 px-4 text-xs font-bold">
+                          {sizes.length > 0 ? sizes.map((sz) => `EU ${sz}`).join(', ') : '—'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Màu sắc
+                    </td>
+                    {compareList.map((s) => {
+                      const colors = [
+                        ...new Set(
+                          (s.variants ?? [])
+                            .filter((v) =>
+                              hasValidDateFilter
+                                ? (v.availableQuantity ?? v.totalQuantity) > 0
+                                : v.totalQuantity > 0
+                            )
+                            .map((v) => v.color)
+                        ),
+                      ]
+                      return (
+                        <td key={s.shoeId} className="py-3 px-4 text-xs">
+                          {colors.length > 0 ? colors.join(', ') : '—'}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-3 font-semibold text-xs text-slate-500">
+                      Hành động
+                    </td>
+                    {compareList.map((s) => (
+                      <td key={s.shoeId} className="py-3 px-4">
+                        <Link
+                          to={
+                            hasValidDateFilter
+                              ? `/shoes/${s.shoeId}?startDate=${encodeURIComponent(availStartDate)}&endDate=${encodeURIComponent(availEndDate)}`
+                              : `/shoes/${s.shoeId}`
+                          }
+                          onClick={() => setCompareOpen(false)}
+                          className="inline-flex items-center justify-center w-full py-2 px-3 rounded-lg bg-primary text-white text-xs font-bold hover:opacity-90"
+                        >
+                          Xem &amp; Thuê ngay →
+                        </Link>
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

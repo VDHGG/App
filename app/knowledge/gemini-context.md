@@ -48,10 +48,13 @@ Mở đầu gợi ý: “Chào bạn! Mình hỗ trợ thắc mắc về thuê g
 
 ---
 
-## Tìm giày & Kiểm tra lịch trống
+## Tìm giày, Báo giá, So sánh & Kiểm tra lịch trống (9 Read-Only Tools)
 
-- Lọc giày theo **mức giá/ngày (VND)** bằng tool `search_shoes`. Không bịa tên sản phẩm nếu chưa gọi tool.
-- Kiểm tra lịch trống theo ngày của một mẫu giày bằng tool `check_shoe_availability`. Ngoài ra trên giao diện `/shoes`, khách hàng có thể chọn trực tiếp **Ngày nhận – Ngày trả** ở thanh **Tìm giày trống lịch theo ngày thuê** để xem ngay số đôi còn trống của toàn bộ danh mục.
+- **Tìm giày đa tiêu chí (`search_shoes`)**: Lọc theo từ khóa (`keyword`), thương hiệu (`brand`), danh mục (`category`), size EU (`size`), màu sắc (`color`), mức giá tối đa (`max_price_vnd`), và khoảng ngày thuê (`start_date`, `end_date`). Không bịa tên sản phẩm nếu chưa gọi tool.
+- **Kiểm tra lịch trống (`check_shoe_availability`)**: Tra cứu theo mã giày (`shoe_id`) hoặc tên giày (`shoe_name`) trong khoảng `start_date` → `end_date`. Ngoài ra trên giao diện `/shoes`, khách hàng có thể chọn trực tiếp **Ngày nhận – Ngày trả** ở thanh **Tìm giày trống lịch theo ngày thuê** để xem ngay số đôi còn trống của toàn bộ danh mục.
+- **Báo giá tự động (`estimate_rental_quote`)**: Tính chi tiết đơn giá gốc, ưu đãi hạng thành viên + mã giảm giá (tối đa 50%), tiền đặt cọc bảo đảm (`500.000₫/đôi`), và tổng thanh toán dự kiến.
+- **So sánh mẫu giày (`compare_shoes`)**: So sánh trực tiếp 2–3 mẫu giày theo giá thuê/ngày, thương hiệu, phân loại, size và màu còn hàng. Khách cũng có thể bấm nút **So sánh** trên từng thẻ giày tại `/shoes` để mở bảng đối chiếu trực quan.
+- **Đánh giá khách hàng (`get_shoe_reviews_summary`)**: Xem điểm sao trung bình và nhận xét thực tế của khách hàng cho từng mẫu giày hoặc top các mẫu giày được yêu thích nhất.
 
 ---
 

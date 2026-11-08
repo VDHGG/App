@@ -40,10 +40,30 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: 'search_shoes',
     description:
-      'Search shoes by maximum price per day in VND (storefront catalog, typically 180,000 to 550,000 VND/day). Does not require login.',
+      'Search shoes in the storefront catalog by keyword, brand, category, EU size, color, maximum price per day in VND (180,000 to 550,000 VND/day), or date-range availability. Does not require login.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
+        keyword: {
+          type: SchemaType.STRING,
+          description: 'Search keyword matching shoe name, brand, or category (e.g. "Jordan", "Air Force", "Chuck 70", "chạy bộ")',
+        },
+        brand: {
+          type: SchemaType.STRING,
+          description: 'Filter by brand name (e.g. "Nike", "Adidas", "Converse", "Vans", "New Balance", "Puma")',
+        },
+        category: {
+          type: SchemaType.STRING,
+          description: 'Filter by category (e.g. "Sneaker", "Running", "Basketball", "Lifestyle", "Skate")',
+        },
+        size: {
+          type: SchemaType.NUMBER,
+          description: 'Filter shoes that have an available variant in EU size (e.g. 40, 41, 42)',
+        },
+        color: {
+          type: SchemaType.STRING,
+          description: 'Filter shoes that have a variant matching color (e.g. "White"/"trắng", "Black"/"đen", "Red"/"đỏ", "Blue"/"xanh")',
+        },
         max_price_vnd: {
           type: SchemaType.NUMBER,
           description:
@@ -54,19 +74,31 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
           description:
             'Maximum price per day in VND (legacy alias, e.g. pass 300000 for 300,000 VND/day)',
         },
+        start_date: {
+          type: SchemaType.STRING,
+          description: 'Optional YYYY-MM-DD start date to filter by date-range availability',
+        },
+        end_date: {
+          type: SchemaType.STRING,
+          description: 'Optional YYYY-MM-DD end date to filter by date-range availability',
+        },
       },
     },
   },
   {
     name: 'check_shoe_availability',
     description:
-      'Check variant availability for a shoe_id between start_date (YYYY-MM-DD) and end_date (YYYY-MM-DD). Does not require login.',
+      'Check variant availability for a shoe (by shoe_id or shoe_name) between start_date (YYYY-MM-DD) and end_date (YYYY-MM-DD). Does not require login.',
     parameters: {
       type: SchemaType.OBJECT,
       properties: {
         shoe_id: {
           type: SchemaType.STRING,
           description: 'Shoe id, e.g. SHOE001',
+        },
+        shoe_name: {
+          type: SchemaType.STRING,
+          description: 'Shoe name or keyword (e.g. "Jordan 1", "Air Force 1") if shoe_id is not known',
         },
         start_date: {
           type: SchemaType.STRING,
@@ -77,7 +109,79 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
           description: 'Rental end date in YYYY-MM-DD format',
         },
       },
-      required: ['shoe_id', 'start_date', 'end_date'],
+      required: ['start_date', 'end_date'],
+    },
+  },
+  {
+    name: 'estimate_rental_quote',
+    description:
+      'Calculate exact rental cost quote, membership rank discount, voucher discount (capped at 50%), security deposit (500,000 VND/pair), and grand total for a shoe. Does not require login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        shoe_id: {
+          type: SchemaType.STRING,
+          description: 'Shoe id, e.g. SHOE001',
+        },
+        shoe_name: {
+          type: SchemaType.STRING,
+          description: 'Shoe name or keyword if shoe_id is not provided',
+        },
+        days: {
+          type: SchemaType.NUMBER,
+          description: 'Number of rental days (default 3 if neither days nor start_date/end_date is provided)',
+        },
+        start_date: {
+          type: SchemaType.STRING,
+          description: 'Optional start date in YYYY-MM-DD format',
+        },
+        end_date: {
+          type: SchemaType.STRING,
+          description: 'Optional end date in YYYY-MM-DD format',
+        },
+        quantity: {
+          type: SchemaType.NUMBER,
+          description: 'Number of pairs to rent (default 1)',
+        },
+        voucher_code: {
+          type: SchemaType.STRING,
+          description: 'Optional promotional voucher code (e.g. WELCOME10)',
+        },
+      },
+    },
+  },
+  {
+    name: 'get_shoe_reviews_summary',
+    description:
+      'Get customer ratings and review comments for a specific shoe or list top-rated shoes in the store. Does not require login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        shoe_id: {
+          type: SchemaType.STRING,
+          description: 'Optional shoe id, e.g. SHOE001',
+        },
+        shoe_name: {
+          type: SchemaType.STRING,
+          description: 'Optional shoe name or keyword',
+        },
+      },
+    },
+  },
+  {
+    name: 'compare_shoes',
+    description:
+      'Compare 2 or 3 shoes side-by-side by their IDs or names (price per day, brand, category, available sizes, colors, stock). Does not require login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {
+        queries: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING },
+          description: 'List of 2 to 3 shoe IDs or shoe names to compare',
+        },
+      },
+      required: ['queries'],
     },
   },
 ];

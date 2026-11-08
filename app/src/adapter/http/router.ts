@@ -148,7 +148,8 @@ export function createRouter(container: MysqlContainer): Router {
     container.getGetShoeUseCase(),
     container.getRentalAvailabilityChecker(),
     container.getVoucherRepository(),
-    container.getCustomerRepository()
+    container.getCustomerRepository(),
+    container.getPool()
   );
 
   router.use(
