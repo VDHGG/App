@@ -2385,4 +2385,64 @@ describe('New Features - Unit Tests', () => {
       );
     });
   });
+
+  describe('Phase AJ: AdminListSystemUsersService roleId & isActive filtering', () => {
+    it('filters system users by roleId and isActive with pagination', async () => {
+      const { AdminListSystemUsersService } = await import(
+        '@usecase/AdminListSystemUsers.service'
+      );
+      const mockRepo = {
+        listForAdmin: async () => ({
+          items: [
+            {
+              userId: 'USR001',
+              fullName: 'Super Admin',
+              email: 'admin@gmail.com',
+              phone: '0901000001',
+              roleId: 2,
+              passwordHash: 'hash',
+              customerId: null,
+              isActive: true,
+            },
+            {
+              userId: 'USR002',
+              fullName: 'Active Customer',
+              email: 'cust1@example.com',
+              phone: '0901000002',
+              roleId: 1,
+              passwordHash: 'hash',
+              customerId: 'CUST001',
+              isActive: true,
+            },
+            {
+              userId: 'USR003',
+              fullName: 'Locked Customer',
+              email: 'cust2@example.com',
+              phone: '0901000003',
+              roleId: 1,
+              passwordHash: 'hash',
+              customerId: 'CUST002',
+              isActive: false,
+            },
+          ],
+          total: 3,
+        }),
+      } as never;
+
+      const service = new AdminListSystemUsersService(mockRepo);
+
+      const adminsOnly = await service.execute({ roleId: 2 });
+      expect(adminsOnly.total).toBe(1);
+      expect(adminsOnly.users.map((u) => u.userId)).toEqual(['USR001']);
+
+      const lockedCustomers = await service.execute({ roleId: 1, isActive: false });
+      expect(lockedCustomers.total).toBe(1);
+      expect(lockedCustomers.users.map((u) => u.userId)).toEqual(['USR003']);
+
+      const activeUsers = await service.execute({ isActive: true, page: 1, pageSize: 1 });
+      expect(activeUsers.total).toBe(2);
+      expect(activeUsers.totalPages).toBe(2);
+      expect(activeUsers.users).toHaveLength(1);
+    });
+  });
 });

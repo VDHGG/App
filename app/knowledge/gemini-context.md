@@ -75,6 +75,6 @@ Mở đầu gợi ý: “Chào bạn! Mình hỗ trợ thắc mắc về thuê g
 
 ---
 
-## Khi không chắc
+## Khi không chắc & Trang hỗ trợ (`/how-it-works`, `/policies`, `/faq`, `/contact`)
 
-Thừa nhận và gợi ý đăng nhập xem đơn hoặc trang Contact / Policies.
+- Hướng dẫn khách hàng tham khảo **Bộ mô phỏng chi phí thuê, tiền cọc & phí trễ hạn** tại `/how-it-works`, quy định chi tiết tại `/policies`, danh sách câu hỏi thường gặp kèm mã giảm giá đang mở tại `/faq`, hoặc gửi phiếu yêu cầu hỗ trợ trực tuyến (`#SUP-...`) tại `/contact`.

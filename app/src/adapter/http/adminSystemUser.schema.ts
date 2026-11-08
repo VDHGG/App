@@ -4,6 +4,14 @@ export const ListSystemUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
   search: z.string().max(200).optional(),
+  roleId: z
+    .enum(['1', '2'])
+    .transform((v) => Number(v) as 1 | 2)
+    .optional(),
+  isActive: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
 });
 
 export type ListSystemUsersQueryInput = z.infer<typeof ListSystemUsersQuerySchema>;

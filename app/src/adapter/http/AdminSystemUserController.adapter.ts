@@ -55,6 +55,8 @@ export class AdminSystemUserController {
       ...(query.page !== undefined ? { page: query.page } : {}),
       ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
       ...(query.search !== undefined && query.search.trim() !== '' ? { search: query.search.trim() } : {}),
+      ...(query.roleId !== undefined ? { roleId: query.roleId } : {}),
+      ...(query.isActive !== undefined ? { isActive: query.isActive } : {}),
     });
     res.json(result);
   }

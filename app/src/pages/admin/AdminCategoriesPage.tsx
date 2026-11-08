@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getShoeLookups } from '../../lib/catalog.api'
 import type { CatalogLookupRow } from '../../lib/catalog.api'
 import { createCategory, deleteCategory, updateCategory } from '../../lib/catalogAdmin.api'
+import { listShoes, type ShoeSummary } from '../../lib/shoes.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
 import { getApiErrorMessage } from '../../lib/api'
 
 export function AdminCategoriesPage() {
   const [rows, setRows] = useState<CatalogLookupRow[]>([])
+  const [shoes, setShoes] = useState<ShoeSummary[]>([])
+  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
@@ -17,8 +21,12 @@ export function AdminCategoriesPage() {
 
   const load = useCallback(async () => {
     setError(null)
-    const lookups = await getShoeLookups()
+    const [lookups, shoesRes] = await Promise.all([
+      getShoeLookups(),
+      listShoes({ pageSize: 100 }).catch(() => ({ shoes: [] as ShoeSummary[] })),
+    ])
     setRows([...lookups.categories].sort((a, b) => a.name.localeCompare(b.name)))
+    setShoes(shoesRes.shoes)
   }, [])
 
   useEffect(() => {
@@ -86,6 +94,52 @@ export function AdminCategoriesPage() {
     }
   }
 
+  const metricsByCategory = useMemo(() => {
+    const map = new Map<
+      number,
+      { shoeCount: number; variantCount: number; totalStock: number }
+    >()
+    for (const row of rows) {
+      const target = row.name.trim().toLowerCase()
+      const matched = shoes.filter((s) => s.category.trim().toLowerCase() === target)
+      let variantCount = 0
+      let totalStock = 0
+      for (const s of matched) {
+        variantCount += s.variantCount ?? (s.variants?.length ?? 0)
+        if (s.variants && s.variants.length > 0) {
+          totalStock += s.variants.reduce((acc, v) => acc + v.totalQuantity, 0)
+        } else {
+          totalStock += s.unitsInStock
+        }
+      }
+      map.set(row.id, { shoeCount: matched.length, variantCount, totalStock })
+    }
+    return map
+  }, [rows, shoes])
+
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rows
+    return rows.filter(
+      (r) => r.name.toLowerCase().includes(q) || String(r.id).includes(q)
+    )
+  }, [rows, search])
+
+  const summaryKpis = useMemo(() => {
+    let activeCategories = 0
+    let totalStock = 0
+    for (const r of rows) {
+      const m = metricsByCategory.get(r.id)
+      if (m && m.shoeCount > 0) activeCategories++
+      totalStock += m?.totalStock ?? 0
+    }
+    return {
+      totalCategories: rows.length,
+      activeCategories,
+      totalStock,
+    }
+  }, [rows, metricsByCategory])
+
   if (loading) {
     return (
       <>
@@ -111,29 +165,65 @@ export function AdminCategoriesPage() {
   return (
     <>
       <AdminHeader title="Categories" />
-      <div className="p-6 lg:p-8 max-w-3xl space-y-6">
+      <div className="p-6 lg:p-8 max-w-4xl space-y-6">
         <p className="text-sm text-slate-500">
           Category names must be unique (case-insensitive). You cannot delete a category that is still
           used by any shoe.
         </p>
 
-        <form onSubmit={handleCreate} className="flex flex-col sm:flex-row gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Tổng danh mục
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {summaryKpis.totalCategories}
+            </p>
+          </div>
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Đang gắn sản phẩm
+            </p>
+            <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+              {summaryKpis.activeCategories}
+            </p>
+          </div>
+          <div className="p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
+              Tổng đôi tồn kho
+            </p>
+            <p className="text-2xl font-black text-primary mt-1">
+              {summaryKpis.totalStock}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <form onSubmit={handleCreate} className="flex flex-1 gap-3">
+            <input
+              type="text"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="New category name"
+              maxLength={100}
+              className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={saving || !newName.trim()}
+              className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 shrink-0"
+            >
+              Add category
+            </button>
+          </form>
           <input
-            type="text"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="New category name"
-            maxLength={100}
-            className="flex-1 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Tìm kiếm danh mục..."
+            className="sm:w-64 px-4 py-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
           />
-          <button
-            type="submit"
-            disabled={saving || !newName.trim()}
-            className="px-5 py-2.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50"
-          >
-            Add category
-          </button>
-        </form>
+        </div>
 
         {rowError && (
           <div className="p-4 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm">
@@ -152,79 +242,115 @@ export function AdminCategoriesPage() {
                   <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                     Name
                   </th>
+                  <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Số mẫu giày
+                  </th>
+                  <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Tổng tồn kho
+                  </th>
                   <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {rows.length === 0 ? (
+                {filteredRows.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-6 py-10 text-center text-slate-500">
-                      No categories yet
+                    <td colSpan={5} className="px-6 py-10 text-center text-slate-500">
+                      No categories found
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
-                      <td className="px-6 py-3 font-mono text-slate-500">{row.id}</td>
-                      <td className="px-6 py-3">
-                        {editingId === row.id ? (
-                          <input
-                            type="text"
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            maxLength={100}
-                            className="w-full max-w-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
-                            autoFocus
-                          />
-                        ) : (
-                          <span className="font-medium text-slate-900 dark:text-white">{row.name}</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        {editingId === row.id ? (
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={cancelEdit}
-                              disabled={saving}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  filteredRows.map((row) => {
+                    const m = metricsByCategory.get(row.id) ?? {
+                      shoeCount: 0,
+                      variantCount: 0,
+                      totalStock: 0,
+                    }
+                    return (
+                      <tr key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/30">
+                        <td className="px-6 py-3 font-mono text-slate-500">{row.id}</td>
+                        <td className="px-6 py-3">
+                          {editingId === row.id ? (
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              maxLength={100}
+                              className="w-full max-w-md px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm"
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="font-medium text-slate-900 dark:text-white">{row.name}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3">
+                          {m.shoeCount > 0 ? (
+                            <Link
+                              to={`/shoes?q=${encodeURIComponent(row.name)}`}
+                              className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 hover:underline"
+                              title={`Xem mẫu giày danh mục ${row.name} trên Storefront`}
                             >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void saveEdit()}
-                              disabled={saving || !editName.trim()}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
-                            >
-                              Save
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => startEdit(row)}
-                              disabled={saving}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void handleDelete(row)}
-                              disabled={saving}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                              {m.shoeCount} mẫu ({m.variantCount} size/màu) →
+                            </Link>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-500">
+                              0 mẫu (0 size/màu)
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 font-semibold text-slate-700 dark:text-slate-200">
+                          {m.totalStock} đôi
+                        </td>
+                        <td className="px-6 py-3 text-right">
+                          {editingId === row.id ? (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={cancelEdit}
+                                disabled={saving}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveEdit()}
+                                disabled={saving || !editName.trim()}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50"
+                              >
+                                Save
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => startEdit(row)}
+                                disabled={saving}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-primary hover:bg-primary/10"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDelete(row)}
+                                disabled={saving || m.shoeCount > 0}
+                                title={
+                                  m.shoeCount > 0
+                                    ? 'Không thể xóa khi đang có mẫu giày sử dụng'
+                                    : 'Xóa danh mục'
+                                }
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

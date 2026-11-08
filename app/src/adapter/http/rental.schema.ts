@@ -46,6 +46,10 @@ export const ListRentalsQuerySchema = z
     startDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     startDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     amountBucket: z.enum(['all', 'lt50', '50to150', '150to300', 'gt300']).optional(),
+    overdueOnly: z
+      .enum(['true', 'false', '1', '0'])
+      .transform((v) => v === 'true' || v === '1')
+      .optional(),
     search: z.string().max(200).optional(),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(50).optional(),

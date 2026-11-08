@@ -31,7 +31,63 @@ export class ListRentalsService implements ListRentalsUseCase {
     const limit = paginate ? pageSize : undefined;
     const offset = paginate ? (page - 1) * pageSize : undefined;
 
-    const { customerId, status, startDateFrom, startDateTo, amountBucket, search } = request ?? {};
+    const { customerId, status, startDateFrom, startDateTo, amountBucket, search, overdueOnly } =
+      request ?? {};
+    const now = getVietnamTodayDate();
+    const nowNorm = now.getTime();
+
+    const mapRental = (r: Awaited<ReturnType<RentalRepository['findList']>>['items'][number]) => {
+      const isOverdue = r.isOverdue(now);
+      const endNorm = new Date(
+        r.period.endDate.getFullYear(),
+        r.period.endDate.getMonth(),
+        r.period.endDate.getDate()
+      ).getTime();
+      const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 86400000)) : 0;
+      const dailyRate = r.basePrice / r.period.durationInDays;
+      const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
+
+      return {
+        rentalId: r.id,
+        customerId: r.customerId,
+        status: r.status,
+        totalItems: r.totalItems,
+        basePrice: r.basePrice,
+        depositAmount: r.depositAmount,
+        totalAmount: r.totalAmount,
+        startDate: r.period.startDate,
+        endDate: r.period.endDate,
+        isOverdue,
+        overdueDays,
+        estimatedLateFee,
+      };
+    };
+
+    if (overdueOnly === true) {
+      const { items } = await this.rentalRepository.findList({
+        ...(customerId ? { customerId } : {}),
+        ...(status ? { status } : {}),
+        ...(startDateFrom ? { startDateFrom } : {}),
+        ...(startDateTo ? { startDateTo } : {}),
+        ...(amountBucket ? { amountBucket } : {}),
+        ...(search !== undefined && search.trim() !== '' ? { search: search.trim() } : {}),
+      });
+      const overdueItems = items.filter((r) => r.isOverdue(now));
+      const filteredTotal = overdueItems.length;
+      const pagedItems = paginate
+        ? overdueItems.slice(offset ?? 0, (offset ?? 0) + pageSize)
+        : overdueItems;
+      const effectivePageSize = paginate ? pageSize : Math.max(filteredTotal, 1);
+
+      return {
+        rentals: pagedItems.map(mapRental),
+        total: filteredTotal,
+        page: paginate ? page : 1,
+        pageSize: effectivePageSize,
+        totalPages: totalPages(filteredTotal, effectivePageSize),
+      };
+    }
+
     const { items, total } = await this.rentalRepository.findList({
       ...(customerId ? { customerId } : {}),
       ...(status ? { status } : {}),
@@ -43,36 +99,9 @@ export class ListRentalsService implements ListRentalsUseCase {
     });
 
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
-    const now = getVietnamTodayDate();
-    const nowNorm = now.getTime();
 
     return {
-      rentals: items.map((r) => {
-        const isOverdue = r.isOverdue(now);
-        const endNorm = new Date(
-          r.period.endDate.getFullYear(),
-          r.period.endDate.getMonth(),
-          r.period.endDate.getDate()
-        ).getTime();
-        const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 86400000)) : 0;
-        const dailyRate = r.basePrice / r.period.durationInDays;
-        const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
-
-        return {
-          rentalId: r.id,
-          customerId: r.customerId,
-          status: r.status,
-          totalItems: r.totalItems,
-          basePrice: r.basePrice,
-          depositAmount: r.depositAmount,
-          totalAmount: r.totalAmount,
-          startDate: r.period.startDate,
-          endDate: r.period.endDate,
-          isOverdue,
-          overdueDays,
-          estimatedLateFee,
-        };
-      }),
+      rentals: items.map(mapRental),
       total,
       page: paginate ? page : 1,
       pageSize: effectivePageSize,

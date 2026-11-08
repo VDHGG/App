@@ -8,89 +8,101 @@ import {
 export function PoliciesPage() {
   return (
     <ContentPageShell
-      title="Chính sách & điều khoản thuê"
-      intro="Văn bản này mô tả các nguyên tắc nghiệp vụ mà phần mềm hỗ trợ: giá theo ngày, trạng thái đơn, phí trễ hạn, giới hạn theo hạng khách. Điều chỉnh pháp lý chi tiết do chủ cửa hàng bổ sung."
+      title="Chính sách & Điều khoản Thuê Giày"
+      intro="Toàn bộ quy tắc nghiệp vụ dưới đây được áp dụng tự động và nhất quán trên hệ thống Rental Shoes Vietnam: từ công thức tính giá, ưu đãi cộng dồn, tiền đặt cọc bảo đảm đến quy trình kiểm định hoàn cọc."
     >
       <section className="space-y-3">
-        <ContentH2>1. Giá và thời hạn thuê</ContentH2>
-        <p>
-          Giá niêm yết là <strong>giá thuê mỗi ngày</strong> (theo đơn vị tiền tệ trên cửa hàng). Kỳ
-          thuê được xác định bởi <strong>ngày bắt đầu</strong> và <strong>ngày trả dự kiến</strong>
-          ; số ngày tính theo lịch, bao gồm cả hai mốc.
-        </p>
-      </section>
-
-      <section className="space-y-3">
-        <ContentH2>2. Trạng thái đơn thuê</ContentH2>
+        <ContentH2>1. Giá thuê theo ngày & Ưu đãi cộng dồn (Hạng + Voucher)</ContentH2>
         <ContentList>
           <li>
-            <strong>Đã giữ chỗ (RESERVED):</strong> đơn đã được tạo; tồn kho biến thể được giữ cho
-            kỳ đó theo quy tắc hệ thống.
+            <strong>Đơn giá niêm yết:</strong> Tính theo đơn vị <strong>VND / ngày</strong> cho từng mẫu giày. Kỳ thuê được tính theo ngày lịch bao gồm cả ngày bắt đầu và ngày hẹn trả.
           </li>
           <li>
-            <strong>Đang thuê (ACTIVE):</strong> đơn đã kích hoạt khi khách nhận giày (hoặc bắt đầu
-            kỳ thuê theo quy trình cửa hàng).
+            <strong>Chiết khấu Hạng thành viên tự động:</strong> Hạng <strong>BRONZE (0%)</strong>, <strong>SILVER (-5%)</strong>, <strong>GOLD (-10%)</strong>, <strong>DIAMOND (-15%)</strong>.
           </li>
           <li>
-            <strong>Đã trả (RETURNED):</strong> giày đã được trả; tổng tiền có thể bao gồm phí trễ
-            hạn nếu có.
-          </li>
-          <li>
-            <strong>Đã hủy (CANCELLED):</strong> đơn không còn hiệu lực.
+            <strong>Cộng dồn mã Voucher khuyến mãi:</strong> Khách hàng được áp dụng thêm 01 mã Voucher hợp lệ trên mỗi đơn thuê. Tổng mức giảm cộng dồn (Hạng + Voucher) tối đa <strong>50%</strong> trên đơn giá ngày, với mức sàn tối thiểu <strong>1₫/ngày</strong>.
           </li>
         </ContentList>
       </section>
 
       <section className="space-y-3">
-        <ContentH2>3. Phí trễ hạn</ContentH2>
-        <p>
-          Nếu ngày trả thực tế <strong>sau</strong> ngày trả dự kiến, hệ thống có thể áp dụng{' '}
-          <strong>phí trễ hạn</strong> tính theo tỷ lệ trên giá thuê gốc của kỳ và số ngày trễ (có
-          làm tròn theo quy tắc nội bộ). Phí trễ chỉ gắn với đơn ở trạng thái <strong>Đã trả</strong>{' '}
-          sau khi hoàn tất trả giày.
-        </p>
+        <ContentH2>2. Tiền đặt cọc bảo đảm (500.000₫ / đôi)</ContentH2>
+        <ContentList>
+          <li>
+            <strong>Mức cọc tiêu chuẩn:</strong> Hệ thống áp dụng mức đặt cọc bảo đảm cố định <strong>500.000₫ × tổng số lượng đôi</strong> trong đơn thuê.
+          </li>
+          <li>
+            <strong>Hoàn trả 100% tiền cọc:</strong> Ngay khi khách trả giày đúng hạn và biên bản kiểm định xác nhận giày nguyên vẹn, toàn bộ 100% tiền đặt cọc được hoàn lại cho khách hàng.
+          </li>
+          <li>
+            <strong>Đối soát cấn trừ tự động:</strong> Nếu phát sinh phí trả trễ hoặc phụ phí vệ sinh/hư hỏng, hệ thống tự động cấn trừ vào tiền cọc và hiển thị rõ số tiền hoàn lại hoặc cần thu thêm trên hóa đơn.
+          </li>
+        </ContentList>
       </section>
 
       <section className="space-y-3">
-        <ContentH2>4. Hạng khách và giới hạn đang thuê</ContentH2>
-        <p>
-          Khách thuộc các <strong>hạng</strong> khác nhau (ví dụ: Đồng, Bạc, Vàng, Kim cương) với{' '}
-          <strong>giới hạn số lượng món đang thuê</strong> (đơn RESERVED + ACTIVE). Hạng cao hơn có
-          thể có giới hạn lớn hơn hoặc không giới hạn — cụ thể hiển thị trên hồ sơ khách.
-        </p>
+        <ContentH2>3. Chính sách trả trễ & Phí kiểm định tình trạng giày</ContentH2>
+        <ContentList>
+          <li>
+            <strong>Phí trả trễ hạn (50% / ngày):</strong> Nếu ngày trả thực tế sau ngày hẹn trả dự kiến, phí phạt trễ hạn được tính bằng <strong>50% × đơn giá thuê trung bình/ngày × số ngày trễ</strong>.
+          </li>
+          <li>
+            <strong>Biên bản kiểm định khi nhận lại giày (Damage / Cleaning Fee):</strong>
+            <ul className="list-disc pl-5 mt-1 space-y-1">
+              <li><strong>Tốt / Nguyên vẹn:</strong> Không phụ phí (<strong>0₫</strong>).</li>
+              <li><strong>Bẩn nhiều cần vệ sinh chuyên sâu:</strong> Phụ phí <strong>+50.000₫</strong>.</li>
+              <li><strong>Trầy xước / Hư hỏng nhẹ:</strong> Phụ phí <strong>+150.000₫</strong>.</li>
+              <li><strong>Hư hỏng nặng / Mất phụ kiện:</strong> Áp dụng mức bồi thường thực tế theo biên bản kiểm định tại quầy.</li>
+            </ul>
+          </li>
+        </ContentList>
       </section>
 
       <section className="space-y-3">
-        <ContentH2>5. Hủy đơn</ContentH2>
-        <p>
-          Hủy đơn trong luồng hệ thống thường áp dụng khi đơn còn ở trạng thái{' '}
-          <strong>Đã giữ chỗ</strong>. Sau khi chuyển sang <strong>Đang thuê</strong>, việc điều chỉnh
-          phụ thuộc chính sách cửa hàng (đổi kỳ, phí hủy, v.v.).
-        </p>
+        <ContentH2>4. Chính sách Gia hạn & Hủy đơn thuê</ContentH2>
+        <ContentList>
+          <li>
+            <strong>Gia hạn đơn thuê (Extend Rental):</strong> Áp dụng cho đơn đang ở trạng thái <strong>RESERVED</strong> hoặc <strong>ACTIVE</strong>. Hệ thống kiểm tra lịch trống của các biến thể trong khoảng ngày gia hạn mới trước khi xác nhận và cộng thêm phí thuê tương ứng.
+          </li>
+          <li>
+            <strong>Hủy đơn thuê (Cancel Rental):</strong> Khách hàng có thể tự hủy trực tuyến đối với đơn ở trạng thái <strong>RESERVED</strong> trước ngày bắt đầu thuê ít nhất <strong>01 ngày lịch</strong>. Khi hủy đơn hợp lệ, hệ thống tự động giải phóng tồn kho và <strong>hoàn lại lượt sử dụng mã Voucher</strong> (nếu đơn có áp mã).
+          </li>
+        </ContentList>
       </section>
 
       <section className="space-y-3">
-        <ContentH2>6. Bảo mật thông tin</ContentH2>
+        <ContentH2>5. Thanh toán Ví điện tử MoMo & Giữ chỗ 15 phút</ContentH2>
+        <ContentList>
+          <li>
+            <strong>Cổng thanh toán MoMo:</strong> Hỗ trợ thanh toán trực tuyến tổng tiền thuê + tiền đặt cọc qua mã QR / Ví MoMo.
+          </li>
+          <li>
+            <strong>Thời gian giữ chỗ 15 phút:</strong> Đơn chọn thanh toán MoMo ở trạng thái chờ thanh toán (PENDING) được giữ tồn kho trong tối đa <strong>15 phút</strong>. Quá 15 phút chưa hoàn tất thanh toán, hệ thống tự động thu hồi trạng thái hết hạn (EXPIRED) và hủy đơn giữ chỗ để giải phóng giày cho khách hàng khác.
+          </li>
+        </ContentList>
+      </section>
+
+      <section className="space-y-3">
+        <ContentH2>6. Giới hạn an toàn & Bảo mật dữ liệu</ContentH2>
         <p>
-          Thông tin khách (họ tên, email, …) được dùng để quản lý đơn thuê và liên hệ. Chủ cửa hàng
-          chịu trách nhiệm tuân thủ quy định bảo vệ dữ liệu cá nhân tại địa phương.
+          Mỗi khách hàng được thuê tối đa <strong>5 đôi giày cùng lúc</strong> (tính tổng trên các đơn RESERVED và ACTIVE). Trợ lý AI và toàn bộ hệ thống tuân thủ nghiêm ngặt quy tắc bảo mật dữ liệu cá nhân, chỉ truy xuất đúng hồ sơ của tài khoản đang đăng nhập.
         </p>
       </section>
 
-      <p className="pt-2 text-sm text-slate-500">
-        Cập nhật lần cuối: gắn với phiên bản ứng dụng hiện tại. Mọi điều khoản pháp lý ràng buộc
-        doanh nghiệp cần được soạn thảo bổ sung.
-      </p>
-
-      <p className="pt-4">
-        <Link to="/faq" className="text-primary font-semibold hover:underline">
-          Xem FAQ
+      <div className="pt-4 flex flex-wrap items-center gap-4 text-sm font-semibold">
+        <Link to="/how-it-works" className="text-primary hover:underline">
+          ← Xem Bộ mô phỏng chi phí thuê
         </Link>
-        {' · '}
-        <Link to="/contact" className="text-primary font-semibold hover:underline">
-          Liên hệ
+        <span className="text-slate-300">·</span>
+        <Link to="/faq" className="text-primary hover:underline">
+          Câu hỏi thường gặp (FAQ)
         </Link>
-      </p>
+        <span className="text-slate-300">·</span>
+        <Link to="/contact" className="text-primary hover:underline">
+          Liên hệ hỗ trợ
+        </Link>
+      </div>
     </ContentPageShell>
   )
 }

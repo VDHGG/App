@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   listRentals,
   activateRental,
@@ -66,9 +66,14 @@ function nextDayDateString(isoDate: string): string {
 }
 
 export function RentalsListPage() {
+  const [searchParams] = useSearchParams()
   const [rentals, setRentals] = useState<RentalSummary[]>([])
   const [customers, setCustomers] = useState<CustomerSummary[]>([])
   const [statusFilter, setStatusFilter] = useState<'' | RentalStatus>('')
+  const [overdueOnly, setOverdueOnly] = useState<boolean>(() => {
+    const ov = searchParams.get('overdue')
+    return ov === '1' || ov === 'true'
+  })
   const [startDateFrom, setStartDateFrom] = useState('')
   const [startDateTo, setStartDateTo] = useState('')
   const [amountBucket, setAmountBucket] = useState<NonNullable<ListRentalsQuery['amountBucket']>>(
@@ -111,23 +116,31 @@ export function RentalsListPage() {
   const customerMap = Object.fromEntries(customers.map((c) => [c.customerId, c]))
 
   useEffect(() => {
-    const t = window.setTimeout(() => setSearch(searchInput), 350)
-    return () => window.clearTimeout(t)
-  }, [searchInput])
+    const ov = searchParams.get('overdue')
+    if (ov === '1' || ov === 'true') {
+      setOverdueOnly(true)
+      setPage(1)
+    }
+  }, [searchParams])
 
   useEffect(() => {
-    setPage(1)
-  }, [search])
+    const t = window.setTimeout(() => {
+      setSearch(searchInput)
+      setPage(1)
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
 
   const rentalQuery = useMemo((): ListRentalsQuery => {
     const q: ListRentalsQuery = { page, pageSize: DEFAULT_PAGE_SIZE }
     if (statusFilter) q.status = statusFilter
+    if (overdueOnly) q.overdueOnly = true
     if (startDateFrom) q.startDateFrom = startDateFrom
     if (startDateTo) q.startDateTo = startDateTo
     if (amountBucket && amountBucket !== 'all') q.amountBucket = amountBucket
     if (search.trim()) q.search = search.trim()
     return q
-  }, [statusFilter, startDateFrom, startDateTo, amountBucket, page, search])
+  }, [statusFilter, overdueOnly, startDateFrom, startDateTo, amountBucket, page, search])
 
   useEffect(() => {
     Promise.all([listRentals(rentalQuery), listCustomers()])
@@ -399,20 +412,46 @@ export function RentalsListPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   Status
                 </span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setPage(1)
-                    setStatusFilter((e.target.value || '') as '' | RentalStatus)
-                  }}
-                  className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[160px]"
-                >
-                  {STATUS_OPTIONS.map((opt) => (
-                    <option key={opt.value || 'all'} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => {
+                      const nextStatus = (e.target.value || '') as '' | RentalStatus
+                      setPage(1)
+                      setStatusFilter(nextStatus)
+                      if (nextStatus === 'RETURNED' || nextStatus === 'CANCELLED') {
+                        setOverdueOnly(false)
+                      }
+                    }}
+                    className="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 focus:ring-primary text-sm font-semibold min-w-[160px]"
+                  >
+                    {STATUS_OPTIONS.map((opt) => (
+                      <option key={opt.value || 'all'} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPage(1)
+                      setOverdueOnly((prev) => {
+                        const next = !prev
+                        if (next && (statusFilter === 'RETURNED' || statusFilter === 'CANCELLED')) {
+                          setStatusFilter('')
+                        }
+                        return next
+                      })
+                    }}
+                    className={`px-3.5 py-2 rounded-lg text-xs font-bold border transition-colors inline-flex items-center gap-1.5 ${
+                      overdueOnly
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30'
+                    }`}
+                  >
+                    ⚠️ Đang quá hạn
+                  </button>
+                </div>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">

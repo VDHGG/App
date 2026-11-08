@@ -90,6 +90,7 @@ export type ListRentalsResponse = {
 export type ListRentalsQuery = {
   customerId?: string
   status?: RentalStatus
+  overdueOnly?: boolean
   startDateFrom?: string
   startDateTo?: string
   amountBucket?: 'all' | 'lt50' | '50to150' | '150to300' | 'gt300'
@@ -189,6 +190,8 @@ export async function validateVoucher(code: string): Promise<ValidateVoucherResp
   )
   return data
 }
+
+export { listActiveVouchers as fetchActiveVouchers, type VoucherRecord } from './vouchers.api'
 
 export async function extendMyRental(
   rentalId: string,

@@ -2722,7 +2722,55 @@ class ListRentalsService {
     const pageSize = normalizePageSize(request?.pageSize);
     const limit = paginate ? pageSize : void 0;
     const offset = paginate ? (page - 1) * pageSize : void 0;
-    const { customerId, status, startDateFrom, startDateTo, amountBucket, search } = request ?? {};
+    const { customerId, status, startDateFrom, startDateTo, amountBucket, search, overdueOnly } = request ?? {};
+    const now = getVietnamTodayDate();
+    const nowNorm = now.getTime();
+    const mapRental = (r) => {
+      const isOverdue = r.isOverdue(now);
+      const endNorm = new Date(
+        r.period.endDate.getFullYear(),
+        r.period.endDate.getMonth(),
+        r.period.endDate.getDate()
+      ).getTime();
+      const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 864e5)) : 0;
+      const dailyRate = r.basePrice / r.period.durationInDays;
+      const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
+      return {
+        rentalId: r.id,
+        customerId: r.customerId,
+        status: r.status,
+        totalItems: r.totalItems,
+        basePrice: r.basePrice,
+        depositAmount: r.depositAmount,
+        totalAmount: r.totalAmount,
+        startDate: r.period.startDate,
+        endDate: r.period.endDate,
+        isOverdue,
+        overdueDays,
+        estimatedLateFee
+      };
+    };
+    if (overdueOnly === true) {
+      const { items: items2 } = await this.rentalRepository.findList({
+        ...customerId ? { customerId } : {},
+        ...status ? { status } : {},
+        ...startDateFrom ? { startDateFrom } : {},
+        ...startDateTo ? { startDateTo } : {},
+        ...amountBucket ? { amountBucket } : {},
+        ...search !== void 0 && search.trim() !== "" ? { search: search.trim() } : {}
+      });
+      const overdueItems = items2.filter((r) => r.isOverdue(now));
+      const filteredTotal = overdueItems.length;
+      const pagedItems = paginate ? overdueItems.slice(offset ?? 0, (offset ?? 0) + pageSize) : overdueItems;
+      const effectivePageSize2 = paginate ? pageSize : Math.max(filteredTotal, 1);
+      return {
+        rentals: pagedItems.map(mapRental),
+        total: filteredTotal,
+        page: paginate ? page : 1,
+        pageSize: effectivePageSize2,
+        totalPages: totalPages(filteredTotal, effectivePageSize2)
+      };
+    }
     const { items, total } = await this.rentalRepository.findList({
       ...customerId ? { customerId } : {},
       ...status ? { status } : {},
@@ -2733,34 +2781,8 @@ class ListRentalsService {
       ...limit !== void 0 ? { limit, offset } : {}
     });
     const effectivePageSize = paginate ? pageSize : Math.max(total, 1);
-    const now = getVietnamTodayDate();
-    const nowNorm = now.getTime();
     return {
-      rentals: items.map((r) => {
-        const isOverdue = r.isOverdue(now);
-        const endNorm = new Date(
-          r.period.endDate.getFullYear(),
-          r.period.endDate.getMonth(),
-          r.period.endDate.getDate()
-        ).getTime();
-        const overdueDays = isOverdue ? Math.max(0, Math.floor((nowNorm - endNorm) / 864e5)) : 0;
-        const dailyRate = r.basePrice / r.period.durationInDays;
-        const estimatedLateFee = isOverdue ? Math.round(overdueDays * dailyRate * 0.5) : r.lateFee;
-        return {
-          rentalId: r.id,
-          customerId: r.customerId,
-          status: r.status,
-          totalItems: r.totalItems,
-          basePrice: r.basePrice,
-          depositAmount: r.depositAmount,
-          totalAmount: r.totalAmount,
-          startDate: r.period.startDate,
-          endDate: r.period.endDate,
-          isOverdue,
-          overdueDays,
-          estimatedLateFee
-        };
-      }),
+      rentals: items.map(mapRental),
       total,
       page: paginate ? page : 1,
       pageSize: effectivePageSize,
@@ -3393,6 +3415,36 @@ class AdminListSystemUsersService {
     const pageSize = normalizePageSize(request?.pageSize);
     const offset = (page - 1) * pageSize;
     const search = request?.search?.trim() ?? "";
+    const { roleId, isActive } = request ?? {};
+    if (roleId !== void 0 || isActive !== void 0) {
+      const { items: items2 } = await this.systemUsers.listForAdmin({
+        limit: 500,
+        offset: 0,
+        ...search ? { search } : {}
+      });
+      const filtered = items2.filter((u) => {
+        if (roleId !== void 0 && u.roleId !== roleId) return false;
+        if (isActive !== void 0 && u.isActive !== isActive) return false;
+        return true;
+      });
+      const filteredTotal = filtered.length;
+      const pageItems = filtered.slice(offset, offset + pageSize);
+      return {
+        users: pageItems.map((u) => ({
+          userId: u.userId,
+          fullName: u.fullName,
+          email: u.email,
+          phone: u.phone,
+          roleId: u.roleId,
+          customerId: u.customerId,
+          isActive: u.isActive
+        })),
+        total: filteredTotal,
+        page,
+        pageSize,
+        totalPages: totalPages(filteredTotal, pageSize)
+      };
+    }
     const { items, total } = await this.systemUsers.listForAdmin({
       limit: pageSize,
       offset,
@@ -4672,6 +4724,7 @@ const ListRentalsQuerySchema = z.object({
   startDateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   startDateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   amountBucket: z.enum(["all", "lt50", "50to150", "150to300", "gt300"]).optional(),
+  overdueOnly: z.enum(["true", "false", "1", "0"]).transform((v) => v === "true" || v === "1").optional(),
   search: z.string().max(200).optional(),
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional()
@@ -4875,6 +4928,7 @@ class RentalController {
       ...query.startDateFrom ? { startDateFrom: query.startDateFrom } : {},
       ...query.startDateTo ? { startDateTo: query.startDateTo } : {},
       ...amountBucket ? { amountBucket } : {},
+      ...query.overdueOnly !== void 0 ? { overdueOnly: query.overdueOnly } : {},
       ...query.search !== void 0 && query.search.trim() !== "" ? { search: query.search.trim() } : {},
       ...query.page !== void 0 ? { page: query.page } : {},
       ...query.pageSize !== void 0 ? { pageSize: query.pageSize } : {}
@@ -5835,7 +5889,9 @@ class CatalogAdminController {
 const ListSystemUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   pageSize: z.coerce.number().int().min(1).max(50).optional(),
-  search: z.string().max(200).optional()
+  search: z.string().max(200).optional(),
+  roleId: z.enum(["1", "2"]).transform((v) => Number(v)).optional(),
+  isActive: z.enum(["true", "false"]).transform((v) => v === "true").optional()
 });
 const AdminUpdateSystemUserBodySchema = z.object({
   fullName: z.string().min(1).max(100),
@@ -5875,7 +5931,9 @@ class AdminSystemUserController {
     const result = await this.listUsers.execute({
       ...query.page !== void 0 ? { page: query.page } : {},
       ...query.pageSize !== void 0 ? { pageSize: query.pageSize } : {},
-      ...query.search !== void 0 && query.search.trim() !== "" ? { search: query.search.trim() } : {}
+      ...query.search !== void 0 && query.search.trim() !== "" ? { search: query.search.trim() } : {},
+      ...query.roleId !== void 0 ? { roleId: query.roleId } : {},
+      ...query.isActive !== void 0 ? { isActive: query.isActive } : {}
     });
     res.json(result);
   }

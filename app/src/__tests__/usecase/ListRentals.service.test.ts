@@ -159,4 +159,68 @@ describe('ListRentalsService', () => {
       expect(result.rentals.map((r) => r.rentalId)).toEqual(['R-3m501']);
     });
   });
+
+  it('filters overdueOnly=true with accurate pagination', async () => {
+    const pastPeriod = new RentalPeriod(new Date('2020-01-01'), new Date('2020-01-03'));
+    const futurePeriod = new RentalPeriod(new Date('2099-01-01'), new Date('2099-01-03'));
+    const item = new RentalItem({
+      shoeId: 'S1',
+      variantId: 'V1',
+      shoeName: 'Shoe',
+      size: 42,
+      color: 'Black',
+      pricePerDay: 200000,
+      quantity: 1,
+    });
+
+    await rentalRepo.save(
+      new Rental({
+        id: 'R-OV-1',
+        customerId: 'U001',
+        items: [item],
+        period: pastPeriod,
+        status: RentalStatus.ACTIVE,
+        activatedAt: new Date('2020-01-01'),
+      })
+    );
+    await rentalRepo.save(
+      new Rental({
+        id: 'R-OV-2',
+        customerId: 'U001',
+        items: [item],
+        period: pastPeriod,
+        status: RentalStatus.ACTIVE,
+        activatedAt: new Date('2020-01-01'),
+      })
+    );
+    await rentalRepo.save(
+      new Rental({
+        id: 'R-ACT-FUT',
+        customerId: 'U001',
+        items: [item],
+        period: futurePeriod,
+        status: RentalStatus.ACTIVE,
+        activatedAt: new Date('2099-01-01'),
+      })
+    );
+    await rentalRepo.save(
+      new Rental({
+        id: 'R-RET-PST',
+        customerId: 'U001',
+        items: [item],
+        period: pastPeriod,
+        status: RentalStatus.RETURNED,
+        returnedAt: new Date('2020-01-03'),
+      })
+    );
+
+    const allOverdue = await listRentals.execute({ overdueOnly: true });
+    expect(allOverdue.total).toBe(2);
+    expect(allOverdue.rentals.every((r) => r.isOverdue === true)).toBe(true);
+
+    const pagedOverdue = await listRentals.execute({ overdueOnly: true, page: 1, pageSize: 1 });
+    expect(pagedOverdue.total).toBe(2);
+    expect(pagedOverdue.totalPages).toBe(2);
+    expect(pagedOverdue.rentals).toHaveLength(1);
+  });
 });

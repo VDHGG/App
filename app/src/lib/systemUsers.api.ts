@@ -22,6 +22,8 @@ export type ListSystemUsersQuery = {
   page?: number
   pageSize?: number
   search?: string
+  roleId?: 1 | 2
+  isActive?: boolean
 }
 
 export async function listSystemUsers(

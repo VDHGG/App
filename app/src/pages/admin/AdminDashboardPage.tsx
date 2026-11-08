@@ -802,9 +802,12 @@ export function AdminDashboardPage() {
                   <span className="size-2.5 rounded-full bg-rose-500" />
                   Đang quá hạn ({scheduleData?.summary.overdueCount ?? 0})
                 </h4>
-                <span className="text-[11px] font-semibold text-rose-700 dark:text-rose-300">
-                  Cần thu hồi gấp
-                </span>
+                <Link
+                  to="/admin/rentals?overdue=1"
+                  className="text-[11px] font-bold text-rose-700 dark:text-rose-300 hover:underline"
+                >
+                  Lọc tất cả quá hạn →
+                </Link>
               </div>
 
               {scheduleLoading ? (

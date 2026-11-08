@@ -248,6 +248,7 @@ export class RentalController {
       ...(query.startDateFrom ? { startDateFrom: query.startDateFrom } : {}),
       ...(query.startDateTo ? { startDateTo: query.startDateTo } : {}),
       ...(amountBucket ? { amountBucket } : {}),
+      ...(query.overdueOnly !== undefined ? { overdueOnly: query.overdueOnly } : {}),
       ...(query.search !== undefined && query.search.trim() !== '' ? { search: query.search.trim() } : {}),
       ...(query.page !== undefined ? { page: query.page } : {}),
       ...(query.pageSize !== undefined ? { pageSize: query.pageSize } : {}),
