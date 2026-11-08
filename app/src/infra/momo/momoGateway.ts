@@ -64,6 +64,11 @@ export function buildSandboxFallbackPayUrl(
   const signature = crypto.createHmac('sha256', opts.secretKey).update(rawSignature).digest('hex');
 
   const url = new URL(opts.redirectUrl);
+  if (url.pathname.endsWith('/payment/momo/return')) {
+    url.pathname = url.pathname.replace(/\/payment\/momo\/return$/, '/payment/momo/sandbox');
+  } else {
+    url.pathname = '/payment/momo/sandbox';
+  }
   url.searchParams.set('partnerCode', opts.partnerCode);
   url.searchParams.set('accessKey', opts.accessKey);
   url.searchParams.set('orderId', opts.orderId);

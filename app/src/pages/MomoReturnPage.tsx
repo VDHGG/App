@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { confirmMomoReturnParams } from '../lib/payments.api'
 
@@ -10,10 +10,18 @@ function parseResultCode(raw: string | null): number | null {
 
 export function MomoReturnPage() {
   const [searchParams] = useSearchParams()
+  const [syncing, setSyncing] = useState(() =>
+    Boolean(searchParams.get('orderId') && searchParams.get('signature'))
+  )
 
   useEffect(() => {
     if (searchParams.get('orderId') && searchParams.get('signature')) {
-      void confirmMomoReturnParams(Object.fromEntries(searchParams.entries())).catch(() => {})
+      setSyncing(true)
+      void confirmMomoReturnParams(Object.fromEntries(searchParams.entries()))
+        .catch(() => {})
+        .finally(() => setSyncing(false))
+    } else {
+      setSyncing(false)
     }
   }, [searchParams])
 
@@ -64,14 +72,34 @@ export function MomoReturnPage() {
             {transId && <>Trans: {transId}</>}
           </p>
         )}
+        {syncing && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 font-semibold mb-4 animate-pulse">
+            Đang đồng bộ trạng thái thanh toán với hệ thống...
+          </p>
+        )}
         <Link
-          to="/"
-          className="inline-flex items-center justify-center w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl transition-opacity"
+          to={syncing ? '#' : '/'}
+          aria-disabled={syncing}
+          onClick={(e) => {
+            if (syncing) e.preventDefault()
+          }}
+          className={`inline-flex items-center justify-center w-full bg-primary hover:bg-primary/90 text-white font-bold py-3.5 rounded-xl transition-opacity ${
+            syncing ? 'opacity-50 pointer-events-none' : ''
+          }`}
         >
           Back to home
         </Link>
         <p className="mt-6 text-xs text-slate-500">
-          <Link to="/account" className="text-primary font-semibold hover:underline">
+          <Link
+            to={syncing ? '#' : '/account'}
+            aria-disabled={syncing}
+            onClick={(e) => {
+              if (syncing) e.preventDefault()
+            }}
+            className={`text-primary font-semibold hover:underline ${
+              syncing ? 'opacity-50 pointer-events-none' : ''
+            }`}
+          >
             My rentals
           </Link>
         </p>

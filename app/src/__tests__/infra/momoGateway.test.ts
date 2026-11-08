@@ -142,7 +142,7 @@ describe('momoGateway', () => {
       const result = await momoCreatePayment(defaultOpts);
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(result.payUrl).toContain('https://example.com/payment/momo/return');
+        expect(result.payUrl).toContain('https://example.com/payment/momo/sandbox');
         const url = new URL(result.payUrl);
         const params = Object.fromEntries(url.searchParams.entries());
         expect(params.resultCode).toBe('0');

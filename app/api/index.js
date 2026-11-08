@@ -5785,6 +5785,11 @@ function buildSandboxFallbackPayUrl(opts, amount) {
   const rawSignature = "accessKey=" + opts.accessKey + "&amount=" + amount + "&extraData=" + extraData + "&message=" + message + "&orderId=" + opts.orderId + "&orderInfo=" + opts.orderInfo + "&orderType=" + orderType + "&partnerCode=" + opts.partnerCode + "&payType=" + payType + "&requestId=" + opts.requestId + "&responseTime=" + responseTime + "&resultCode=" + resultCode + "&transId=" + transId;
   const signature = crypto.createHmac("sha256", opts.secretKey).update(rawSignature).digest("hex");
   const url = new URL(opts.redirectUrl);
+  if (url.pathname.endsWith("/payment/momo/return")) {
+    url.pathname = url.pathname.replace(/\/payment\/momo\/return$/, "/payment/momo/sandbox");
+  } else {
+    url.pathname = "/payment/momo/sandbox";
+  }
   url.searchParams.set("partnerCode", opts.partnerCode);
   url.searchParams.set("accessKey", opts.accessKey);
   url.searchParams.set("orderId", opts.orderId);
@@ -5888,11 +5893,22 @@ const CreateBodySchema = z.object({
   rentalId: z.string().min(1)
 });
 function resolveRequestOrigin(req) {
+  const rawOrigin = req.headers.origin;
+  if (typeof rawOrigin === "string" && /^https?:\/\//i.test(rawOrigin)) {
+    return rawOrigin.trim().replace(/\/$/, "");
+  }
+  const rawReferer = req.headers.referer;
+  if (typeof rawReferer === "string" && /^https?:\/\//i.test(rawReferer)) {
+    try {
+      return new URL(rawReferer).origin;
+    } catch {
+    }
+  }
   const rawHost = req.headers["x-forwarded-host"] ?? req.headers.host;
   const host = Array.isArray(rawHost) ? rawHost[0] : rawHost;
   if (!host) return null;
   const rawProto = req.headers["x-forwarded-proto"];
-  const proto = (Array.isArray(rawProto) ? rawProto[0] : rawProto) || (host.includes("localhost") ? "http" : "https");
+  const proto = (Array.isArray(rawProto) ? rawProto[0] : rawProto) || (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
   return `${proto.split(",")[0].trim()}://${host.split(",")[0].trim()}`;
 }
 function isMomoConfigured() {
@@ -5993,9 +6009,11 @@ class MomoPaymentController {
     const apiPath = process.env.MOMO_API_PATH?.trim() || "/v2/gateway/api/create";
     const apiUrl = `${apiHost.replace(/\/$/, "")}${apiPath.startsWith("/") ? "" : "/"}${apiPath}`;
     const reqOrigin = resolveRequestOrigin(req);
+    const hasBrowserOriginHeader = Boolean(req.headers.origin || req.headers.referer);
     const frontendEnv = process.env.FRONTEND_ORIGIN?.trim();
-    const useFrontendEnv = frontendEnv && !(process.env.VERCEL && frontendEnv.includes("localhost"));
-    const frontend = (useFrontendEnv ? frontendEnv : reqOrigin || "http://localhost:5173").replace(/\/$/, "");
+    const isLocalBrowserOrigin = !process.env.VERCEL && hasBrowserOriginHeader && Boolean(reqOrigin && (reqOrigin.includes("localhost") || reqOrigin.includes("127.0.0.1")));
+    const useFrontendEnv = !isLocalBrowserOrigin && frontendEnv && !(process.env.VERCEL && frontendEnv.includes("localhost"));
+    const frontend = (isLocalBrowserOrigin && reqOrigin ? reqOrigin : useFrontendEnv ? frontendEnv : reqOrigin || "http://localhost:5173").replace(/\/$/, "");
     const redirectUrl = `${frontend}/payment/momo/return`;
     const port = process.env.PORT ?? "3000";
     const apiPublicEnv = process.env.API_PUBLIC_BASE_URL?.trim();
@@ -6039,7 +6057,26 @@ class MomoPaymentController {
       amountVnd,
       expiresAt
     });
-    res.json({ skipped: false, payUrl: result.payUrl });
+    let finalPayUrl = result.payUrl;
+    if (result.payUrl.includes("test-payment.momo.vn")) {
+      const sandboxUrl = new URL(
+        buildSandboxFallbackPayUrl(
+          {
+            partnerCode,
+            accessKey,
+            secretKey,
+            orderId,
+            requestId,
+            orderInfo,
+            redirectUrl
+          },
+          String(Math.max(0, Math.round(amountVnd)))
+        )
+      );
+      sandboxUrl.searchParams.set("gatewayUrl", result.payUrl);
+      finalPayUrl = sandboxUrl.toString();
+    }
+    res.json({ skipped: false, payUrl: finalPayUrl });
   }
   async ipn(req, res) {
     const secret = process.env.MOMO_SECRET_KEY?.trim();

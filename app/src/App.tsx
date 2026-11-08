@@ -30,12 +30,14 @@ import { AccountPage } from './pages/AccountPage'
 import { WishlistPage } from './pages/WishlistPage'
 import { DiscoveryTrendsPage } from './pages/DiscoveryTrendsPage'
 import { MomoReturnPage } from './pages/MomoReturnPage'
+import { MomoSandboxPage } from './pages/MomoSandboxPage'
 
 export function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          <Route path="/payment/momo/sandbox" element={<MomoSandboxPage />} />
           <Route path="/payment/momo/return" element={<MomoReturnPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignUpPage />} />
