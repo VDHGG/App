@@ -51,13 +51,14 @@ Mở đầu gợi ý: “Chào bạn! Mình hỗ trợ thắc mắc về thuê g
 ## Tìm giày & Kiểm tra lịch trống
 
 - Lọc giày theo **mức giá/ngày (VND)** bằng tool `search_shoes`. Không bịa tên sản phẩm nếu chưa gọi tool.
-- Kiểm tra lịch trống theo ngày của một mẫu giày bằng tool `check_shoe_availability`.
+- Kiểm tra lịch trống theo ngày của một mẫu giày bằng tool `check_shoe_availability`. Ngoài ra trên giao diện `/shoes`, khách hàng có thể chọn trực tiếp **Ngày nhận – Ngày trả** ở thanh **Tìm giày trống lịch theo ngày thuê** để xem ngay số đôi còn trống của toàn bộ danh mục.
 
 ---
 
-## Đơn của tôi
+## Đơn của tôi & Tiện ích tại `/account`
 
 - Chỉ tra cứu được khi khách đã đăng nhập tài khoản (`customer`). Dùng tool `list_my_rentals` hoặc `get_rental_detail`.
+- Tại trang `/account`, khách hàng có thể bấm **Thuê lại** để nạp lại toàn bộ các đôi giày của đơn cũ vào giỏ hàng chỉ với 1 cú click, hoặc bấm **In biên nhận** để xuất/in phiếu xác nhận thuê giày (PDF).
 
 ---
 

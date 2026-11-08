@@ -179,14 +179,16 @@ export function AdminDashboardPage() {
     try {
       const res = await sweepExpiredMomoRentals()
       setSweepMessage(`Đã quét và giải phóng ${res.sweptCount} đơn treo MoMo quá hạn.`)
-      const [rentalsRes, statsRes, feedRes] = await Promise.all([
+      const [rentalsRes, statsRes, feedRes, schedRes] = await Promise.all([
         listRentals(),
         fetchAdminStatsOverview(period).catch(() => null),
         fetchActivityFeed({ type: feedFilter, limit: 20 }).catch(() => null),
+        fetchRentalSchedule(scheduleDate).catch(() => null),
       ])
       setRentals(rentalsRes.rentals)
       setStats(statsRes)
       if (feedRes) setFeedEvents(feedRes.events)
+      if (schedRes) setScheduleData(schedRes)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {
@@ -216,14 +218,16 @@ export function AdminDashboardPage() {
     try {
       if (action === 'activate') await activateRental(rentalId)
       else await cancelRental(rentalId)
-      const [res, statsRes, feedRes] = await Promise.all([
+      const [res, statsRes, feedRes, schedRes] = await Promise.all([
         listRentals(),
         fetchAdminStatsOverview(period).catch(() => null),
         fetchActivityFeed({ type: feedFilter, limit: 20 }).catch(() => null),
+        fetchRentalSchedule(scheduleDate).catch(() => null),
       ])
       setRentals(res.rentals)
       setStats(statsRes)
       if (feedRes) setFeedEvents(feedRes.events)
+      if (schedRes) setScheduleData(schedRes)
     } catch (err: unknown) {
       setActionError(getApiErrorMessage(err))
     } finally {

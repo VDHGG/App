@@ -106,13 +106,17 @@ export class ShoeController {
 
     let period: RentalPeriod | null = null;
     if (startDateStr && endDateStr) {
+      const sDate = new Date(`${startDateStr}T00:00:00.000Z`);
+      const eDate = new Date(`${endDateStr}T00:00:00.000Z`);
       if (
         !/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) ||
         !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) ||
-        Number.isNaN(new Date(startDateStr).getTime()) ||
-        Number.isNaN(new Date(endDateStr).getTime())
+        Number.isNaN(sDate.getTime()) ||
+        Number.isNaN(eDate.getTime()) ||
+        sDate.toISOString().slice(0, 10) !== startDateStr ||
+        eDate.toISOString().slice(0, 10) !== endDateStr
       ) {
-        throw new ValidationError('Invalid startDate or endDate format. Expected YYYY-MM-DD.');
+        throw new ValidationError('Invalid startDate or endDate format. Expected a valid YYYY-MM-DD calendar date.');
       }
       period = new RentalPeriod(new Date(startDateStr), new Date(endDateStr));
     }
@@ -290,6 +294,19 @@ export class ShoeController {
 
     if (!startDateStr || !endDateStr) {
       throw new ValidationError('startDate and endDate query parameters are required.');
+    }
+
+    const sDateUtc = new Date(`${startDateStr}T00:00:00.000Z`);
+    const eDateUtc = new Date(`${endDateStr}T00:00:00.000Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) ||
+      Number.isNaN(sDateUtc.getTime()) ||
+      Number.isNaN(eDateUtc.getTime()) ||
+      sDateUtc.toISOString().slice(0, 10) !== startDateStr ||
+      eDateUtc.toISOString().slice(0, 10) !== endDateStr
+    ) {
+      throw new ValidationError('Invalid startDate or endDate format. Expected a valid YYYY-MM-DD calendar date.');
     }
 
     const startDate = new Date(startDateStr);

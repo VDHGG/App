@@ -151,10 +151,17 @@ export function ProductDetailPage() {
   )
 
   useEffect(() => {
-    if (!selectedVariant) return
+    if (!shoe || !selectedVariant) return
     const maxAvail = effectiveAvailable(selectedVariant)
+    if (maxAvail <= 0) {
+      const nextAvail = shoe.variants.find((v) => effectiveAvailable(v) > 0)
+      if (nextAvail && nextAvail.variantId !== selectedVariant.variantId) {
+        setVariantId(nextAvail.variantId)
+        return
+      }
+    }
     setQuantity((q) => Math.min(Math.max(1, q), Math.max(1, maxAvail)))
-  }, [variantId, selectedVariant, effectiveAvailable])
+  }, [shoe, variantId, selectedVariant, effectiveAvailable])
 
   const variantInCart = variantId ? hasVariantInCart(variantId) : false
 

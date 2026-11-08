@@ -176,7 +176,12 @@ export function StorefrontPage() {
         break
       case 'featured':
       default:
-        list.sort((a, b) => b.unitsInStock - a.unitsInStock)
+        list.sort((a, b) =>
+          hasValidDateFilter
+            ? (b.availableUnitsInRange ?? b.unitsInStock) -
+              (a.availableUnitsInRange ?? a.unitsInStock)
+            : b.unitsInStock - a.unitsInStock,
+        )
         break
     }
 

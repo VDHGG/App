@@ -2014,6 +2014,13 @@ describe('New Features - Unit Tests', () => {
           mockRes
         )
       ).rejects.toThrow();
+
+      await expect(
+        callList(
+          { query: { startDate: '2026-02-31', endDate: '2026-03-05' } } as unknown as Request,
+          mockRes
+        )
+      ).rejects.toThrow(/Expected a valid YYYY-MM-DD calendar date/);
     });
 
     it('Phase R: classifies pickupsDue, returnsDue, and overdueActive for target schedule date', async () => {
@@ -2101,6 +2108,10 @@ describe('New Features - Unit Tests', () => {
       await expect(
         callSchedule({ query: { date: 'invalid-date' } } as unknown as Request, mockRes)
       ).rejects.toThrow(/Invalid date format/);
+
+      await expect(
+        callSchedule({ query: { date: '2026-02-31' } } as unknown as Request, mockRes)
+      ).rejects.toThrow(/Expected a valid YYYY-MM-DD calendar date/);
     });
 
     it('Phase S: validates status filter in MomoPaymentController.listAdmin and returns reconciliation summary', async () => {

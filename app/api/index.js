@@ -4190,8 +4190,10 @@ class ShoeController {
     }
     let period = null;
     if (startDateStr && endDateStr) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) || Number.isNaN(new Date(startDateStr).getTime()) || Number.isNaN(new Date(endDateStr).getTime())) {
-        throw new ValidationError("Invalid startDate or endDate format. Expected YYYY-MM-DD.");
+      const sDate = /* @__PURE__ */ new Date(`${startDateStr}T00:00:00.000Z`);
+      const eDate = /* @__PURE__ */ new Date(`${endDateStr}T00:00:00.000Z`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) || Number.isNaN(sDate.getTime()) || Number.isNaN(eDate.getTime()) || sDate.toISOString().slice(0, 10) !== startDateStr || eDate.toISOString().slice(0, 10) !== endDateStr) {
+        throw new ValidationError("Invalid startDate or endDate format. Expected a valid YYYY-MM-DD calendar date.");
       }
       period = new RentalPeriod(new Date(startDateStr), new Date(endDateStr));
     }
@@ -4351,6 +4353,11 @@ class ShoeController {
     const endDateStr = String(req.query["endDate"] ?? "").trim();
     if (!startDateStr || !endDateStr) {
       throw new ValidationError("startDate and endDate query parameters are required.");
+    }
+    const sDateUtc = /* @__PURE__ */ new Date(`${startDateStr}T00:00:00.000Z`);
+    const eDateUtc = /* @__PURE__ */ new Date(`${endDateStr}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr) || !/^\d{4}-\d{2}-\d{2}$/.test(endDateStr) || Number.isNaN(sDateUtc.getTime()) || Number.isNaN(eDateUtc.getTime()) || sDateUtc.toISOString().slice(0, 10) !== startDateStr || eDateUtc.toISOString().slice(0, 10) !== endDateStr) {
+      throw new ValidationError("Invalid startDate or endDate format. Expected a valid YYYY-MM-DD calendar date.");
     }
     const startDate = new Date(startDateStr);
     const endDate = new Date(endDateStr);
@@ -5511,8 +5518,9 @@ class RentalController {
   async getSchedule(req, res) {
     const rawDate = String(req.query["date"] ?? "").trim();
     const targetDate = rawDate || getVietnamTodayYmd$1();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || Number.isNaN((/* @__PURE__ */ new Date(`${targetDate}T00:00:00Z`)).getTime())) {
-      throw new ValidationError("Invalid date format. Expected YYYY-MM-DD.");
+    const targetDateUtc = /* @__PURE__ */ new Date(`${targetDate}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(targetDate) || Number.isNaN(targetDateUtc.getTime()) || targetDateUtc.toISOString().slice(0, 10) !== targetDate) {
+      throw new ValidationError("Invalid date format. Expected a valid YYYY-MM-DD calendar date.");
     }
     await this.lazySweepExpiredMomo();
     const allRentals = await this.listRentals.execute({});
