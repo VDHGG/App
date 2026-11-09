@@ -2444,5 +2444,42 @@ describe('New Features - Unit Tests', () => {
       expect(activeUsers.totalPages).toBe(2);
       expect(activeUsers.users).toHaveLength(1);
     });
+
+    it('MysqlTransactionManager reuses active connection on nested runInTransaction to prevent self-deadlock', async () => {
+      const { MysqlTransactionManager } = await import(
+        '@adapter/persistence/MysqlTransactionManager.adapter'
+      );
+      const { transactionContext } = await import('@infra/db/transactionContext');
+
+      let getConnectionCalls = 0;
+      let commitCalls = 0;
+      const fakeConn = {
+        beginTransaction: async () => {},
+        commit: async () => {
+          commitCalls += 1;
+        },
+        rollback: async () => {},
+        release: () => {},
+      };
+      const fakePool = {
+        getConnection: async () => {
+          getConnectionCalls += 1;
+          return fakeConn;
+        },
+      };
+
+      const txManager = new MysqlTransactionManager(fakePool as never);
+      await txManager.runInTransaction(async () => {
+        const outerStore = transactionContext.getStore();
+        expect(outerStore).toBe(fakeConn);
+        await txManager.runInTransaction(async () => {
+          const innerStore = transactionContext.getStore();
+          expect(innerStore).toBe(fakeConn);
+        });
+      });
+
+      expect(getConnectionCalls).toBe(1);
+      expect(commitCalls).toBe(1);
+    });
   });
 });

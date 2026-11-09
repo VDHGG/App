@@ -10,6 +10,10 @@ export class MysqlTransactionManager implements TransactionManager {
   }
 
   async runInTransaction<T>(work: () => Promise<T>): Promise<T> {
+    if (transactionContext.getStore()) {
+      return work();
+    }
+
     const connection = await this.pool.getConnection();
     await connection.beginTransaction();
 
