@@ -10,6 +10,7 @@ import {
 } from '../../lib/shoes.api'
 import { getShoeLookups, type ShoeLookupsResponse } from '../../lib/catalog.api'
 import { AdminHeader } from '../../components/admin/AdminHeader'
+import { ShoeImage } from '../../components/ShoeImage'
 import { getApiErrorMessage } from '../../lib/api'
 
 type VariantFormRow = {
@@ -365,7 +366,12 @@ export function ShoeEditorPage() {
             <div className="flex flex-wrap items-start gap-4">
               <div className="w-32 h-32 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 overflow-hidden flex-shrink-0">
                 {imagePreviewUrl ? (
-                  <img src={imagePreviewUrl} alt="" className="w-full h-full object-cover" />
+                  <ShoeImage
+                    src={imagePreviewUrl}
+                    alt=""
+                    compact
+                    imgClassName="w-full h-full object-cover"
+                  />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center text-slate-400 text-xs text-center px-2">
                     No image

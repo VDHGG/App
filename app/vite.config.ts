@@ -11,11 +11,12 @@ const alias = {
   '@infra': path.resolve(__dirname, './src/infra'),
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ mode, isSsrBuild }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const apiProxyTarget = env.API_PROXY_TARGET?.trim() || 'http://localhost:3000'
 
   return {
+    publicDir: isSsrBuild ? false : 'public',
     plugins: [react()],
     resolve: { alias },
     server: {

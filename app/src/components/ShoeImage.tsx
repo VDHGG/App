@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
+
+const FALLBACK_SHOE_IMAGE_SRC = '/images/default_shoe.webp'
 
 type ShoeImageProps = {
   src: string | null | undefined
@@ -36,24 +38,34 @@ export function ShoeImage({
   imgClassName = '',
   compact = false,
 }: ShoeImageProps) {
-  const [failed, setFailed] = useState(false)
-  const trimmed = src?.trim() ?? ''
-  const showImg = trimmed.length > 0 && !failed
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
+  const [fallbackFailed, setFallbackFailed] = useState(false)
 
-  useEffect(() => {
-    setFailed(false)
-  }, [trimmed])
+  const primarySrc = src?.trim() || FALLBACK_SHOE_IMAGE_SRC
+  const activeSrc =
+    failedSrc === primarySrc && primarySrc !== FALLBACK_SHOE_IMAGE_SRC
+      ? FALLBACK_SHOE_IMAGE_SRC
+      : primarySrc
+  const showPlaceholder =
+    fallbackFailed ||
+    (failedSrc === FALLBACK_SHOE_IMAGE_SRC && primarySrc === FALLBACK_SHOE_IMAGE_SRC)
 
   return (
     <div className={`relative w-full h-full min-h-0 ${wrapperClassName}`}>
-      {showImg ? (
+      {!showPlaceholder ? (
         <img
-          src={trimmed}
+          src={activeSrc}
           alt={alt}
           loading="lazy"
           decoding="async"
           className={imgClassName}
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (activeSrc === FALLBACK_SHOE_IMAGE_SRC) {
+              setFallbackFailed(true)
+            } else {
+              setFailedSrc(primarySrc)
+            }
+          }}
         />
       ) : (
         <Placeholder compact={compact} />
