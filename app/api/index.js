@@ -23,8 +23,9 @@ const candidates = [
 ];
 const envPath = candidates.find((p) => existsSync(p));
 if (envPath) {
-  config({ path: envPath, override: true });
-  if (process.env.NODE_ENV !== "production") {
+  const isProdOrCloud = process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
+  config({ path: envPath, override: !isProdOrCloud });
+  if (!isProdOrCloud) {
     console.log(`[env] Loaded variables from: ${envPath}`);
   }
 } else {
@@ -7176,14 +7177,7 @@ class ChatController {
     };
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey) {
-      const smart = await this.buildSmartReply(lastUserText, customerId, contextOptions);
-      res.json({
-        reply: smart.reply,
-        mode: "fallback",
-        ...smart.cards && smart.cards.length > 0 ? { cards: smart.cards } : {},
-        ...smart.quote ? { quote: smart.quote } : {},
-        suggestions: smart.suggestions
-      });
+      await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
       return;
     }
     const model = resolveGeminiModel(process.env.GEMINI_MODEL);
@@ -7261,6 +7255,11 @@ class ChatController {
       if (e instanceof DomainError) {
         throw e;
       }
+      await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
+    }
+  }
+  async respondWithSafeFallback(res, lastUserText, customerId, contextOptions) {
+    try {
       const smart = await this.buildSmartReply(lastUserText, customerId, contextOptions);
       res.json({
         reply: smart.reply,
@@ -7268,6 +7267,21 @@ class ChatController {
         ...smart.cards && smart.cards.length > 0 ? { cards: smart.cards } : {},
         ...smart.quote ? { quote: smart.quote } : {},
         suggestions: smart.suggestions
+      });
+    } catch {
+      res.json({
+        reply: [
+          "📜 **Thông tin hỗ trợ nhanh tại Rental Shoes:**",
+          "• **Tiền đặt cọc bảo đảm:** **500.000₫ / đôi** (hoàn trả 100% khi trả giày nguyên vẹn).",
+          "• **Phí trả trễ hạn:** **50% đơn giá ngày × số ngày trễ**.",
+          "• Bạn có thể duyệt mẫu giày và đặt thuê trực tiếp tại `/shoes` hoặc kiểm tra đơn tại `/account`."
+        ].join("\n"),
+        mode: "fallback",
+        suggestions: [
+          "Tìm giày Nike dưới 350.000₫",
+          "Shop đang có mã giảm giá nào?",
+          "Quy định đặt cọc & phí trễ hạn"
+        ]
       });
     }
   }
@@ -7405,7 +7419,7 @@ class ChatController {
       const rawQty = qtyMatch ? Number(qtyMatch[1] ?? qtyMatch[2]) : 1;
       const quantity = Math.max(1, Math.min(5, rawQty || 1));
       const knownVoucherMatch = lastUserText.match(
-        /\b(WELCOME10|SHOE20|GIAM5|SUMMER\d+|VIP\d+|FLASH\d+)\b/i
+        /\b(WELCOME10|GIAM\d+|SHOE20|FREESHIP\d+|SUMMER\d+|VIP\d+|FLASH\d+)\b/i
       );
       const customCodeMatch = lastUserText.match(/(?:áp mã|ap ma|dùng mã|dung ma|mã|ma|voucher|code)\s+([A-Za-z0-9_-]{3,20})/i);
       const ignoredWords = /* @__PURE__ */ new Set(["GIẢM", "GIAM", "KHUYẾN", "KHUYEN", "NÀO", "NAO", "GÌ", "GI", "TỐT", "TOT", "CHO", "CỦA", "CUA", "ĐƠN", "DON"]);
@@ -7490,8 +7504,14 @@ class ChatController {
         }
       }
     }
-    if (/đánh giá|danh gia|review|nhận xét|nhan xet|mấy sao|may sao|tốt nhất|tot nhat|yêu thích nhất|yeu thich nhat/i.test(q)) {
-      const matchedShoe = await this.findBestMatchingShoeInText(lastUserText) ?? (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
+    if (/đánh giá|danh gia|review|nhận xét|nhan xet|mấy sao|may sao|cao nhất|cao nhat|tốt nhất|tot nhat|yêu thích nhất|yeu thich nhat|top\s+giày|top\s+giay|top\s+mẫu|top\s+mau/i.test(
+      q
+    )) {
+      const explicitShoeInText = await this.findBestMatchingShoeInText(lastUserText);
+      const isStoreWideTop = !explicitShoeInText && /top|cao nhất|cao nhat|tốt nhất|tot nhat|yêu thích nhất|yeu thich nhat|nhiều nhất|nhieu nhat|nổi bật|noi bat/i.test(
+        q
+      );
+      const matchedShoe = explicitShoeInText ?? (!isStoreWideTop && contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, void 0) : null);
       const revRes = await this.runTool(
         "get_shoe_reviews_summary",
         {
@@ -7557,6 +7577,24 @@ class ChatController {
           `Tính tiền thuê giày 3 ngày áp mã ${vouchers[0].code}`,
           "Kiểm tra hạng thành viên của tôi",
           "Tìm giày dưới 350.000₫"
+        ]
+      };
+    }
+    if (!/đơn của tôi|don cua toi|đơn của mình|don cua minh|hạng của tôi|hang cua toi/i.test(q) && /cọc|đặt cọc|dat coc|deposit|phí phạt|phi phat|phí trễ|phi tre|phạt trễ|phat tre|chính sách|chinh sach|quy định|quy dinh|policy|momo|thanh toán|thanh toan/i.test(
+      q
+    )) {
+      return {
+        reply: [
+          "📜 **Chính sách Thuê Giày & Thanh Toán tại Rental Shoes:**",
+          "• **Tiền đặt cọc bảo đảm:** **500.000₫ / đôi** (hoàn trả 100% ngay khi trả giày nguyên vẹn).",
+          "• **Phí trả trễ hạn:** **50% đơn giá ngày × số ngày trễ**.",
+          "• **Thanh toán MoMo:** Giữ chỗ tối đa **15 phút**; nếu quá 15 phút chưa thanh toán, hệ thống tự động hủy đơn để hoàn trả tồn kho.",
+          "• **Hủy & Gia hạn:** Đơn `RESERVED` được hủy miễn phí trước ngày nhận ít nhất 1 ngày tại `/account`."
+        ].join("\n"),
+        suggestions: [
+          "Tìm giày Nike dưới 350.000₫",
+          "Shop đang có mã giảm giá nào?",
+          "Báo giá thuê giày 3 ngày"
         ]
       };
     }
@@ -7634,22 +7672,6 @@ ${top.join("\n")}`);
           "Tìm tất cả giày còn hàng dưới 500.000₫",
           "Tìm giày Nike",
           "Shop đang có mã giảm giá nào?"
-        ]
-      };
-    }
-    if (/cọc|đặt cọc|dat coc|deposit|phí phạt|phi phat|phạt trễ|phat tre|chính sách|chinh sach|policy|momo|thanh toán|thanh toan/i.test(q)) {
-      return {
-        reply: [
-          "📜 **Chính sách Thuê Giày & Thanh Toán tại Rental Shoes:**",
-          "• **Tiền đặt cọc bảo đảm:** **500.000₫ / đôi** (hoàn trả 100% ngay khi trả giày nguyên vẹn).",
-          "• **Phí trả trễ hạn:** **50% đơn giá ngày × số ngày trễ**.",
-          "• **Thanh toán MoMo:** Giữ chỗ tối đa **15 phút**; nếu quá 15 phút chưa thanh toán, hệ thống tự động hủy đơn để hoàn trả tồn kho.",
-          "• **Hủy & Gia hạn:** Đơn `RESERVED` được hủy miễn phí trước ngày nhận ít nhất 1 ngày tại `/account`."
-        ].join("\n"),
-        suggestions: [
-          "Tìm giày Nike dưới 350.000₫",
-          "Shop đang có mã giảm giá nào?",
-          "Báo giá thuê giày 3 ngày"
         ]
       };
     }

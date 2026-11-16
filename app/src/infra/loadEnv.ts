@@ -18,8 +18,9 @@ const candidates = [
 const envPath = candidates.find((p) => existsSync(p));
 
 if (envPath) {
-  config({ path: envPath, override: true });
-  if (process.env.NODE_ENV !== 'production') {
+  const isProdOrCloud = process.env.NODE_ENV === 'production' || Boolean(process.env.VERCEL);
+  config({ path: envPath, override: !isProdOrCloud });
+  if (!isProdOrCloud) {
     console.log(`[env] Loaded variables from: ${envPath}`);
   }
 } else {
