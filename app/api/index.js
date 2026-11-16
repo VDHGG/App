@@ -6672,7 +6672,11 @@ class VoucherController {
 const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
   {
     name: "list_my_rentals",
-    description: "List rental order IDs, overdue status, and basic info for the currently logged-in customer. Requires customer login."
+    description: "List rental order IDs, overdue status, and basic info for the currently logged-in customer. Requires customer login.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {}
+    }
   },
   {
     name: "get_rental_detail",
@@ -6690,11 +6694,19 @@ const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
   },
   {
     name: "get_my_membership_rank",
-    description: "Get current membership rank (BRONZE, SILVER, GOLD, DIAMOND) and automatic discount percent for the logged-in customer. Requires customer login."
+    description: "Get current membership rank (BRONZE, SILVER, GOLD, DIAMOND) and automatic discount percent for the logged-in customer. Requires customer login.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {}
+    }
   },
   {
     name: "list_active_vouchers",
-    description: "List currently active promotional vouchers (code, discountPercent, description, expiresAt). Does not require login."
+    description: "List currently active promotional vouchers (code, discountPercent, description, expiresAt). Always call this tool when the user asks about promo codes, discounts, or vouchers. Does not require login.",
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {}
+    }
   },
   {
     name: "search_shoes",
@@ -6839,6 +6851,11 @@ const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
 ];
 function safeResponseText(response) {
   try {
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts) && parts.length > 0) {
+      const visible = parts.filter((p) => typeof p.text === "string" && !p.thought).map((p) => p.text).join("").trim();
+      if (visible) return visible;
+    }
     return response.text().trim();
   } catch {
     return "";
@@ -6925,8 +6942,7 @@ async function runSingleModelChat(opts) {
     result = await chat.sendMessage(parts);
     response = result.response;
   }
-  const fallback = safeResponseText(response);
-  return fallback || "Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.";
+  return safeResponseText(response);
 }
 async function geminiChatWithTools(opts) {
   const {
@@ -7187,6 +7203,7 @@ class ChatController {
     const systemText = [
       "You are the smart storefront shopping concierge for Rental Shoes Vietnam.",
       "Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.",
+      "Mandatory tool routing: call list_active_vouchers whenever asked about vouchers/promo codes (never invent codes such as RENTAL50K or FREESHIP); call search_shoes for catalog searches; call estimate_rental_quote for quotes/pricing; call check_shoe_availability for date/size availability; call get_shoe_reviews_summary for ratings/reviews; call compare_shoes for comparisons; call list_my_rentals/get_rental_detail/get_my_membership_rank for logged-in customer orders/rank. Always write a concise Vietnamese summary after tool execution.",
       "Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.",
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
       `Current page shoe context: ${resolvedContextShoeId || "none"}. Whenever this is not 'none' and the user refers to this shoe ("đôi này", "mẫu này", "nó") or asks availability/quote/reviews without naming another shoe (except store-wide "top giày đánh giá cao nhất", which calls get_shoe_reviews_summary with empty args), pass shoe_id="${resolvedContextShoeId}" directly without asking the user for the shoe ID.`,
@@ -7196,6 +7213,7 @@ class ChatController {
     ].join("\n\n");
     const collectedCards = [];
     let collectedQuote;
+    let toolCallCount = 0;
     const isStoreWideTopReviewsQuery = /top|cao nhất|yêu thích nhất|nhiều nhất|nổi bật/i.test(
       lastUserText
     );
@@ -7208,8 +7226,10 @@ class ChatController {
         onAttemptStart: () => {
           collectedCards.length = 0;
           collectedQuote = void 0;
+          toolCallCount = 0;
         },
         executeTool: async (name, args) => {
+          toolCallCount += 1;
           const enrichedArgs = { ...args };
           const shouldInjectContextShoe = name === "check_shoe_availability" || name === "estimate_rental_quote" || name === "get_shoe_reviews_summary" && !isStoreWideTopReviewsQuery;
           if (shouldInjectContextShoe && !enrichedArgs["shoe_id"] && !enrichedArgs["shoe_name"] && resolvedContextShoeId) {
@@ -7238,6 +7258,17 @@ class ChatController {
           return toolOut;
         }
       });
+      if (toolCallCount === 0 && (!lastAssistant || this.requiresLiveToolData(lastUserText, Boolean(customerId)))) {
+        await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
+        return;
+      }
+      const finalReply = lastAssistant || await this.synthesizePostToolReply(
+        lastUserText,
+        customerId,
+        contextOptions,
+        collectedCards,
+        collectedQuote
+      );
       const defaultSuggestions = this.buildContextualSuggestions(
         lastUserText,
         collectedCards,
@@ -7245,7 +7276,7 @@ class ChatController {
         Boolean(customerId)
       );
       res.json({
-        reply: lastAssistant || "Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.",
+        reply: finalReply,
         mode: "gemini",
         ...collectedCards.length > 0 ? { cards: collectedCards.slice(0, 4) } : {},
         ...collectedQuote ? { quote: collectedQuote } : {},
@@ -7257,6 +7288,41 @@ class ChatController {
       }
       await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
     }
+  }
+  requiresLiveToolData(lastUserText, isLoggedInCustomer) {
+    const q = lastUserText.toLowerCase();
+    if (/hủy đơn giúp|xóa đơn giúp|tạo đơn giúp|đặt thuê giúp|tự động hủy|tự động tạo|cancel order for me/i.test(
+      q
+    )) {
+      return false;
+    }
+    if (/voucher|mã giảm|ma giam|khuyến mãi|khuyen mai/i.test(q) && !/quy định|quy dinh|chính sách|chinh sach|cộng dồn thế nào|cong don the nao/i.test(q)) {
+      return true;
+    }
+    if (/tính tiền|tinh tien|báo giá|bao gia|hết bao nhiêu|het bao nhieu|tổng tiền|tong tien|ước tính|uoc tinh|\bSHOE\d{3,}\b|còn size nào trống|con size nao trong|lịch trống|lich trong|còn hàng ngày|con hang ngay|tìm giày|tim giay|tìm thêm giày|tim them giay|tìm mẫu|tim mau|so sánh|so sanh|top giày|top giay|đánh giá của khách|danh gia cua khach/i.test(
+      q
+    )) {
+      return true;
+    }
+    if (isLoggedInCustomer && /\bREN\d{2,}\b|đơn thuê của tôi|don thue cua toi|đơn của tôi|don cua toi|kiểm tra đơn thuê|kiem tra don thue|hạng của tôi|hang cua toi|hạng thành viên của tôi/i.test(
+      q
+    )) {
+      return true;
+    }
+    return false;
+  }
+  async synthesizePostToolReply(lastUserText, customerId, contextOptions, collectedCards, collectedQuote) {
+    if (collectedQuote) {
+      const qt = collectedQuote;
+      const discountText = qt.effectiveDiscountPercent > 0 ? ` (đã giảm **-${qt.effectiveDiscountPercent}%**${qt.voucherCode ? ` gồm mã **${qt.voucherCode}**` : ""})` : "";
+      return `🧾 **Báo giá dự kiến thuê ${qt.shoeName} (${qt.quantity} đôi × ${qt.days} ngày):** Tiền thuê **${qt.finalRentalPrice.toLocaleString("vi-VN")}₫**${discountText} + tiền cọc hoàn lại **${qt.depositAmount.toLocaleString("vi-VN")}₫** → Tổng thanh toán tạm tính **${qt.grandTotal.toLocaleString("vi-VN")}₫**.`;
+    }
+    if (collectedCards.length > 0) {
+      const preview = collectedCards.slice(0, 3).map((c) => `**${c.name}** (${c.pricePerDay.toLocaleString("vi-VN")}₫/ngày)`).join(", ");
+      return `👟 Mình tìm thấy mẫu giày phù hợp từ dữ liệu cửa hàng: ${preview}. Bạn xem chi tiết size trống và đặt thuê trực tiếp trên thẻ bên dưới nhé!`;
+    }
+    const smart = await this.buildSmartReply(lastUserText, customerId, contextOptions);
+    return smart.reply;
   }
   async respondWithSafeFallback(res, lastUserText, customerId, contextOptions) {
     try {

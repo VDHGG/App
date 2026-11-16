@@ -313,6 +313,7 @@ export class ChatController {
     const systemText = [
       'You are the smart storefront shopping concierge for Rental Shoes Vietnam.',
       'Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.',
+      'Mandatory tool routing: call list_active_vouchers whenever asked about vouchers/promo codes (never invent codes such as RENTAL50K or FREESHIP); call search_shoes for catalog searches; call estimate_rental_quote for quotes/pricing; call check_shoe_availability for date/size availability; call get_shoe_reviews_summary for ratings/reviews; call compare_shoes for comparisons; call list_my_rentals/get_rental_detail/get_my_membership_rank for logged-in customer orders/rank. Always write a concise Vietnamese summary after tool execution.',
       'Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.',
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
       `Current page shoe context: ${resolvedContextShoeId || 'none'}. Whenever this is not 'none' and the user refers to this shoe ("đôi này", "mẫu này", "nó") or asks availability/quote/reviews without naming another shoe (except store-wide "top giày đánh giá cao nhất", which calls get_shoe_reviews_summary with empty args), pass shoe_id="${resolvedContextShoeId}" directly without asking the user for the shoe ID.`,
@@ -323,6 +324,7 @@ export class ChatController {
 
     const collectedCards: ChatShoeCardDto[] = [];
     let collectedQuote: ChatQuoteCardDto | undefined;
+    let toolCallCount = 0;
     const isStoreWideTopReviewsQuery = /top|cao nhất|yêu thích nhất|nhiều nhất|nổi bật/i.test(
       lastUserText
     );
@@ -336,8 +338,10 @@ export class ChatController {
         onAttemptStart: () => {
           collectedCards.length = 0;
           collectedQuote = undefined;
+          toolCallCount = 0;
         },
         executeTool: async (name, args) => {
+          toolCallCount += 1;
           const enrichedArgs = { ...args };
           const shouldInjectContextShoe =
             name === 'check_shoe_availability' ||
@@ -375,6 +379,24 @@ export class ChatController {
         },
       });
 
+      if (
+        toolCallCount === 0 &&
+        (!lastAssistant || this.requiresLiveToolData(lastUserText, Boolean(customerId)))
+      ) {
+        await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
+        return;
+      }
+
+      const finalReply =
+        lastAssistant ||
+        (await this.synthesizePostToolReply(
+          lastUserText,
+          customerId,
+          contextOptions,
+          collectedCards,
+          collectedQuote
+        ));
+
       const defaultSuggestions = this.buildContextualSuggestions(
         lastUserText,
         collectedCards,
@@ -383,7 +405,7 @@ export class ChatController {
       );
 
       res.json({
-        reply: lastAssistant || 'Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.',
+        reply: finalReply,
         mode: 'gemini',
         ...(collectedCards.length > 0 ? { cards: collectedCards.slice(0, 4) } : {}),
         ...(collectedQuote ? { quote: collectedQuote } : {}),
@@ -395,6 +417,69 @@ export class ChatController {
       }
       await this.respondWithSafeFallback(res, lastUserText, customerId, contextOptions);
     }
+  }
+
+  private requiresLiveToolData(lastUserText: string, isLoggedInCustomer: boolean): boolean {
+    const q = lastUserText.toLowerCase();
+    if (
+      /hủy đơn giúp|xóa đơn giúp|tạo đơn giúp|đặt thuê giúp|tự động hủy|tự động tạo|cancel order for me/i.test(
+        q
+      )
+    ) {
+      return false;
+    }
+    if (
+      /voucher|mã giảm|ma giam|khuyến mãi|khuyen mai/i.test(q) &&
+      !/quy định|quy dinh|chính sách|chinh sach|cộng dồn thế nào|cong don the nao/i.test(q)
+    ) {
+      return true;
+    }
+    if (
+      /tính tiền|tinh tien|báo giá|bao gia|hết bao nhiêu|het bao nhieu|tổng tiền|tong tien|ước tính|uoc tinh|\bSHOE\d{3,}\b|còn size nào trống|con size nao trong|lịch trống|lich trong|còn hàng ngày|con hang ngay|tìm giày|tim giay|tìm thêm giày|tim them giay|tìm mẫu|tim mau|so sánh|so sanh|top giày|top giay|đánh giá của khách|danh gia cua khach/i.test(
+        q
+      )
+    ) {
+      return true;
+    }
+    if (
+      isLoggedInCustomer &&
+      /\bREN\d{2,}\b|đơn thuê của tôi|don thue cua toi|đơn của tôi|don cua toi|kiểm tra đơn thuê|kiem tra don thue|hạng của tôi|hang cua toi|hạng thành viên của tôi/i.test(
+        q
+      )
+    ) {
+      return true;
+    }
+    return false;
+  }
+
+  private async synthesizePostToolReply(
+    lastUserText: string,
+    customerId: string | undefined,
+    contextOptions: {
+      messages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      currentShoeId?: string;
+      currentPath?: string;
+    },
+    collectedCards: ChatShoeCardDto[],
+    collectedQuote: ChatQuoteCardDto | undefined
+  ): Promise<string> {
+    if (collectedQuote) {
+      const qt = collectedQuote;
+      const discountText =
+        qt.effectiveDiscountPercent > 0
+          ? ` (đã giảm **-${qt.effectiveDiscountPercent}%**${qt.voucherCode ? ` gồm mã **${qt.voucherCode}**` : ''})`
+          : '';
+      return `🧾 **Báo giá dự kiến thuê ${qt.shoeName} (${qt.quantity} đôi × ${qt.days} ngày):** Tiền thuê **${qt.finalRentalPrice.toLocaleString('vi-VN')}₫**${discountText} + tiền cọc hoàn lại **${qt.depositAmount.toLocaleString('vi-VN')}₫** → Tổng thanh toán tạm tính **${qt.grandTotal.toLocaleString('vi-VN')}₫**.`;
+    }
+    if (collectedCards.length > 0) {
+      const preview = collectedCards
+        .slice(0, 3)
+        .map((c) => `**${c.name}** (${c.pricePerDay.toLocaleString('vi-VN')}₫/ngày)`)
+        .join(', ');
+      return `👟 Mình tìm thấy mẫu giày phù hợp từ dữ liệu cửa hàng: ${preview}. Bạn xem chi tiết size trống và đặt thuê trực tiếp trên thẻ bên dưới nhé!`;
+    }
+    const smart = await this.buildSmartReply(lastUserText, customerId, contextOptions);
+    return smart.reply;
   }
 
   private async respondWithSafeFallback(

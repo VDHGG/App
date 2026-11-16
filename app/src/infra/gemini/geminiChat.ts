@@ -12,6 +12,10 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
     name: 'list_my_rentals',
     description:
       'List rental order IDs, overdue status, and basic info for the currently logged-in customer. Requires customer login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
   },
   {
     name: 'get_rental_detail',
@@ -31,11 +35,19 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
     name: 'get_my_membership_rank',
     description:
       'Get current membership rank (BRONZE, SILVER, GOLD, DIAMOND) and automatic discount percent for the logged-in customer. Requires customer login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
   },
   {
     name: 'list_active_vouchers',
     description:
-      'List currently active promotional vouchers (code, discountPercent, description, expiresAt). Does not require login.',
+      'List currently active promotional vouchers (code, discountPercent, description, expiresAt). Always call this tool when the user asks about promo codes, discounts, or vouchers. Does not require login.',
+    parameters: {
+      type: SchemaType.OBJECT,
+      properties: {},
+    },
   },
   {
     name: 'search_shoes',
@@ -189,6 +201,15 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
 
 function safeResponseText(response: EnhancedGenerateContentResponse): string {
   try {
+    const parts = response.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts) && parts.length > 0) {
+      const visible = parts
+        .filter((p) => typeof p.text === 'string' && !(p as { thought?: boolean }).thought)
+        .map((p) => p.text)
+        .join('')
+        .trim();
+      if (visible) return visible;
+    }
     return response.text().trim();
   } catch {
     return '';
@@ -304,8 +325,7 @@ async function runSingleModelChat(opts: {
     response = result.response;
   }
 
-  const fallback = safeResponseText(response);
-  return fallback || 'Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.';
+  return safeResponseText(response);
 }
 
 export async function geminiChatWithTools(opts: {

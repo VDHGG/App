@@ -15,7 +15,10 @@ import { NoopCatalogLookup } from '@adapter/persistence/NoopCatalogLookup.adapte
 import { NoopShoeImageService } from '@adapter/persistence/NoopShoeImageService.adapter';
 import { Shoe } from '@domain/Shoe.aggregate';
 import { ShoeVariant } from '@domain/ShoeVariant.entity';
-import { normalizeConversationTurns } from '@infra/gemini/geminiChat';
+import {
+  normalizeConversationTurns,
+  SHOE_RENTAL_FUNCTION_DECLARATIONS,
+} from '@infra/gemini/geminiChat';
 import { GetRentalService } from '@usecase/GetRental.service';
 import { GetShoeService } from '@usecase/GetShoe.service';
 import { ListRentalsService } from '@usecase/ListRentals.service';
@@ -253,5 +256,80 @@ describe('ChatController quota-exhaustion fallback resilience', () => {
 
     expect(out.status).toBe(200);
     expect(out.json['mode']).toBe('security_guard');
+  });
+
+  it('defines explicit OBJECT parameter schemas on all 9 function declarations including zero-arg tools', () => {
+    expect(SHOE_RENTAL_FUNCTION_DECLARATIONS).toHaveLength(9);
+    for (const decl of SHOE_RENTAL_FUNCTION_DECLARATIONS) {
+      expect(decl.parameters?.type).toBeDefined();
+    }
+  });
+
+  it('synthesizes a Vietnamese quote summary instead of apology text when Gemini returns empty text after tool execution', async () => {
+    let callNum = 0;
+    vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((() => ({
+      startChat: () => ({
+        sendMessage: async () => {
+          callNum += 1;
+          if (callNum === 1) {
+            return {
+              response: {
+                functionCalls: () => [
+                  {
+                    name: 'estimate_rental_quote',
+                    args: { shoe_id: 'SHOE001', days: 3, voucher_code: 'WELCOME10' },
+                  },
+                ],
+                text: () => '',
+              },
+            };
+          }
+          return {
+            response: {
+              functionCalls: () => undefined,
+              text: () => '',
+            },
+          };
+        },
+      }),
+    })) as never);
+
+    const out = await invokeChat({
+      messages: [
+        { role: 'user', content: 'Báo giá thuê đôi SHOE001 trong 3 ngày áp mã WELCOME10' },
+      ],
+    });
+
+    expect(out.status).toBe(200);
+    expect(out.json['mode']).toBe('gemini');
+    const reply = String(out.json['reply']);
+    expect(reply).not.toContain('Xin lỗi, mình chưa trả lời được');
+    expect(reply).toContain('Air Zoom Pegasus 40');
+    expect(reply).toContain('1.175.000₫');
+    expect((out.json['quote'] as { grandTotal: number }).grandTotal).toBe(1175000);
+  });
+
+  it('rejects ungrounded voucher hallucinations when Gemini skips calling list_active_vouchers', async () => {
+    vi.spyOn(GoogleGenerativeAI.prototype, 'getGenerativeModel').mockImplementation((() => ({
+      startChat: () => ({
+        sendMessage: async () => ({
+          response: {
+            functionCalls: () => undefined,
+            text: () => 'Shop đang có mã RENTAL50K và FREESHIP giảm 50.000₫!',
+          },
+        }),
+      }),
+    })) as never);
+
+    const out = await invokeChat({
+      messages: [{ role: 'user', content: 'Shop đang có mã giảm giá nào?' }],
+    });
+
+    expect(out.status).toBe(200);
+    const reply = String(out.json['reply']);
+    expect(reply).not.toContain('RENTAL50K');
+    expect(reply).toContain('WELCOME10');
+    expect(reply).toContain('GIAM10');
+    expect(reply).toContain('SHOE20');
   });
 });
