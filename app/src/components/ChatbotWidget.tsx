@@ -22,6 +22,7 @@ const DEFAULT_SUGGESTIONS = [
 type RichChatMessage = ChatTurn & {
   cards?: ChatShoeCard[]
   quote?: ChatQuoteCard
+  blocked?: boolean
 }
 
 const INITIAL_MESSAGE: RichChatMessage = {
@@ -168,7 +169,10 @@ export function ChatbotWidget() {
     setMessages((m) => [...m, nextUser])
 
     try {
-      const history: ChatTurn[] = [...messages, nextUser].map((item) => ({
+      const history: ChatTurn[] = [
+        ...messages.filter((item) => !item.blocked),
+        nextUser,
+      ].map((item) => ({
         role: item.role,
         content: item.content,
       }))
@@ -176,15 +180,23 @@ export function ChatbotWidget() {
         currentPath: location.pathname,
         ...(currentShoeId ? { currentShoeId } : {}),
       })
-      setMessages((m) => [
-        ...m,
-        {
-          role: 'assistant',
-          content: res.reply,
-          ...(res.cards && res.cards.length > 0 ? { cards: res.cards } : {}),
-          ...(res.quote ? { quote: res.quote } : {}),
-        },
-      ])
+      const isBlocked = res.mode === 'security_guard'
+      setMessages((m) => {
+        const updated =
+          isBlocked && m.length > 0 && m[m.length - 1].role === 'user'
+            ? [...m.slice(0, -1), { ...m[m.length - 1], blocked: true }]
+            : m
+        return [
+          ...updated,
+          {
+            role: 'assistant',
+            content: res.reply,
+            ...(isBlocked ? { blocked: true } : {}),
+            ...(res.cards && res.cards.length > 0 ? { cards: res.cards } : {}),
+            ...(res.quote ? { quote: res.quote } : {}),
+          },
+        ]
+      })
       if (res.suggestions && res.suggestions.length > 0) {
         setSuggestions(res.suggestions)
       }

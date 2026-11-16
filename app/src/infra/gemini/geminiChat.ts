@@ -194,14 +194,34 @@ function safeResponseText(response: EnhancedGenerateContentResponse): string {
   }
 }
 
-function stripLeadingAssistantTurns(
+export function normalizeConversationTurns(
   turns: Array<{ role: 'user' | 'assistant'; content: string }>
 ): Array<{ role: 'user' | 'assistant'; content: string }> {
-  let i = 0;
-  while (i < turns.length && turns[i].role === 'assistant') {
-    i += 1;
+  const nonEmpty = turns
+    .map((t) => ({ role: t.role, content: t.content.trim() }))
+    .filter((t) => t.content.length > 0);
+
+  let start = 0;
+  while (start < nonEmpty.length && nonEmpty[start].role === 'assistant') {
+    start += 1;
   }
-  return turns.slice(i);
+
+  const collapsed: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (let i = start; i < nonEmpty.length; i++) {
+    const curr = nonEmpty[i];
+    const prev = collapsed[collapsed.length - 1];
+    if (!prev || prev.role !== curr.role) {
+      collapsed.push({ ...curr });
+    } else if (curr.role === 'user') {
+      collapsed[collapsed.length - 1] = { ...curr };
+    } else {
+      collapsed[collapsed.length - 1] = {
+        role: 'assistant',
+        content: `${prev.content}\n\n${curr.content}`,
+      };
+    }
+  }
+  return collapsed;
 }
 
 const FALLBACK_LITE_MODEL = 'gemini-2.5-flash-lite';
@@ -220,9 +240,20 @@ async function runSingleModelChat(opts: {
   history: Content[];
   lastMessage: string;
   executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  onAttemptStart?: () => void;
   maxToolRounds: number;
 }): Promise<string> {
-  const { apiKey, model, systemInstruction, history, lastMessage, executeTool, maxToolRounds } = opts;
+  const {
+    apiKey,
+    model,
+    systemInstruction,
+    history,
+    lastMessage,
+    executeTool,
+    onAttemptStart,
+    maxToolRounds,
+  } = opts;
+  onAttemptStart?.();
   const genAI = new GoogleGenerativeAI(apiKey);
   const genModel = genAI.getGenerativeModel({
     model,
@@ -282,10 +313,19 @@ export async function geminiChatWithTools(opts: {
   systemInstruction: string;
   turns: Array<{ role: 'user' | 'assistant'; content: string }>;
   executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  onAttemptStart?: () => void;
   maxToolRounds?: number;
 }): Promise<string> {
-  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
-  const normalized = stripLeadingAssistantTurns(turns);
+  const {
+    apiKey,
+    model,
+    systemInstruction,
+    turns,
+    executeTool,
+    onAttemptStart,
+    maxToolRounds = 8,
+  } = opts;
+  const normalized = normalizeConversationTurns(turns);
   if (normalized.length === 0) {
     throw new Error('Không có tin nhắn để gửi.');
   }
@@ -311,6 +351,7 @@ export async function geminiChatWithTools(opts: {
       history,
       lastMessage: last.content,
       executeTool,
+      onAttemptStart,
       maxToolRounds,
     });
   } catch (err: unknown) {
@@ -322,6 +363,7 @@ export async function geminiChatWithTools(opts: {
         history,
         lastMessage: last.content,
         executeTool,
+        onAttemptStart,
         maxToolRounds,
       });
     }

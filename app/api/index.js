@@ -6843,12 +6843,30 @@ function safeResponseText(response) {
     return "";
   }
 }
-function stripLeadingAssistantTurns(turns) {
-  let i = 0;
-  while (i < turns.length && turns[i].role === "assistant") {
-    i += 1;
+function normalizeConversationTurns(turns) {
+  const nonEmpty = turns.map((t) => ({ role: t.role, content: t.content.trim() })).filter((t) => t.content.length > 0);
+  let start = 0;
+  while (start < nonEmpty.length && nonEmpty[start].role === "assistant") {
+    start += 1;
   }
-  return turns.slice(i);
+  const collapsed = [];
+  for (let i = start; i < nonEmpty.length; i++) {
+    const curr = nonEmpty[i];
+    const prev = collapsed[collapsed.length - 1];
+    if (!prev || prev.role !== curr.role) {
+      collapsed.push({ ...curr });
+    } else if (curr.role === "user") {
+      collapsed[collapsed.length - 1] = { ...curr };
+    } else {
+      collapsed[collapsed.length - 1] = {
+        role: "assistant",
+        content: `${prev.content}
+
+${curr.content}`
+      };
+    }
+  }
+  return collapsed;
 }
 const FALLBACK_LITE_MODEL = "gemini-2.5-flash-lite";
 function isRetryableModelError(err) {
@@ -6858,7 +6876,17 @@ function isRetryableModelError(err) {
   );
 }
 async function runSingleModelChat(opts) {
-  const { apiKey, model, systemInstruction, history, lastMessage, executeTool, maxToolRounds } = opts;
+  const {
+    apiKey,
+    model,
+    systemInstruction,
+    history,
+    lastMessage,
+    executeTool,
+    onAttemptStart,
+    maxToolRounds
+  } = opts;
+  onAttemptStart?.();
   const genAI = new GoogleGenerativeAI(apiKey);
   const genModel = genAI.getGenerativeModel({
     model,
@@ -6900,8 +6928,16 @@ async function runSingleModelChat(opts) {
   return fallback || "Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.";
 }
 async function geminiChatWithTools(opts) {
-  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
-  const normalized = stripLeadingAssistantTurns(turns);
+  const {
+    apiKey,
+    model,
+    systemInstruction,
+    turns,
+    executeTool,
+    onAttemptStart,
+    maxToolRounds = 8
+  } = opts;
+  const normalized = normalizeConversationTurns(turns);
   if (normalized.length === 0) {
     throw new Error("Không có tin nhắn để gửi.");
   }
@@ -6925,6 +6961,7 @@ async function geminiChatWithTools(opts) {
       history,
       lastMessage: last.content,
       executeTool,
+      onAttemptStart,
       maxToolRounds
     });
   } catch (err) {
@@ -6936,6 +6973,7 @@ async function geminiChatWithTools(opts) {
         history,
         lastMessage: last.content,
         executeTool,
+        onAttemptStart,
         maxToolRounds
       });
     }
@@ -7157,22 +7195,30 @@ class ChatController {
       "Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.",
       "Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.",
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
-      `Current page shoe context: ${resolvedContextShoeId || "none"}. Whenever this is not 'none' and the user says "đôi này", "mẫu này", "nó" or omits the shoe name, pass shoe_id="${resolvedContextShoeId}" directly into check_shoe_availability, estimate_rental_quote, or get_shoe_reviews_summary without asking the user for the shoe ID.`,
+      `Current page shoe context: ${resolvedContextShoeId || "none"}. Whenever this is not 'none' and the user refers to this shoe ("đôi này", "mẫu này", "nó") or asks availability/quote/reviews without naming another shoe (except store-wide "top giày đánh giá cao nhất", which calls get_shoe_reviews_summary with empty args), pass shoe_id="${resolvedContextShoeId}" directly without asking the user for the shoe ID.`,
       `Static policy: unpaid MoMo checkout window is ~${pendingMin} minutes (then order auto-cancels).`,
       "--- Allowed knowledge (markdown) ---",
       loadKnowledgeText()
     ].join("\n\n");
     const collectedCards = [];
     let collectedQuote;
+    const isStoreWideTopReviewsQuery = /top|cao nhất|yêu thích nhất|nhiều nhất|nổi bật/i.test(
+      lastUserText
+    );
     try {
       const lastAssistant = await geminiChatWithTools({
         apiKey,
         model,
         systemInstruction: systemText,
         turns: body.messages.slice(-20),
+        onAttemptStart: () => {
+          collectedCards.length = 0;
+          collectedQuote = void 0;
+        },
         executeTool: async (name, args) => {
           const enrichedArgs = { ...args };
-          if ((name === "check_shoe_availability" || name === "estimate_rental_quote" || name === "get_shoe_reviews_summary") && !enrichedArgs["shoe_id"] && !enrichedArgs["shoe_name"] && resolvedContextShoeId) {
+          const shouldInjectContextShoe = name === "check_shoe_availability" || name === "estimate_rental_quote" || name === "get_shoe_reviews_summary" && !isStoreWideTopReviewsQuery;
+          if (shouldInjectContextShoe && !enrichedArgs["shoe_id"] && !enrichedArgs["shoe_name"] && resolvedContextShoeId) {
             enrichedArgs["shoe_id"] = resolvedContextShoeId;
           }
           const toolOut = await this.runTool(name, enrichedArgs, customerId);

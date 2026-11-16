@@ -322,7 +322,7 @@ export class ChatController {
       'Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.',
       'Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.',
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
-      `Current page shoe context: ${resolvedContextShoeId || 'none'}. Whenever this is not 'none' and the user says "đôi này", "mẫu này", "nó" or omits the shoe name, pass shoe_id="${resolvedContextShoeId}" directly into check_shoe_availability, estimate_rental_quote, or get_shoe_reviews_summary without asking the user for the shoe ID.`,
+      `Current page shoe context: ${resolvedContextShoeId || 'none'}. Whenever this is not 'none' and the user refers to this shoe ("đôi này", "mẫu này", "nó") or asks availability/quote/reviews without naming another shoe (except store-wide "top giày đánh giá cao nhất", which calls get_shoe_reviews_summary with empty args), pass shoe_id="${resolvedContextShoeId}" directly without asking the user for the shoe ID.`,
       `Static policy: unpaid MoMo checkout window is ~${pendingMin} minutes (then order auto-cancels).`,
       '--- Allowed knowledge (markdown) ---',
       loadKnowledgeText(),
@@ -330,6 +330,9 @@ export class ChatController {
 
     const collectedCards: ChatShoeCardDto[] = [];
     let collectedQuote: ChatQuoteCardDto | undefined;
+    const isStoreWideTopReviewsQuery = /top|cao nhất|yêu thích nhất|nhiều nhất|nổi bật/i.test(
+      lastUserText
+    );
 
     try {
       const lastAssistant = await geminiChatWithTools({
@@ -337,12 +340,18 @@ export class ChatController {
         model,
         systemInstruction: systemText,
         turns: body.messages.slice(-20),
+        onAttemptStart: () => {
+          collectedCards.length = 0;
+          collectedQuote = undefined;
+        },
         executeTool: async (name, args) => {
           const enrichedArgs = { ...args };
+          const shouldInjectContextShoe =
+            name === 'check_shoe_availability' ||
+            name === 'estimate_rental_quote' ||
+            (name === 'get_shoe_reviews_summary' && !isStoreWideTopReviewsQuery);
           if (
-            (name === 'check_shoe_availability' ||
-              name === 'estimate_rental_quote' ||
-              name === 'get_shoe_reviews_summary') &&
+            shouldInjectContextShoe &&
             !enrichedArgs['shoe_id'] &&
             !enrichedArgs['shoe_name'] &&
             resolvedContextShoeId
@@ -594,7 +603,7 @@ export class ChatController {
       const matchedShoe = explicitShoeId
         ? await this.resolveShoeByIdOrName(explicitShoeId, undefined)
         : (await this.findBestMatchingShoeInText(lastUserText)) ??
-          (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, undefined) : null);
+        (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, undefined) : null);
 
       const days = daysMatch ? Math.max(1, Math.min(30, Number(daysMatch[1]))) : 3;
       const qtyMatch = q.match(/(?:(\d+)\s*(?:đôi|doi)|(?:số lượng|so luong|sl)\s*(\d+))/i);
@@ -680,7 +689,7 @@ export class ChatController {
       const matchedShoe = explicitShoeId
         ? await this.resolveShoeByIdOrName(explicitShoeId, undefined)
         : (await this.findBestMatchingShoeInText(lastUserText)) ??
-          (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, undefined) : null);
+        (contextShoeId ? await this.resolveShoeByIdOrName(contextShoeId, undefined) : null);
 
       const targetShoeId = explicitShoeId ?? matchedShoe?.shoeId;
       if (targetShoeId) {
@@ -747,8 +756,8 @@ export class ChatController {
           const revLines =
             revRes.reviews.length > 0
               ? revRes.reviews
-                  .slice(0, 3)
-                  .map((r) => `• **${r.customerName}** (${r.rating}★): "${r.comment}"`)
+                .slice(0, 3)
+                .map((r) => `• **${r.customerName}** (${r.rating}★): "${r.comment}"`)
               : ['• Hiện mẫu này chưa có bình luận chi tiết, điểm mặc định **5.0★**.'];
           return {
             reply: [
@@ -1176,9 +1185,9 @@ export class ChatController {
 
       const hasValidSearchDates = Boolean(
         startDateStr &&
-          endDateStr &&
-          /^\d{4}-\d{2}-\d{2}$/.test(startDateStr) &&
-          /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)
+        endDateStr &&
+        /^\d{4}-\d{2}-\d{2}$/.test(startDateStr) &&
+        /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)
       );
       const cards = shoes.map((s) => {
         const card = toShoeCard(s);
@@ -1348,9 +1357,9 @@ export class ChatController {
       const discountedUnitPrice =
         effectiveDiscountPercent > 0
           ? Math.max(
-              1,
-              Math.round((target.pricePerDay * (100 - effectiveDiscountPercent)) / 100)
-            )
+            1,
+            Math.round((target.pricePerDay * (100 - effectiveDiscountPercent)) / 100)
+          )
           : target.pricePerDay;
 
       const rawBasePrice = target.pricePerDay * quantity * days;

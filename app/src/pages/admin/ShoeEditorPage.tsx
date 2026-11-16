@@ -48,6 +48,7 @@ export function ShoeEditorPage() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null)
   const [imageDirty, setImageDirty] = useState(false)
   const [imageUploading, setImageUploading] = useState(false)
+  const [imageFallbackNotice, setImageFallbackNotice] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -86,6 +87,7 @@ export function ShoeEditorPage() {
         setImagePublicId(s.imagePublicId)
         setImagePreviewUrl(s.imageUrlDetail ?? s.imageUrlCard)
         setImageDirty(false)
+        setImageFallbackNotice(null)
       })
       .catch((err) => setLoadError(getApiErrorMessage(err)))
       .finally(() => setLoading(false))
@@ -112,6 +114,11 @@ export function ShoeEditorPage() {
       setImagePublicId(res.publicId)
       setImagePreviewUrl(res.imageUrlDetail)
       setImageDirty(true)
+      setImageFallbackNotice(
+        res.publicId === 'default_shoe'
+          ? 'Cloudinary hiện chưa cấu hình hoạt động — hệ thống đang gán tạm ảnh mặc định (default_shoe.webp). Nếu đang sửa giày cũ và muốn giữ ảnh gốc, hãy bấm Cancel.'
+          : null
+      )
     } catch (err: unknown) {
       setSaveError(getApiErrorMessage(err))
     } finally {
@@ -123,6 +130,7 @@ export function ShoeEditorPage() {
     setImagePublicId(null)
     setImagePreviewUrl(null)
     setImageDirty(true)
+    setImageFallbackNotice(null)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -218,6 +226,7 @@ export function ShoeEditorPage() {
       setImagePublicId(refreshed.imagePublicId)
       setImagePreviewUrl(refreshed.imageUrlDetail ?? refreshed.imageUrlCard)
       setImageDirty(false)
+      setImageFallbackNotice(null)
       setBrandId(refreshed.brandId != null ? String(refreshed.brandId) : '')
       setCategoryId(refreshed.categoryId != null ? String(refreshed.categoryId) : '')
       setVariants(
@@ -400,6 +409,11 @@ export function ShoeEditorPage() {
                   <code className="text-[10px]">f_auto,q_auto</code> on delivery).
                 </p>
                 {imageUploading && <p className="text-xs text-slate-500">Uploading…</p>}
+                {imageFallbackNotice && (
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400 max-w-md">
+                    {imageFallbackNotice}
+                  </p>
+                )}
               </div>
             </div>
           </div>
