@@ -6761,10 +6761,10 @@ const SHOE_RENTAL_FUNCTION_DECLARATIONS = [
         },
         end_date: {
           type: SchemaType.STRING,
-          description: "Rental end date in YYYY-MM-DD format"
+          description: "Optional rental end date in YYYY-MM-DD format (defaults to start_date when checking a single day such as tomorrow)"
         }
       },
-      required: ["start_date", "end_date"]
+      required: ["start_date"]
     }
   },
   {
@@ -7803,7 +7803,7 @@ ${top.join("\n")}`);
       const size = args["size"] !== void 0 ? Number(args["size"]) : void 0;
       const color = String(args["color"] ?? "").trim().toLowerCase();
       const startDateStr = String(args["start_date"] ?? "").trim();
-      const endDateStr = String(args["end_date"] ?? "").trim();
+      const endDateStr = String(args["end_date"] ?? "").trim() || startDateStr;
       let shoes = await this.searchShoesByMaxPriceUsd(maxInput);
       if (keyword) {
         const kwTokens = keyword.split(/\s+/).filter(Boolean);
@@ -7900,7 +7900,7 @@ ${top.join("\n")}`);
       const rawShoeId = String(args["shoe_id"] ?? "").trim();
       const rawShoeName = String(args["shoe_name"] ?? "").trim();
       const startDateStr = String(args["start_date"] ?? "").trim();
-      const endDateStr = String(args["end_date"] ?? "").trim();
+      const endDateStr = String(args["end_date"] ?? "").trim() || startDateStr;
       let resolvedShoeId = rawShoeId;
       if (!resolvedShoeId && rawShoeName) {
         const matched = await this.resolveShoeByIdOrName(void 0, rawShoeName);
@@ -7969,7 +7969,7 @@ ${top.join("\n")}`);
         return { ok: false, error: "Shoe not found for quote estimation" };
       }
       const startDateStr = String(args["start_date"] ?? "").trim();
-      const endDateStr = String(args["end_date"] ?? "").trim();
+      const endDateStr = String(args["end_date"] ?? "").trim() || startDateStr;
       let days = Math.max(1, Math.min(30, Math.round(Number(args["days"] ?? 3)) || 3));
       if (startDateStr && endDateStr && /^\d{4}-\d{2}-\d{2}$/.test(startDateStr) && /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
         try {

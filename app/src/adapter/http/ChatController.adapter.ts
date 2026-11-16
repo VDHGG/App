@@ -1147,7 +1147,7 @@ export class ChatController {
       const size = args['size'] !== undefined ? Number(args['size']) : undefined;
       const color = String(args['color'] ?? '').trim().toLowerCase();
       const startDateStr = String(args['start_date'] ?? '').trim();
-      const endDateStr = String(args['end_date'] ?? '').trim();
+      const endDateStr = String(args['end_date'] ?? '').trim() || startDateStr;
 
       let shoes = await this.searchShoesByMaxPriceUsd(maxInput);
 
@@ -1260,7 +1260,7 @@ export class ChatController {
       const rawShoeId = String(args['shoe_id'] ?? '').trim();
       const rawShoeName = String(args['shoe_name'] ?? '').trim();
       const startDateStr = String(args['start_date'] ?? '').trim();
-      const endDateStr = String(args['end_date'] ?? '').trim();
+      const endDateStr = String(args['end_date'] ?? '').trim() || startDateStr;
 
       let resolvedShoeId = rawShoeId;
       if (!resolvedShoeId && rawShoeName) {
@@ -1336,7 +1336,7 @@ export class ChatController {
       }
 
       const startDateStr = String(args['start_date'] ?? '').trim();
-      const endDateStr = String(args['end_date'] ?? '').trim();
+      const endDateStr = String(args['end_date'] ?? '').trim() || startDateStr;
       let days = Math.max(1, Math.min(30, Math.round(Number(args['days'] ?? 3)) || 3));
       if (startDateStr && endDateStr && /^\d{4}-\d{2}-\d{2}$/.test(startDateStr) && /^\d{4}-\d{2}-\d{2}$/.test(endDateStr)) {
         try {

@@ -106,10 +106,11 @@ export const SHOE_RENTAL_FUNCTION_DECLARATIONS: FunctionDeclaration[] = [
         },
         end_date: {
           type: SchemaType.STRING,
-          description: 'Rental end date in YYYY-MM-DD format',
+          description:
+            'Optional rental end date in YYYY-MM-DD format (defaults to start_date when checking a single day such as tomorrow)',
         },
       },
-      required: ['start_date', 'end_date'],
+      required: ['start_date'],
     },
   },
   {
