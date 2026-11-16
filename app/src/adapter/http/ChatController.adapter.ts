@@ -87,7 +87,7 @@ function addDaysYmd(ymd: string, deltaDays: number): string {
 function detectSecurityViolation(text: string, customerId: string | undefined): string | null {
   const normalized = text.trim();
   if (
-    /ignore previous|ignore all instructions|bỏ qua hướng dẫn|system prompt|reveal prompt|select\s+\*\s+from|union\s+select|information_schema|password_hash|jwt_secret|system_users|drop\s+table|delete\s+from|doanh thu admin|báo cáo doanh thu|đơn của khách khác|thông tin khách khác|danh sách khách hàng/i.test(
+    /ignore previous|ignore all instructions|bỏ qua hướng dẫn|system prompt|reveal prompt|select\s+\*\s+from|union\s+select|information_schema|password_hash|jwt_secret|gemini_api_key|db_password|momo_secret_key|cloudinary_api_secret|process\.env|system_users|drop\s+table|delete\s+from|doanh thu admin|báo cáo doanh thu|đơn của khách khác|thông tin khách khác|danh sách khách hàng/i.test(
       normalized
     )
   ) {
