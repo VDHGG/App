@@ -2,6 +2,6 @@
 .env.*
 !.env.example
 *.local
-node_modules
-images
-src/__tests__
+/node_modules
+/images
+/src/__tests__
