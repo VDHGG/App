@@ -204,33 +204,25 @@ function stripLeadingAssistantTurns(
   return turns.slice(i);
 }
 
-export async function geminiChatWithTools(opts: {
+const FALLBACK_LITE_MODEL = 'gemini-2.5-flash-lite';
+
+function isRetryableModelError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b(404|429|503)\b|not found|no longer available|resource_exhausted|quota|too many requests|overloaded/i.test(
+    msg
+  );
+}
+
+async function runSingleModelChat(opts: {
   apiKey: string;
   model: string;
   systemInstruction: string;
-  turns: Array<{ role: 'user' | 'assistant'; content: string }>;
+  history: Content[];
+  lastMessage: string;
   executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
-  maxToolRounds?: number;
+  maxToolRounds: number;
 }): Promise<string> {
-  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
-  const normalized = stripLeadingAssistantTurns(turns);
-  if (normalized.length === 0) {
-    throw new Error('Không có tin nhắn để gửi.');
-  }
-  const last = normalized[normalized.length - 1];
-  if (last.role !== 'user') {
-    throw new Error('Tin nhắn cuối phải của người dùng.');
-  }
-
-  const history: Content[] = [];
-  for (let i = 0; i < normalized.length - 1; i++) {
-    const m = normalized[i];
-    history.push({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
-    });
-  }
-
+  const { apiKey, model, systemInstruction, history, lastMessage, executeTool, maxToolRounds } = opts;
   const genAI = new GoogleGenerativeAI(apiKey);
   const genModel = genAI.getGenerativeModel({
     model,
@@ -243,7 +235,7 @@ export async function geminiChatWithTools(opts: {
 
   const chat = genModel.startChat({ history });
 
-  let result = await chat.sendMessage(last.content);
+  let result = await chat.sendMessage(lastMessage);
   let response = result.response;
   let rounds = 0;
 
@@ -282,4 +274,57 @@ export async function geminiChatWithTools(opts: {
 
   const fallback = safeResponseText(response);
   return fallback || 'Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.';
+}
+
+export async function geminiChatWithTools(opts: {
+  apiKey: string;
+  model: string;
+  systemInstruction: string;
+  turns: Array<{ role: 'user' | 'assistant'; content: string }>;
+  executeTool: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+  maxToolRounds?: number;
+}): Promise<string> {
+  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
+  const normalized = stripLeadingAssistantTurns(turns);
+  if (normalized.length === 0) {
+    throw new Error('Không có tin nhắn để gửi.');
+  }
+  const last = normalized[normalized.length - 1];
+  if (last.role !== 'user') {
+    throw new Error('Tin nhắn cuối phải của người dùng.');
+  }
+
+  const history: Content[] = [];
+  for (let i = 0; i < normalized.length - 1; i++) {
+    const m = normalized[i];
+    history.push({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }],
+    });
+  }
+
+  try {
+    return await runSingleModelChat({
+      apiKey,
+      model,
+      systemInstruction,
+      history,
+      lastMessage: last.content,
+      executeTool,
+      maxToolRounds,
+    });
+  } catch (err: unknown) {
+    if (model !== FALLBACK_LITE_MODEL && isRetryableModelError(err)) {
+      return runSingleModelChat({
+        apiKey,
+        model: FALLBACK_LITE_MODEL,
+        systemInstruction,
+        history,
+        lastMessage: last.content,
+        executeTool,
+        maxToolRounds,
+      });
+    }
+    throw err;
+  }
 }

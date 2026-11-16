@@ -122,9 +122,26 @@ const BodySchema = z.object({
     .optional(),
 });
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash';
+const RETIRED_GEMINI_MODEL_RE = /^gemini-(?:1\.5|2\.0)(?:$|-)/i;
+
+export function resolveGeminiModel(rawModel: string | undefined): string {
+  const trimmed = rawModel?.trim() ?? '';
+  if (!trimmed || RETIRED_GEMINI_MODEL_RE.test(trimmed)) {
+    return DEFAULT_GEMINI_MODEL;
+  }
+  return trimmed;
+}
+
 function defaultKnowledgePath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, '../../../knowledge/gemini-context.md');
+  const candidates = [
+    join(here, '../../../knowledge/gemini-context.md'),
+    join(here, '../knowledge/gemini-context.md'),
+    join(process.cwd(), 'knowledge/gemini-context.md'),
+    join(process.cwd(), 'app/knowledge/gemini-context.md'),
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
 }
 
 function loadKnowledgeText(): string {
@@ -295,7 +312,7 @@ export class ChatController {
       return;
     }
 
-    const model = process.env.GEMINI_MODEL?.trim() || 'gemini-2.0-flash';
+    const model = resolveGeminiModel(process.env.GEMINI_MODEL);
     const pendingMin = process.env.PAYMENT_PENDING_MINUTES?.trim() || '15';
     const resolvedContextShoeId = await this.resolveContextualShoeId(lastUserText, contextOptions);
     const todayStr = getVietnamTodayYmd();
@@ -305,7 +322,7 @@ export class ChatController {
       'Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.',
       'Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.',
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
-      `Current page shoe context (use if user says "đôi này", "mẫu này", "nó" without naming another shoe): ${resolvedContextShoeId || 'none'}.`,
+      `Current page shoe context: ${resolvedContextShoeId || 'none'}. Whenever this is not 'none' and the user says "đôi này", "mẫu này", "nó" or omits the shoe name, pass shoe_id="${resolvedContextShoeId}" directly into check_shoe_availability, estimate_rental_quote, or get_shoe_reviews_summary without asking the user for the shoe ID.`,
       `Static policy: unpaid MoMo checkout window is ~${pendingMin} minutes (then order auto-cancels).`,
       '--- Allowed knowledge (markdown) ---',
       loadKnowledgeText(),

@@ -36,7 +36,7 @@ export function humanizeGeminiUpstreamError(raw: string): {
   if (/model.*not found|is not found for api version|invalid model|404/.test(lower)) {
     return {
       assistantMessage:
-        'Tên model Gemini không đúng hoặc không khả dụng với API key này. Quản trị viên cần kiểm tra GEMINI_MODEL trong .env (ví dụ gemini-2.0-flash, gemini-1.5-flash).',
+        'Tên model Gemini không đúng hoặc không khả dụng với API key này. Quản trị viên cần kiểm tra GEMINI_MODEL trong .env (ví dụ gemini-2.5-flash, gemini-2.5-flash-lite).',
       technicalDetail: t,
     }
   }

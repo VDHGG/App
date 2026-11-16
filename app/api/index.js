@@ -17,6 +17,7 @@ const infraDir = path.dirname(fileURLToPath(import.meta.url));
 const envNextToPackageJson = path.resolve(infraDir, "../../.env");
 const candidates = [
   envNextToPackageJson,
+  path.resolve(infraDir, "../.env"),
   path.join(process.cwd(), ".env"),
   path.join(process.cwd(), "app", ".env")
 ];
@@ -6849,24 +6850,15 @@ function stripLeadingAssistantTurns(turns) {
   }
   return turns.slice(i);
 }
-async function geminiChatWithTools(opts) {
-  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
-  const normalized = stripLeadingAssistantTurns(turns);
-  if (normalized.length === 0) {
-    throw new Error("Không có tin nhắn để gửi.");
-  }
-  const last = normalized[normalized.length - 1];
-  if (last.role !== "user") {
-    throw new Error("Tin nhắn cuối phải của người dùng.");
-  }
-  const history = [];
-  for (let i = 0; i < normalized.length - 1; i++) {
-    const m = normalized[i];
-    history.push({
-      role: m.role === "user" ? "user" : "model",
-      parts: [{ text: m.content }]
-    });
-  }
+const FALLBACK_LITE_MODEL = "gemini-2.5-flash-lite";
+function isRetryableModelError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /\b(404|429|503)\b|not found|no longer available|resource_exhausted|quota|too many requests|overloaded/i.test(
+    msg
+  );
+}
+async function runSingleModelChat(opts) {
+  const { apiKey, model, systemInstruction, history, lastMessage, executeTool, maxToolRounds } = opts;
   const genAI = new GoogleGenerativeAI(apiKey);
   const genModel = genAI.getGenerativeModel({
     model,
@@ -6877,7 +6869,7 @@ async function geminiChatWithTools(opts) {
     }
   });
   const chat = genModel.startChat({ history });
-  let result = await chat.sendMessage(last.content);
+  let result = await chat.sendMessage(lastMessage);
   let response = result.response;
   let rounds = 0;
   while (rounds < maxToolRounds) {
@@ -6906,6 +6898,49 @@ async function geminiChatWithTools(opts) {
   }
   const fallback = safeResponseText(response);
   return fallback || "Xin lỗi, mình chưa trả lời được. Thử lại sau nhé.";
+}
+async function geminiChatWithTools(opts) {
+  const { apiKey, model, systemInstruction, turns, executeTool, maxToolRounds = 8 } = opts;
+  const normalized = stripLeadingAssistantTurns(turns);
+  if (normalized.length === 0) {
+    throw new Error("Không có tin nhắn để gửi.");
+  }
+  const last = normalized[normalized.length - 1];
+  if (last.role !== "user") {
+    throw new Error("Tin nhắn cuối phải của người dùng.");
+  }
+  const history = [];
+  for (let i = 0; i < normalized.length - 1; i++) {
+    const m = normalized[i];
+    history.push({
+      role: m.role === "user" ? "user" : "model",
+      parts: [{ text: m.content }]
+    });
+  }
+  try {
+    return await runSingleModelChat({
+      apiKey,
+      model,
+      systemInstruction,
+      history,
+      lastMessage: last.content,
+      executeTool,
+      maxToolRounds
+    });
+  } catch (err) {
+    if (model !== FALLBACK_LITE_MODEL && isRetryableModelError(err)) {
+      return runSingleModelChat({
+        apiKey,
+        model: FALLBACK_LITE_MODEL,
+        systemInstruction,
+        history,
+        lastMessage: last.content,
+        executeTool,
+        maxToolRounds
+      });
+    }
+    throw err;
+  }
 }
 function getVietnamTodayYmd(now = /* @__PURE__ */ new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -6954,9 +6989,24 @@ const BodySchema = z.object({
     currentShoeId: z.string().max(50).optional()
   }).optional()
 });
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+const RETIRED_GEMINI_MODEL_RE = /^gemini-(?:1\.5|2\.0)(?:$|-)/i;
+function resolveGeminiModel(rawModel) {
+  const trimmed = rawModel?.trim() ?? "";
+  if (!trimmed || RETIRED_GEMINI_MODEL_RE.test(trimmed)) {
+    return DEFAULT_GEMINI_MODEL;
+  }
+  return trimmed;
+}
 function defaultKnowledgePath() {
   const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "../../../knowledge/gemini-context.md");
+  const candidates2 = [
+    join(here, "../../../knowledge/gemini-context.md"),
+    join(here, "../knowledge/gemini-context.md"),
+    join(process.cwd(), "knowledge/gemini-context.md"),
+    join(process.cwd(), "app/knowledge/gemini-context.md")
+  ];
+  return candidates2.find((p) => existsSync(p)) ?? candidates2[0];
 }
 function loadKnowledgeText() {
   const fromEnv = process.env.GEMINI_KNOWLEDGE_PATH?.trim();
@@ -7098,7 +7148,7 @@ class ChatController {
       });
       return;
     }
-    const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+    const model = resolveGeminiModel(process.env.GEMINI_MODEL);
     const pendingMin = process.env.PAYMENT_PENDING_MINUTES?.trim() || "15";
     const resolvedContextShoeId = await this.resolveContextualShoeId(lastUserText, contextOptions);
     const todayStr = getVietnamTodayYmd();
@@ -7107,7 +7157,7 @@ class ChatController {
       "Follow GuildChatBot rules: never hallucinate data; always call tools for real catalog, availability, quotes, reviews, vouchers, rank, and rentals.",
       "Strict Zero-Trust Policy: 100% read-only; never expose other customers, PII (email/phone), voucher usedCount/maxUses, or Admin revenue.",
       `Today's date in Vietnam (UTC+7): ${todayStr}.`,
-      `Current page shoe context (use if user says "đôi này", "mẫu này", "nó" without naming another shoe): ${resolvedContextShoeId || "none"}.`,
+      `Current page shoe context: ${resolvedContextShoeId || "none"}. Whenever this is not 'none' and the user says "đôi này", "mẫu này", "nó" or omits the shoe name, pass shoe_id="${resolvedContextShoeId}" directly into check_shoe_availability, estimate_rental_quote, or get_shoe_reviews_summary without asking the user for the shoe ID.`,
       `Static policy: unpaid MoMo checkout window is ~${pendingMin} minutes (then order auto-cancels).`,
       "--- Allowed knowledge (markdown) ---",
       loadKnowledgeText()

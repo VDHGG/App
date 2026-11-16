@@ -10,6 +10,7 @@ const envNextToPackageJson = path.resolve(infraDir, '../../.env');
 
 const candidates = [
   envNextToPackageJson,
+  path.resolve(infraDir, '../.env'),
   path.join(process.cwd(), '.env'),
   path.join(process.cwd(), 'app', '.env'),
 ];
